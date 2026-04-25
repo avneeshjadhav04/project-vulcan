@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { Plus, Trash2, MessageSquare, Clock, Pencil, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -13,14 +14,13 @@ interface ChatItem {
 
 export default function Sidebar({
   activeChatId,
-  onSelect,
   selectedModel,
 }: {
   activeChatId: string | null
-  onSelect: (id: string) => void
   selectedModel: string
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [error, setError] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -45,7 +45,7 @@ export default function Sidebar({
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
-      onSelect(data.id)
+      navigate(`/chat/${data.id}`)
     },
     onError: (err: any) => {
       showError(err.response?.data?.error || err.response?.data?.message || 'Failed to create chat')
@@ -59,7 +59,7 @@ export default function Sidebar({
     onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
       if (activeChatId === deletedId) {
-        onSelect('')
+        navigate('/chat')
       }
     },
     onError: (err: any) => {
@@ -130,7 +130,7 @@ export default function Sidebar({
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.05 }}
-            onClick={() => onSelect(chat.id)}
+            onClick={() => navigate(`/chat/${chat.id}`)}
             className={`group flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-all ${
               activeChatId === chat.id
                 ? 'bg-accent/10 text-text-primary'

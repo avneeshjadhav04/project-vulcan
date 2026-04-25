@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
 import Sidebar from '../components/Sidebar'
@@ -18,13 +18,20 @@ import {
 } from 'lucide-react'
 
 export default function Chat() {
-  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const { chatId } = useParams<{ chatId?: string }>()
+  const navigate = useNavigate()
   const [showTerminal, setShowTerminal] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedModel, setSelectedModel] = useState('nvidia/llama-3.1-nemotron-70b')
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const logout = useAuthStore((s) => s.logout)
-  const navigate = useNavigate()
+
+  // Scroll to top on chat change
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [chatId])
+
+  const activeChatId = chatId || null
 
   return (
     <div className="flex h-screen bg-[#0f0f0f]">
@@ -53,7 +60,7 @@ export default function Chat() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              <Sidebar activeChatId={activeChatId} onSelect={setActiveChatId} selectedModel={selectedModel} />
+              <Sidebar activeChatId={activeChatId} selectedModel={selectedModel} />
             </div>
 
             <div className="border-t border-[#2a2a2a] p-4">
@@ -108,8 +115,8 @@ export default function Chat() {
       )}
 
       <main className="flex flex-1 flex-col overflow-hidden">
-        {activeChatId ? (
-          <ChatInterface chatId={activeChatId} selectedModel={selectedModel} />
+        {chatId ? (
+          <ChatInterface chatId={chatId} selectedModel={selectedModel} />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-[#525252]">
             <motion.div

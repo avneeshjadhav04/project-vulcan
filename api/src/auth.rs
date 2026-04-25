@@ -14,6 +14,8 @@ use crate::middleware::AppState;
 use crate::models::Claims;
 
 pub const MAX_PASSWORD_LENGTH: usize = 256;
+pub const JWT_ISSUER: &str = "carbon-ai";
+pub const JWT_AUDIENCE: &str = "carbon-ai";
 
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
@@ -57,6 +59,8 @@ pub fn create_token(user_id: &str, email: &str, role: &str, state: &AppState) ->
         email: email.to_string(),
         role: role.to_string(),
         exp,
+        iss: JWT_ISSUER.to_string(),
+        aud: JWT_AUDIENCE.to_string(),
     };
 
     // Try RSA first, fallback to HS256
@@ -83,6 +87,8 @@ pub fn verify_token(token: &str, state: &AppState) -> Result<Claims> {
         let mut validation = Validation::new(Algorithm::RS256);
         validation.validate_exp = true;
         validation.validate_nbf = false;
+        validation.set_issuer(&[JWT_ISSUER]);
+        validation.set_audience(&[JWT_AUDIENCE]);
         let decoded = decode::<Claims>(token, &decoding_key, &validation)?;
         return Ok(decoded.claims);
     }
@@ -92,8 +98,15 @@ pub fn verify_token(token: &str, state: &AppState) -> Result<Claims> {
     let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
     validation.validate_nbf = false;
+    validation.set_issuer(&[JWT_ISSUER]);
+    validation.set_audience(&[JWT_AUDIENCE]);
     let decoded = decode::<Claims>(token, &decoding_key, &validation)?;
     Ok(decoded.claims)
+}
+
+pub fn generate_csrf_token() -> String {
+    let bytes: [u8; 32] = rand::random();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes)
 }
 
 pub fn encrypt_key(plaintext: &str, master_key: &[u8; 32]) -> Result<String> {
