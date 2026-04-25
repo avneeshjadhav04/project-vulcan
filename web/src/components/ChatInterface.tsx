@@ -184,7 +184,11 @@ export default function ChatInterface({
       })
 
       if (!res.ok) {
-        throw new Error(await res.text())
+        if (res.status === 428) {
+          throw new Error('Add your NVIDIA NIM API key in Settings to start chatting.')
+        }
+        const text = await res.text()
+        throw new Error(text || `Request failed (${res.status})`)
       }
 
       const reader = res.body?.getReader()

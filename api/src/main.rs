@@ -54,9 +54,9 @@ async fn run() -> anyhow::Result<()> {
     };
 
     let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
+        .allow_origin(tower_http::cors::AllowOrigin::mirror_request())
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::DELETE])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE])
+        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE, axum::http::header::AUTHORIZATION])
         .allow_credentials(true);
 
     let api_routes = Router::new()
