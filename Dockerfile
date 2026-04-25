@@ -23,12 +23,16 @@ RUN apt-get update && apt-get install -y ca-certificates wget libssl3 && rm -rf 
 
 WORKDIR /app
 
+# Create data directory for SQLite (mounted as Render Disk)
+RUN mkdir -p /data
+
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 
 # Copy built frontend assets
 COPY --from=web-builder /app/web/dist ./dist
 
+ENV DATABASE_URL=sqlite:/data/carbon_ai.db
 ENV RUST_LOG=info
 
 EXPOSE 8080
