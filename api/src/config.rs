@@ -17,14 +17,36 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
 
+        println!("[CONFIG] Loading environment variables...");
+
         let master_key_str = env::var("MASTER_KEY").context("MASTER_KEY must be set")?;
         let master_key = derive_key(&master_key_str);
+        println!("[CONFIG] MASTER_KEY loaded");
+
+        let database_url = env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
+        println!("[CONFIG] DATABASE_URL loaded (host masked)");
 
         let jwt_secret_path = env::var("JWT_SECRET_PATH").ok();
+        if jwt_secret_path.is_some() {
+            println!("[CONFIG] JWT_SECRET_PATH set");
+        } else {
+            println!("[CONFIG] JWT_SECRET_PATH not set, will use HS256 fallback");
+        }
         let jwt_fallback_secret = master_key.to_vec();
 
+        let bind_addr = env::var("PORT")
+            .map(|p| {
+                println!("[CONFIG] Using PORT={} from environment", p);
+                format!("0.0.0.0:{}", p)
+            })
+            .or_else(|_| env::var("BIND_ADDR"))
+            .unwrap_or_else(|_| {
+                println!("[CONFIG] Using default BIND_ADDR=0.0.0.0:8080");
+                "0.0.0.0:8080".to_string()
+            });
+
         Ok(Self {
-            database_url: env::var("DATABASE_URL").context("DATABASE_URL must be set")?,
+            database_url,
             jwt_secret_path,
             jwt_fallback_secret,
             master_key,
@@ -34,10 +56,7 @@ impl Config {
                 .unwrap_or_else(|_| "admin@local.local".to_string()),
             admin_default_password: env::var("ADMIN_DEFAULT_PASSWORD")
                 .context("ADMIN_DEFAULT_PASSWORD must be set")?,
-            bind_addr: env::var("PORT")
-                .map(|p| format!("0.0.0.0:{}", p))
-                .or_else(|_| env::var("BIND_ADDR"))
-                .unwrap_or_else(|_| "0.0.0.0:8080".to_string()),
+            bind_addr,
         })
     }
 }
