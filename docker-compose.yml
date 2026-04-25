@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: ./api/Dockerfile
+      dockerfile: ./Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: sqlite:./carbon_ai.db
@@ -17,7 +17,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -35,29 +35,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - api
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-      - web
-
-volumes:
-  caddy_data:
-  caddy_config:
