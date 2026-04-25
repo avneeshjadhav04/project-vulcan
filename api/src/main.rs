@@ -21,30 +21,32 @@ use middleware::{admin_middleware, auth_middleware, AppState};
 
 #[tokio::main]
 async fn main() {
+    println!("========================================");
+    println!("  Carbon AI Assistant - API Starting");
+    println!("========================================");
+
     if let Err(e) = run().await {
-        eprintln!("FATAL: {}", e);
+        println!("[FATAL] Application failed to start: {}", e);
         std::process::exit(1);
     }
 }
 
 async fn run() -> anyhow::Result<()> {
-    eprintln!("Carbon AI API starting...");
-
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "api=info,tower_http=info".into()),
         )
-        .with(tracing_subscriber::fmt::layer().json())
+        .with(tracing_subscriber::fmt::layer().with_ansi(false))
         .init();
 
-    tracing::info!("Loading configuration...");
+    println!("[INIT] Loading configuration...");
     let config = config::Config::from_env()?;
-    tracing::info!("Configuration loaded successfully");
+    println!("[INIT] Configuration loaded");
 
-    tracing::info!("Initializing database...");
+    println!("[INIT] Initializing database...");
     let db_pool = db::init_db(&config).await?;
-    tracing::info!("Database initialized successfully");
+    println!("[INIT] Database ready");
 
     let state = AppState {
         config: config.clone(),
@@ -76,19 +78,20 @@ async fn run() -> anyhow::Result<()> {
 
     // Serve static files if dist/ exists (production mode)
     let app = if std::path::Path::new("./dist").exists() {
-        tracing::info!("Serving static files from ./dist");
+        println!("[INIT] Serving static frontend from ./dist");
         Router::new()
             .nest("/api", api_routes)
             .nest_service("/", ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")))
     } else {
-        tracing::info!("Running in API-only mode");
+        println!("[INIT] Running in API-only mode (no dist/ found)");
         api_routes
     };
 
     let addr: SocketAddr = config.bind_addr.parse()?;
-    tracing::info!("API listening on {}", addr);
+    println!("[INIT] Binding to {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    println!("[INIT] Server starting...");
     axum::serve(listener, app).await?;
 
     Ok(())
