@@ -50,7 +50,7 @@ async fn delete_user(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    sqlx::query("DELETE FROM users WHERE id = $1")
+    sqlx::query("DELETE FROM users WHERE id = ?1")
         .bind(id)
         .execute(&state.db)
         .await
