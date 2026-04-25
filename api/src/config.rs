@@ -23,18 +23,16 @@ impl Config {
         let master_key = derive_key(&master_key_str);
         println!("[CONFIG] MASTER_KEY loaded");
 
-        let database_url = env::var("DATABASE_URL")
-            .context("DATABASE_URL must be set. If deploying on Render, ensure the PostgreSQL database is provisioned and linked to this service.")?;
-        
-        if database_url.trim().is_empty() {
-            anyhow::bail!(
-                "DATABASE_URL is set but empty. \
-                This usually means the database hasn't finished provisioning yet. \
-                Please wait a moment and redeploy."
-            );
-        }
-        
-        println!("[CONFIG] DATABASE_URL loaded (host masked)");
+        let database_url = match env::var("DATABASE_URL") {
+            Ok(url) if !url.trim().is_empty() => {
+                println!("[CONFIG] DATABASE_URL loaded from environment");
+                url
+            }
+            _ => {
+                println!("[CONFIG] DATABASE_URL not set, using default: sqlite:/data/carbon_ai.db");
+                "sqlite:/data/carbon_ai.db".to_string()
+            }
+        };
 
         let jwt_secret_path = env::var("JWT_SECRET_PATH").ok();
         if jwt_secret_path.is_some() {
