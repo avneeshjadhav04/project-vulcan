@@ -1,0 +1,24 @@
+{
+	auto_https off
+}
+
+:80 {
+	log {
+		output stdout
+		format json
+	}
+
+	encode gzip
+
+	route /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle_path /ws/* {
+		reverse_proxy api:8080
+	}
+
+	route /* {
+		reverse_proxy web:80
+	}
+}
