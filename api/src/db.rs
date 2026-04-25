@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use sqlx::SqlitePool;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
 use crate::config::Config;
@@ -27,8 +27,8 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
         }
     }
 
-    // Fallback: Try without the /data prefix (disk might not be mounted)
-    let fallback = "sqlite:carbon_ai.db".to_string();
+    // Fallback: Try in current working directory (ephemeral, lost on redeploy)
+    let fallback = "sqlite:./carbon_ai.db".to_string();
     println!("[DB] Trying fallback location: {}", fallback);
     match try_connect(&fallback).await {
         Ok(pool) => {
@@ -47,25 +47,72 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
 async fn try_connect(database_url: &str) -> Result<SqlitePool> {
     if let Some(path) = database_url.strip_prefix("sqlite:") {
         if path != ":memory:" && !path.is_empty() {
-            let parent = Path::new(path).parent();
+            let path_obj = Path::new(path);
+
+            // Log resolved absolute path for debugging
+            let abs_path = std::env::current_dir()
+                .unwrap_or_default()
+                .join(path_obj);
+            println!("[DB] Resolved absolute path: {}", abs_path.display());
+
+            let parent = path_obj.parent();
             if let Some(p) = parent {
-                if !p.exists() {
-                    println!("[DB] Creating directory: {}", p.display());
-                    std::fs::create_dir_all(p)?;
+                if !p.as_os_str().is_empty() {
+                    if !p.exists() {
+                        println!("[DB] Creating directory: {}", p.display());
+                        std::fs::create_dir_all(p)?;
+                    } else {
+                        println!("[DB] Directory exists: {}", p.display());
+                    }
+
+                    // Log current permissions
+                    if let Ok(meta) = std::fs::metadata(p) {
+                        let mode = meta.permissions().mode();
+                        println!("[DB] Directory permissions: {:o} (owner={}, group={}, size={})",
+                            mode & 0o777,
+                            meta.uid(),
+                            meta.gid(),
+                            meta.len()
+                        );
+                    }
+
+                    // Critical: test that the directory is actually writable
+                    let test_file = p.join(".db_write_test");
+                    match std::fs::File::create(&test_file) {
+                        Ok(_) => {
+                            let _ = std::fs::remove_file(&test_file);
+                            println!("[DB] Directory is writable");
+                        }
+                        Err(e) => {
+                            println!("[DB] WARNING: Directory is not writable: {}", e);
+                        }
+                    }
+
+                    // Ensure directory is executable and writable
+                    if let Err(e) = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o777)) {
+                        println!("[DB] WARNING: Could not set permissions on {}: {}", p.display(), e);
+                    }
                 }
-                let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755));
             }
-            if Path::new(path).exists() {
-                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o640));
+
+            if path_obj.exists() {
+                println!("[DB] Database file exists, setting permissions");
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666));
+            } else {
+                println!("[DB] Database file does not exist yet, will be created on connect");
             }
         }
     }
 
+    println!("[DB] Opening SQLite connection...");
     let pool = SqlitePool::connect(database_url).await?;
+    println!("[DB] SQLite pool created successfully");
 
     // Enable foreign keys and WAL mode for every connection
     sqlx::query("PRAGMA foreign_keys = ON").execute(&pool).await?;
+    println!("[DB] Foreign keys enabled");
     sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await?;
+    println!("[DB] WAL mode enabled");
 
     Ok(pool)
 }

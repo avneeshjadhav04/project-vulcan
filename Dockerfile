@@ -32,6 +32,10 @@ COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 # Copy built frontend assets
 COPY --from=web-builder /app/web/dist ./dist
 
+# Entrypoint script ensures /data is writable at runtime
+# (Render disk mounts happen at runtime, overriding build-time directory)
+RUN printf '#!/bin/sh\nset -e\nmkdir -p /data\nchmod 777 /data\nls -ld /data\nexec "$@"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
+
 ENV RUST_LOG=info
 
 EXPOSE 8080
@@ -39,4 +43,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --spider -q http://localhost:${PORT:-8080}/api/health || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["api"]
