@@ -1,5 +1,7 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use crate::config::Config;
 use crate::models::User;
@@ -12,7 +14,22 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
     };
 
     println!("[DB] Connecting to SQLite database at: {}", database_url);
-    
+
+    // Ensure parent directory exists for SQLite file
+    if let Some(path) = database_url.strip_prefix("sqlite:") {
+        if path != ":memory:" && !path.is_empty() {
+            let parent = Path::new(path).parent();
+            if let Some(p) = parent {
+                if !p.exists() {
+                    println!("[DB] Creating directory: {}", p.display());
+                    std::fs::create_dir_all(p)?;
+                }
+                // Ensure directory is writable
+                std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755))?;
+            }
+        }
+    }
+
     let pool = SqlitePool::connect(&database_url).await?;
     println!("[DB] Connected successfully");
 

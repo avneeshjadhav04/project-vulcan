@@ -9,6 +9,8 @@ services:
     plan: starter
     dockerfilePath: ./Dockerfile
     envVars:
+      - key: DATABASE_URL
+        value: sqlite:/data/carbon_ai.db
       - key: MASTER_KEY
         generateValue: true
       - key: ADMIN_DEFAULT_EMAIL
