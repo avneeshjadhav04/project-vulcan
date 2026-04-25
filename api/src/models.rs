@@ -1,11 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
-    pub id: Uuid,
+    pub id: String,
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
@@ -18,8 +17,8 @@ pub struct User {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Chat {
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: String,
+    pub user_id: String,
     pub title: String,
     pub model_id: String,
     pub created_at: DateTime<Utc>,
@@ -28,8 +27,8 @@ pub struct Chat {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Message {
-    pub id: Uuid,
-    pub chat_id: Uuid,
+    pub id: String,
+    pub chat_id: String,
     pub role: String,
     pub content: String,
     pub tokens_used: Option<i32>,
@@ -38,8 +37,8 @@ pub struct Message {
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TerminalSession {
-    pub id: Uuid,
-    pub user_id: Option<Uuid>,
+    pub id: String,
+    pub user_id: Option<String>,
     pub command: String,
     pub status: String,
     pub stdout: Option<String>,
@@ -58,7 +57,7 @@ pub struct NimModel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: Uuid,
+    pub sub: String,
     pub email: String,
     pub role: String,
     pub exp: usize,

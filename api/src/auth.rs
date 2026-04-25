@@ -30,14 +30,14 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
         .is_ok())
 }
 
-pub fn create_token(user_id: &uuid::Uuid, email: &str, role: &str, config: &Config) -> Result<String> {
+pub fn create_token(user_id: &str, email: &str, role: &str, config: &Config) -> Result<String> {
     let exp = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .unwrap()
         .timestamp() as usize;
 
     let claims = Claims {
-        sub: *user_id,
+        sub: user_id.to_string(),
         email: email.to_string(),
         role: role.to_string(),
         exp,

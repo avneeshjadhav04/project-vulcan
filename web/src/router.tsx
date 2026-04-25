@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Settings from './pages/Settings'
@@ -10,7 +11,7 @@ function ProtectedRoute() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin border-2 border-accent border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       </div>
     )
   }
@@ -22,7 +23,7 @@ function AdminRoute() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin border-2 border-accent border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       </div>
     )
   }
@@ -31,6 +32,10 @@ function AdminRoute() {
 
 export const router = createBrowserRouter([
   {
+    path: '/',
+    element: <Landing />,
+  },
+  {
     path: '/login',
     element: <Login />,
   },
@@ -38,7 +43,7 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        path: '/',
+        path: '/chat',
         element: <Chat />,
       },
       {
