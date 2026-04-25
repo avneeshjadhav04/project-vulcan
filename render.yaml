@@ -3,7 +3,7 @@ services:
     name: carbon-ai
     runtime: docker
     repo: https://github.com/avneeshjadhav04/ai-assistant
-    plan: standard
+    plan: starter
     dockerfilePath: ./Dockerfile
     envVars:
       - key: DATABASE_URL
@@ -24,5 +24,6 @@ services:
 
 databases:
   - name: carbon-ai-db
+    databaseName: carbon_ai
+    user: carbon_ai
     plan: free
-    ipAllowList: []

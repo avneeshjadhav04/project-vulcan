@@ -19,7 +19,7 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 libc-bin && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -29,22 +29,40 @@ COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 # Copy built frontend assets
 COPY --from=web-builder /app/web/dist ./dist
 
-# Create startup script with diagnostics
+# Create startup script with wait logic
 RUN cat > /usr/local/bin/start.sh << 'EOF'
 #!/bin/sh
 set -e
+
 echo "[STARTUP] Carbon AI starting..."
-echo "[STARTUP] Binary location:"
+echo "[STARTUP] Waiting for DATABASE_URL..."
+
+# Wait up to 60 seconds for DATABASE_URL to be available (Render injects it after DB provisions)
+for i in $(seq 1 60); do
+    if [ -n "$DATABASE_URL" ]; then
+        echo "[STARTUP] DATABASE_URL is set (attempt $i)"
+        break
+    fi
+    echo "[STARTUP] DATABASE_URL not yet available, waiting... ($i/60)"
+    sleep 2
+done
+
+if [ -z "$DATABASE_URL" ]; then
+    echo "[STARTUP] ERROR: DATABASE_URL is still empty after 120 seconds."
+    echo "[STARTUP] This usually means the Render database hasn't been provisioned yet."
+    echo "[STARTUP] Please:"
+    echo "[STARTUP]   1. Check that a PostgreSQL database exists in your Render dashboard"
+    echo "[STARTUP]   2. Verify the database name matches 'carbon-ai-db'"
+    echo "[STARTUP]   3. Redeploy the service after the database is active"
+    exit 1
+fi
+
+echo "[STARTUP] Binary check:"
 ls -la /usr/local/bin/api
-echo "[STARTUP] Library dependencies:"
+echo "[STARTUP] Library check:"
 ldd /usr/local/bin/api || true
-echo "[STARTUP] Current directory: $(pwd)"
-echo "[STARTUP] Files in cwd:"
-ls -la
-echo "[STARTUP] Environment:"
-echo "PORT=$PORT"
-echo "BIND_ADDR=$BIND_ADDR"
-echo "DATABASE_URL=$(echo $DATABASE_URL | sed 's/:\/\/[^:]*:[^@]*@/:\/\/***:***@/')"
+echo "[STARTUP] Working dir: $(pwd)"
+echo "[STARTUP] Port: $PORT"
 echo "[STARTUP] Executing API..."
 exec /usr/local/bin/api 2>&1
 EOF
