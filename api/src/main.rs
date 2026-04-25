@@ -20,7 +20,7 @@ mod middleware;
 mod models;
 mod routes;
 
-use middleware::{admin_middleware, auth_middleware, AppState};
+use middleware::{admin_middleware, auth_middleware, csrf_middleware, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -90,11 +90,18 @@ async fn run() -> anyhow::Result<()> {
             axum::http::Method::DELETE,
             axum::http::Method::PATCH,
         ])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE, axum::http::header::AUTHORIZATION])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::COOKIE,
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::HeaderName::from_static("x-csrf-token"),
+        ])
         .allow_credentials(true);
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
+        .route("/live", get(live_check))
+        .route("/ready", get(ready_check))
         .merge(routes::auth::router())
         .merge(
             routes::chat::router()
@@ -114,6 +121,7 @@ async fn run() -> anyhow::Result<()> {
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB body limit
+        .layer(from_fn(csrf_middleware))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -140,6 +148,18 @@ async fn run() -> anyhow::Result<()> {
 }
 
 async fn health_check(State(state): State<AppState>) -> Result<&'static str, StatusCode> {
+    sqlx::query_as::<_, (i32,)>("SELECT 1")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok("ok")
+}
+
+async fn live_check() -> &'static str {
+    "ok"
+}
+
+async fn ready_check(State(state): State<AppState>) -> Result<&'static str, StatusCode> {
     sqlx::query_as::<_, (i32,)>("SELECT 1")
         .fetch_one(&state.db)
         .await

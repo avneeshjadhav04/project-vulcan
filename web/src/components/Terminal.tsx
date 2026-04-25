@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal as XTerm } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
+import { RefreshCw } from 'lucide-react'
 
 export default function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [connected, setConnected] = useState(false)
   const xtermRef = useRef<XTerm | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const [reconnectKey, setReconnectKey] = useState(0)
 
-  useEffect(() => {
+  const initTerminal = useCallback(() => {
     if (!containerRef.current) return
+
+    // Clear previous terminal if any
+    containerRef.current.innerHTML = ''
 
     const term = new XTerm({
       theme: {
@@ -77,6 +82,8 @@ export default function Terminal() {
     }
 
     let currentLine = ''
+    const history: string[] = []
+    let historyIndex = -1
 
     term.onData((data) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
@@ -85,14 +92,35 @@ export default function Terminal() {
 
       if (data === '\r' || data === '\n') {
         if (currentLine.trim().length > 0) {
+          history.push(currentLine)
+          if (history.length > 100) history.shift()
           ws.send(JSON.stringify({ command: currentLine.trim() }))
         }
         currentLine = ''
+        historyIndex = history.length
         term.writeln('')
       } else if (code === 127 || code === 8) {
         if (currentLine.length > 0) {
           currentLine = currentLine.slice(0, -1)
           term.write('\b \b')
+        }
+      } else if (data === '\x1b[A') {
+        // Up arrow - previous command
+        if (historyIndex > 0) {
+          historyIndex--
+          currentLine = history[historyIndex] || ''
+          term.write(`\x1b[2K\r\x1b[36m$ \x1b[0m${currentLine}`)
+        }
+      } else if (data === '\x1b[B') {
+        // Down arrow - next command
+        if (historyIndex < history.length - 1) {
+          historyIndex++
+          currentLine = history[historyIndex] || ''
+          term.write(`\x1b[2K\r\x1b[36m$ \x1b[0m${currentLine}`)
+        } else {
+          historyIndex = history.length
+          currentLine = ''
+          term.write(`\x1b[2K\r\x1b[36m$ \x1b[0m`)
         }
       } else if (code < 32) {
         // Ignore other control characters
@@ -110,15 +138,32 @@ export default function Terminal() {
       ws.close()
       term.dispose()
     }
-  }, [])
+  }, [reconnectKey])
+
+  useEffect(() => {
+    const cleanup = initTerminal()
+    return cleanup
+  }, [initTerminal])
 
   return (
     <div className="flex h-full flex-col bg-background">
       <div className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="text-xs font-medium uppercase tracking-wider text-text-secondary">Sandboxed Terminal</span>
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 ${connected ? 'bg-success' : 'bg-error'}`} />
-          <span className="text-xs text-text-secondary">{connected ? 'Connected' : 'Offline'}</span>
+        <div className="flex items-center gap-3">
+          {!connected && (
+            <button
+              onClick={() => setReconnectKey((k) => k + 1)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              title="Reconnect"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Reconnect
+            </button>
+          )}
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 ${connected ? 'bg-success' : 'bg-error'}`} />
+            <span className="text-xs text-text-secondary">{connected ? 'Connected' : 'Offline'}</span>
+          </div>
         </div>
       </div>
       <div ref={containerRef} className="flex-1 p-2" />

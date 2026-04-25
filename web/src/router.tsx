@@ -47,6 +47,10 @@ export const router = createBrowserRouter([
         element: <Chat />,
       },
       {
+        path: '/chat/:chatId',
+        element: <Chat />,
+      },
+      {
         path: '/settings',
         element: <Settings />,
       },
@@ -60,5 +64,9 @@ export const router = createBrowserRouter([
         element: <Admin />,
       },
     ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
   },
 ])

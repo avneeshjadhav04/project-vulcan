@@ -61,6 +61,8 @@ pub struct Claims {
     pub email: String,
     pub role: String,
     pub exp: usize,
+    pub iss: String,
+    pub aud: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

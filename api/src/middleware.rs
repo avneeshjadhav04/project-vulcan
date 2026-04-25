@@ -66,3 +66,46 @@ pub async fn admin_middleware(
 
     Ok(next.run(request).await)
 }
+
+pub async fn csrf_middleware(
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let method = request.method().clone();
+    // Only check CSRF for state-changing methods
+    if method != axum::http::Method::GET && method != axum::http::Method::HEAD && method != axum::http::Method::OPTIONS {
+        let cookie_header = request
+            .headers()
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok());
+
+        let csrf_cookie = cookie_header
+            .and_then(|cookies| {
+                cookies.split(';').find_map(|c| {
+                    let mut parts = c.trim().splitn(2, '=');
+                    let name = parts.next()?;
+                    let value = parts.next()?;
+                    if name == "csrf_token" {
+                        Some(value.to_string())
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        let csrf_header = request
+            .headers()
+            .get("x-csrf-token")
+            .and_then(|v| v.to_str().ok());
+
+        match (csrf_cookie, csrf_header) {
+            (Some(cookie), Some(header)) if cookie == header => {},
+            _ => {
+                tracing::warn!("CSRF validation failed: method={}", method);
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
+    Ok(next.run(request).await)
+}

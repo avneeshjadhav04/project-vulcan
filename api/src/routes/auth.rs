@@ -7,7 +7,7 @@ use axum::{
 };
 
 use crate::{
-    auth::{create_token, hash_password, normalize_email, validate_password, verify_password},
+    auth::{create_token, hash_password, normalize_email, validate_password, verify_password, generate_csrf_token},
     middleware::AppState,
     models::{LoginRequest, SignupRequest, User},
 };
@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
+        .route("/auth/csrf", post(csrf_token))
 }
 
 async fn signup(
@@ -86,25 +87,46 @@ async fn login(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let cookie = format!(
+    let csrf = generate_csrf_token();
+
+    let auth_cookie = format!(
         "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400; Secure",
         token
     );
+    let csrf_cookie = format!(
+        "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400; Secure",
+        csrf
+    );
 
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, auth_cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
 
     Ok((headers, Json(serde_json::json!({
         "id": user.id,
         "email": user.email,
         "role": user.role,
         "has_nim_key": user.encrypted_nim_key.is_some(),
+        "csrf_token": csrf,
     }))).into_response())
 }
 
 async fn logout() -> (axum::http::HeaderMap, StatusCode) {
-    let cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Secure";
+    let auth_cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Secure";
+    let csrf_cookie = "csrf_token=; SameSite=Strict; Path=/; Max-Age=0; Secure";
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, auth_cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
     (headers, StatusCode::OK)
+}
+
+async fn csrf_token() -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
+    let csrf = generate_csrf_token();
+    let csrf_cookie = format!(
+        "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400; Secure",
+        csrf
+    );
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
+    Ok((headers, Json(serde_json::json!({ "csrf_token": csrf }))))
 }

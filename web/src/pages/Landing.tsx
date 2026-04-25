@@ -14,6 +14,17 @@ import {
   Github,
 } from 'lucide-react'
 
+function SkipToContent() {
+  return (
+    <a
+      href="#main-content"
+      className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-lg focus:bg-[#0f62fe] focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:outline-none"
+    >
+      Skip to content
+    </a>
+  )
+}
+
 function Nav() {
   const navigate = useNavigate()
   return (
@@ -352,11 +363,14 @@ function Footer() {
 export default function Landing() {
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white">
+      <SkipToContent />
       <Nav />
-      <Hero />
-      <Features />
-      <TerminalDemo />
-      <CTASection />
+      <main id="main-content">
+        <Hero />
+        <Features />
+        <TerminalDemo />
+        <CTASection />
+      </main>
       <Footer />
     </div>
   )
