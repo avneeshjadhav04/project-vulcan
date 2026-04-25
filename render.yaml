@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: carbon-ai
+    runtime: docker
+    repo: https://github.com/avneeshjadhav04/ai-assistant
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: carbon-ai-db
+          property: connectionString
+      - key: MASTER_KEY
+        generateValue: true
+      - key: ADMIN_DEFAULT_EMAIL
+        value: admin@local.local
+      - key: ADMIN_DEFAULT_PASSWORD
+        generateValue: true
+      - key: NIM_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: RUST_LOG
+        value: info
+    healthCheckPath: /api/health
+
+databases:
+  - name: carbon-ai-db
+    plan: free
+    ipAllowList: []

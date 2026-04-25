@@ -4,7 +4,8 @@ use std::env;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub database_url: String,
-    pub jwt_secret_path: String,
+    pub jwt_secret_path: Option<String>,
+    pub jwt_fallback_secret: Vec<u8>,
     pub master_key: [u8; 32],
     pub nim_base_url: String,
     pub admin_default_email: String,
@@ -19,10 +20,13 @@ impl Config {
         let master_key_str = env::var("MASTER_KEY").context("MASTER_KEY must be set")?;
         let master_key = derive_key(&master_key_str);
 
+        let jwt_secret_path = env::var("JWT_SECRET_PATH").ok();
+        let jwt_fallback_secret = master_key.to_vec();
+
         Ok(Self {
             database_url: env::var("DATABASE_URL").context("DATABASE_URL must be set")?,
-            jwt_secret_path: env::var("JWT_SECRET_PATH")
-                .unwrap_or_else(|_| "./secrets/jwt_private.pem".to_string()),
+            jwt_secret_path,
+            jwt_fallback_secret,
             master_key,
             nim_base_url: env::var("NIM_BASE_URL")
                 .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string()),

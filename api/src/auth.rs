@@ -43,22 +43,44 @@ pub fn create_token(user_id: &uuid::Uuid, email: &str, role: &str, config: &Conf
         exp,
     };
 
-    let private_key = std::fs::read_to_string(&config.jwt_secret_path)
-        .context("Failed to read JWT private key")?;
-    let encoding_key = EncodingKey::from_rsa_pem(private_key.as_bytes())?;
+    // Try RSA first, fallback to HS256
+    if let Some(ref path) = config.jwt_secret_path {
+        if std::path::Path::new(path).exists() {
+            let private_key = std::fs::read_to_string(path)
+                .context("Failed to read JWT private key")?;
+            let encoding_key = EncodingKey::from_rsa_pem(private_key.as_bytes())?;
+            let token = encode(&Header::new(Algorithm::RS256), &claims, &encoding_key)?;
+            return Ok(token);
+        }
+    }
 
-    let token = encode(&Header::new(Algorithm::RS256), &claims, &encoding_key)?;
+    // HS256 fallback for environments without RSA keys (e.g., Render)
+    let encoding_key = EncodingKey::from_secret(&config.jwt_fallback_secret);
+    let token = encode(&Header::new(Algorithm::HS256), &claims, &encoding_key)?;
     Ok(token)
 }
 
 pub fn verify_token(token: &str, config: &Config) -> Result<Claims> {
-    let public_key = std::fs::read_to_string(format!("{}.pub", config.jwt_secret_path))
-        .context("Failed to read JWT public key")?;
-    let decoding_key = DecodingKey::from_rsa_pem(public_key.as_bytes())?;
-    let mut validation = Validation::new(Algorithm::RS256);
+    // Try RSA first, fallback to HS256
+    if let Some(ref path) = config.jwt_secret_path {
+        let pub_path = format!("{}.pub", path);
+        if std::path::Path::new(&pub_path).exists() {
+            let public_key = std::fs::read_to_string(&pub_path)
+                .context("Failed to read JWT public key")?;
+            let decoding_key = DecodingKey::from_rsa_pem(public_key.as_bytes())?;
+            let mut validation = Validation::new(Algorithm::RS256);
+            validation.validate_exp = true;
+            validation.validate_nbf = false;
+            let decoded = decode::<Claims>(token, &decoding_key, &validation)?;
+            return Ok(decoded.claims);
+        }
+    }
+
+    // HS256 fallback
+    let decoding_key = DecodingKey::from_secret(&config.jwt_fallback_secret);
+    let mut validation = Validation::new(Algorithm::HS256);
     validation.validate_exp = true;
     validation.validate_nbf = false;
-
     let decoded = decode::<Claims>(token, &decoding_key, &validation)?;
     Ok(decoded.claims)
 }
