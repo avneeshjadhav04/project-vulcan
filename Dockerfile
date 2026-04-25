@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
-COPY db/migrations ../db/migrations
+COPY db/migrations /app/db/migrations
 RUN cargo build --release
 
 # Stage 3: Runtime
@@ -29,17 +29,11 @@ COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 # Copy built frontend assets
 COPY --from=web-builder /app/web/dist ./dist
 
-# Copy db migrations
-COPY db/migrations ../db/migrations
-
-# Set env defaults
-ENV BIND_ADDR=0.0.0.0:8080
-ENV JWT_SECRET_PATH=/secrets/jwt_private.pem
 ENV RUST_LOG=info
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --spider -q http://localhost:8080/health || exit 1
+  CMD wget --spider -q http://localhost:${PORT:-8080}/api/health || exit 1
 
 CMD ["api"]

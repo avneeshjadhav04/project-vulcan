@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
-COPY db/migrations ../db/migrations
+COPY db/migrations /app/db/migrations
 RUN cargo build --release
 
 FROM debian:bookworm-slim
