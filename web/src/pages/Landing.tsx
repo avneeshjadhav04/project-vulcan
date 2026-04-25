@@ -6,44 +6,41 @@ import {
   Terminal,
   Shield,
   Zap,
-  ChevronRight,
   Sparkles,
   Lock,
   Globe,
   Cpu,
+  ArrowRight,
+  Github,
 } from 'lucide-react'
-
-function AnimatedBackground() {
-  return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      <div className="absolute -top-1/2 -left-1/2 h-full w-full animate-pulse-glow rounded-full bg-accent/5 blur-[120px]" />
-      <div className="absolute -bottom-1/2 -right-1/2 h-full w-full animate-pulse-glow rounded-full bg-accent/5 blur-[120px]" style={{ animationDelay: '1.5s' }} />
-      <div className="absolute top-1/3 left-1/3 h-96 w-96 rounded-full bg-[#78a9ff]/5 blur-[100px]" />
-    </div>
-  )
-}
 
 function Nav() {
   const navigate = useNavigate()
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 glass-strong">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-accent">
-            <Sparkles className="h-4 w-4 text-white" />
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[#2a2a2a] bg-[#0f0f0f]/95 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0f62fe]">
+            <Sparkles className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-semibold tracking-tight text-text-primary">Carbon AI</span>
+          <span className="text-lg font-bold tracking-tight text-white">Carbon AI</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
+          <a href="#features" className="hidden text-sm text-[#c6c6c6] transition-colors hover:text-white md:block">
+            Features
+          </a>
+          <a href="#terminal" className="hidden text-sm text-[#c6c6c6] transition-colors hover:text-white md:block">
+            Terminal
+          </a>
           <button
             onClick={() => navigate('/login')}
-            className="px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+            className="text-sm font-medium text-[#c6c6c6] transition-colors hover:text-white"
           >
             Sign in
           </button>
           <button
             onClick={() => navigate('/login')}
-            className="rounded bg-accent px-4 py-2 text-sm font-medium text-white transition-all hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/20"
+            className="rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
           >
             Get Started
           </button>
@@ -56,65 +53,83 @@ function Nav() {
 function Hero() {
   const navigate = useNavigate()
   return (
-    <section className="relative flex min-h-screen items-center justify-center px-6 pt-20">
-      <div className="mx-auto max-w-4xl text-center">
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-24">
+      {/* Background gradient */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-[#0f62fe]/10 blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-[#78a9ff]/5 blur-[120px]" />
+      </div>
+
+      <div className="relative mx-auto max-w-5xl text-center">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: 'easeOut' }}
         >
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-4 py-1.5 text-xs font-medium text-accent">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/30 bg-[#0f62fe]/10 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
             <Sparkles className="h-3.5 w-3.5" />
             Powered by NVIDIA NIM
           </div>
-          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
+
+          <h1 className="mb-6 text-5xl font-extrabold leading-[1.1] tracking-tight text-white md:text-7xl lg:text-8xl">
             Your Personal{' '}
-            <span className="gradient-text">AI Assistant</span>
-            <br />
-            in the Cloud
+            <span className="bg-gradient-to-r from-[#0f62fe] via-[#78a9ff] to-[#33b1ff] bg-clip-text text-transparent">
+              AI Assistant
+            </span>
           </h1>
-          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-text-secondary">
+
+          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-[#c6c6c6] md:text-xl">
             A sleek, secure, and sandboxed AI platform. Chat with the latest models,
             execute terminal commands safely, and bring your own NVIDIA NIM key.
           </p>
-          <div className="flex items-center justify-center gap-4">
+
+          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <button
               onClick={() => navigate('/login')}
-              className="group flex items-center gap-2 rounded bg-accent px-8 py-3 text-base font-medium text-white transition-all hover:bg-accent-hover hover:shadow-xl hover:shadow-accent/20"
+              className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
             >
               Start Chatting
-              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
             <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="rounded border border-border bg-surface px-8 py-3 text-base font-medium text-text-primary transition-all hover:border-text-secondary hover:bg-surface-hover"
+              className="flex items-center gap-2 rounded-xl border border-[#393939] bg-[#1a1a1a] px-8 py-4 text-base font-semibold text-white transition-all hover:border-[#525252] hover:bg-[#222222]"
             >
               Learn More
             </button>
           </div>
         </motion.div>
 
+        {/* Terminal Demo */}
         <motion.div
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }}
-          className="mt-20"
+          className="mt-16"
         >
-          <div className="relative mx-auto max-w-3xl overflow-hidden rounded-xl border border-border glass glow-accent">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <div className="h-3 w-3 rounded-full bg-error/80" />
-              <div className="h-3 w-3 rounded-full bg-[#f1c21b]/80" />
-              <div className="h-3 w-3 rounded-full bg-success/80" />
-              <span className="ml-2 text-xs text-text-secondary">Carbon AI Terminal</span>
+          <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] shadow-2xl shadow-black/50">
+            <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-5 py-3">
+              <div className="h-3 w-3 rounded-full bg-[#da1e28]" />
+              <div className="h-3 w-3 rounded-full bg-[#f1c21b]" />
+              <div className="h-3 w-3 rounded-full bg-[#24a148]" />
+              <span className="ml-3 text-xs text-[#525252]">Carbon AI Terminal</span>
             </div>
-            <div className="p-6 font-mono text-sm">
-              <div className="mb-2 text-text-secondary">$ carbon-ai --start</div>
-              <div className="mb-2 text-success">✓ Connected to NVIDIA NIM API</div>
-              <div className="mb-2 text-success">✓ Sandboxed terminal initialized</div>
-              <div className="mb-2 text-success">✓ AES-256-GCM encryption active</div>
-              <div className="mb-2 text-accent">→ Loading latest models...</div>
-              <div className="text-text-secondary">
-                <span className="inline-block h-4 w-2 animate-pulse bg-accent" />
+            <div className="p-6 font-mono text-sm text-left">
+              <div className="mb-1 text-[#525252]">$ carbon-ai --start</div>
+              <div className="mb-1 text-[#24a148]">
+                <span className="mr-2">✓</span>Connected to NVIDIA NIM API
+              </div>
+              <div className="mb-1 text-[#24a148]">
+                <span className="mr-2">✓</span>Sandboxed terminal initialized
+              </div>
+              <div className="mb-1 text-[#24a148]">
+                <span className="mr-2">✓</span>AES-256-GCM encryption active
+              </div>
+              <div className="mb-1 text-[#0f62fe]">
+                <span className="mr-2">→</span>Loading latest models...
+              </div>
+              <div className="mt-2 text-[#525252]">
+                <span className="inline-block h-4 w-2 animate-pulse bg-[#0f62fe]" />
               </div>
             </div>
           </div>
@@ -134,13 +149,13 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
       initial={{ opacity: 0, y: 30 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.6, delay }}
-      className="group rounded-xl border border-border bg-surface/50 p-6 transition-all hover:border-accent/50 hover:bg-surface hover:shadow-lg hover:shadow-accent/5"
+      className="group rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-8 transition-all duration-300 hover:border-[#0f62fe]/50 hover:bg-[#1e1e1e] hover:shadow-xl hover:shadow-[#0f62fe]/5"
     >
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10 text-accent transition-colors group-hover:bg-accent/20">
-        <Icon className="h-6 w-6" />
+      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-[#0f62fe]/10 text-[#0f62fe] transition-colors group-hover:bg-[#0f62fe]/20">
+        <Icon className="h-7 w-7" />
       </div>
-      <h3 className="mb-2 text-lg font-semibold text-text-primary">{title}</h3>
-      <p className="text-sm leading-relaxed text-text-secondary">{description}</p>
+      <h3 className="mb-3 text-xl font-bold text-white">{title}</h3>
+      <p className="leading-relaxed text-[#c6c6c6]">{description}</p>
     </motion.div>
   )
 }
@@ -181,18 +196,18 @@ function Features() {
 
   return (
     <section id="features" className="relative px-6 py-32">
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="mb-16 text-center"
+          className="mb-20 text-center"
         >
-          <h2 className="mb-4 text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
+          <h2 className="mb-4 text-4xl font-bold tracking-tight text-white md:text-5xl">
             Everything You Need
           </h2>
-          <p className="mx-auto max-w-xl text-text-secondary">
+          <p className="mx-auto max-w-xl text-lg text-[#c6c6c6]">
             A complete AI assistant platform built for security, speed, and simplicity.
           </p>
         </motion.div>
@@ -201,6 +216,72 @@ function Features() {
             <FeatureCard key={f.title} {...f} delay={i * 0.1} />
           ))}
         </div>
+      </div>
+    </section>
+  )
+}
+
+function TerminalDemo() {
+  const ref = useRef(null)
+  const isInView = useInView(ref, { once: true, margin: '-100px' })
+
+  return (
+    <section id="terminal" className="relative px-6 py-32">
+      <div className="mx-auto max-w-6xl">
+        <motion.div
+          ref={ref}
+          initial={{ opacity: 0, y: 30 }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.8 }}
+          className="overflow-hidden rounded-3xl border border-[#2a2a2a] bg-[#0f0f0f]"
+        >
+          <div className="grid items-center lg:grid-cols-2">
+            <div className="p-12">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/30 bg-[#0f62fe]/10 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
+                <Terminal className="h-3.5 w-3.5" />
+                Sandboxed Environment
+              </div>
+              <h2 className="mb-6 text-3xl font-bold tracking-tight text-white md:text-4xl">
+                Execute Commands Safely
+              </h2>
+              <p className="mb-8 text-lg leading-relaxed text-[#c6c6c6]">
+                Run terminal commands in a fully isolated sandbox. Every command is executed
+                inside nsjail with strict resource limits — no network access, read-only filesystem,
+                and automatic termination after 30 seconds.
+              </p>
+              <ul className="space-y-4">
+                {[
+                  'No network access for commands',
+                  'Read-only root filesystem',
+                  '512MB RAM limit per session',
+                  '30 second CPU timeout',
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-3 text-[#c6c6c6]">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#24a148]/20">
+                      <Shield className="h-3.5 w-3.5 text-[#24a148]" />
+                    </div>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="border-t border-[#2a2a2a] bg-[#0a0a0a] p-8 lg:border-t-0 lg:border-l">
+              <div className="font-mono text-sm">
+                <div className="mb-2 text-[#525252]">$ uname -a</div>
+                <div className="mb-4 text-[#c6c6c6]">Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux</div>
+                <div className="mb-2 text-[#525252]">$ python3 -c "print('Hello from sandbox')"</div>
+                <div className="mb-4 text-[#c6c6c6]">Hello from sandbox</div>
+                <div className="mb-2 text-[#525252]">$ curl https://example.com</div>
+                <div className="mb-4 text-[#da1e28]">curl: (6) Could not resolve host</div>
+                <div className="mb-2 text-[#525252]">$ ls -la /</div>
+                <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .</div>
+                <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..</div>
+                <div className="text-[#c6c6c6]">drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin</div>
+                <div className="mt-4 text-[#0f62fe]">$ <span className="inline-block h-4 w-2 animate-pulse bg-[#0f62fe]" /></div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       </div>
     </section>
   )
@@ -216,23 +297,25 @@ function CTASection() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="relative overflow-hidden rounded-2xl border border-border glass glow-accent p-12 text-center"
+          className="relative overflow-hidden rounded-3xl border border-[#2a2a2a] bg-[#1a1a1a] p-12 text-center md:p-16"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-accent/10 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#0f62fe]/10 via-transparent to-transparent" />
           <div className="relative">
-            <Zap className="mx-auto mb-6 h-12 w-12 text-accent" />
-            <h2 className="mb-4 text-3xl font-bold tracking-tight text-text-primary">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0f62fe]/10">
+              <Zap className="h-8 w-8 text-[#0f62fe]" />
+            </div>
+            <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl">
               Ready to Get Started?
             </h2>
-            <p className="mx-auto mb-8 max-w-lg text-text-secondary">
+            <p className="mx-auto mb-8 max-w-lg text-lg text-[#c6c6c6]">
               Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.
             </p>
             <button
               onClick={() => navigate('/login')}
-              className="group inline-flex items-center gap-2 rounded bg-accent px-8 py-3 text-base font-medium text-white transition-all hover:bg-accent-hover hover:shadow-xl hover:shadow-accent/20"
+              className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
             >
               Launch Carbon AI
-              <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
           </div>
         </motion.div>
@@ -243,15 +326,24 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="border-t border-border px-6 py-8">
-      <div className="mx-auto flex max-w-6xl items-center justify-between">
+    <footer className="border-t border-[#2a2a2a] px-6 py-12">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-accent" />
-          <span className="text-sm font-medium text-text-secondary">Carbon AI</span>
+          <Sparkles className="h-5 w-5 text-[#0f62fe]" />
+          <span className="text-sm font-semibold text-white">Carbon AI</span>
         </div>
-        <p className="text-xs text-text-secondary">
-          Built with Rust, React, and NVIDIA NIM. Open source on GitHub.
+        <p className="text-sm text-[#525252]">
+          Built with Rust, React, and NVIDIA NIM. Open source.
         </p>
+        <a
+          href="https://github.com/avneeshjadhav04/ai-assistant"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-[#525252] transition-colors hover:text-white"
+        >
+          <Github className="h-4 w-4" />
+          GitHub
+        </a>
       </div>
     </footer>
   )
@@ -259,11 +351,11 @@ function Footer() {
 
 export default function Landing() {
   return (
-    <div className="relative min-h-screen bg-background">
-      <AnimatedBackground />
+    <div className="min-h-screen bg-[#0f0f0f] text-white">
       <Nav />
       <Hero />
       <Features />
+      <TerminalDemo />
       <CTASection />
       <Footer />
     </div>

@@ -27,68 +27,68 @@ export default function Chat() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-[#0f0f0f]">
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 280, opacity: 1 }}
+            animate={{ width: 300, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="flex shrink-0 flex-col overflow-hidden border-r border-border bg-surface/80"
+            className="flex shrink-0 flex-col overflow-hidden border-r border-[#2a2a2a] bg-[#1a1a1a]"
           >
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded bg-accent">
-                  <Sparkles className="h-3.5 w-3.5 text-white" />
+            <div className="flex items-center justify-between border-b border-[#2a2a2a] px-4 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0f62fe]">
+                  <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-sm font-semibold tracking-tight text-text-primary">Carbon AI</span>
+                <span className="text-sm font-bold tracking-tight text-white">Carbon AI</span>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="rounded p-1 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="rounded-lg p-1.5 text-[#525252] transition-colors hover:bg-[#2a2a2a] hover:text-white"
               >
                 <PanelLeftClose className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="flex-1 overflow-y-auto p-4">
               <Sidebar activeChatId={activeChatId} onSelect={setActiveChatId} selectedModel={selectedModel} />
             </div>
 
-            <div className="border-t border-border p-3">
+            <div className="border-t border-[#2a2a2a] p-4">
               <div className="mb-3">
                 <ModelSelector selected={selectedModel} onSelect={setSelectedModel} />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <button
                   onClick={() => setShowTerminal(!showTerminal)}
-                  className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#2a2a2a] hover:text-white"
                 >
-                  <TerminalIcon className="h-3.5 w-3.5" />
+                  <TerminalIcon className="h-4 w-4" />
                   {showTerminal ? 'Hide Terminal' : 'Open Terminal'}
                 </button>
                 <button
                   onClick={() => navigate('/settings')}
-                  className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#2a2a2a] hover:text-white"
                 >
-                  <Settings className="h-3.5 w-3.5" />
+                  <Settings className="h-4 w-4" />
                   Settings
                 </button>
                 {isAdmin && (
                   <button
                     onClick={() => navigate('/admin')}
-                    className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs text-[#525252] transition-colors hover:bg-[#2a2a2a] hover:text-white"
                   >
-                    <Shield className="h-3.5 w-3.5" />
+                    <Shield className="h-4 w-4" />
                     Admin
                   </button>
                 )}
                 <button
                   onClick={logout}
-                  className="flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-xs text-error transition-colors hover:bg-error/10"
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs text-[#da1e28] transition-colors hover:bg-[#da1e28]/10"
                 >
-                  <LogOut className="h-3.5 w-3.5" />
+                  <LogOut className="h-4 w-4" />
                   Sign out
                 </button>
               </div>
@@ -100,9 +100,10 @@ export default function Chat() {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-4 top-4 z-10 rounded border border-border bg-surface/90 p-2 text-text-secondary shadow-lg backdrop-blur transition-colors hover:text-text-primary"
+          className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-[#525252] shadow-lg transition-colors hover:text-white"
         >
           <PanelLeftOpen className="h-4 w-4" />
+          <span className="text-xs font-medium">Menu</span>
         </button>
       )}
 
@@ -110,18 +111,18 @@ export default function Chat() {
         {activeChatId ? (
           <ChatInterface chatId={activeChatId} selectedModel={selectedModel} />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-text-secondary">
+          <div className="flex flex-1 flex-col items-center justify-center text-[#525252]">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
               className="text-center"
             >
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-                <MessageSquare className="h-8 w-8 text-accent/60" />
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-[#2a2a2a]">
+                <MessageSquare className="h-10 w-10 text-[#525252]" />
               </div>
-              <h2 className="mb-2 text-xl font-semibold text-text-primary">Start a Conversation</h2>
-              <p className="max-w-sm text-sm text-text-secondary">
+              <h2 className="mb-3 text-2xl font-bold text-white">Start a Conversation</h2>
+              <p className="max-w-sm text-sm text-[#525252]">
                 Select an existing chat from the sidebar or create a new one to begin.
               </p>
             </motion.div>
@@ -135,7 +136,7 @@ export default function Chat() {
               animate={{ height: 320, opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="overflow-hidden border-t border-border"
+              className="overflow-hidden border-t border-[#2a2a2a]"
             >
               <Terminal />
             </motion.div>
