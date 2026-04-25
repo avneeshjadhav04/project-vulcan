@@ -1,105 +1,102 @@
 # Carbon AI Assistant
 
-Full-stack SaaS personal AI assistant platform with a sleek Carbon Design System aesthetic.
+A production-ready, full-stack SaaS personal AI assistant platform built with Rust, React, and NVIDIA NIM. Features a sleek dark-mode UI inspired by IBM Carbon Design System.
+
+![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
 
-- **AI Chat**: Real-time streaming chat with NVIDIA NIM models
-- **Model Selection**: Dynamic dropdown with latest available models
-- **Bring Your Own Key**: Secure AES-256-GCM encrypted API key storage
-- **Sandboxed Terminal**: Isolated command execution via nsjail (Docker Compose only)
-- **Admin Dashboard**: User management and terminal audit logs
-- **Carbon Aesthetic**: IBM Plex fonts, strict dark mode, minimal UI
+- **AI Chat**: Real-time streaming chat with NVIDIA NIM models via Server-Sent Events (SSE)
+- **Model Selection**: Dynamic dropdown fetching the latest available models from NVIDIA NIM
+- **Bring Your Own Key (BYOK)**: Secure AES-256-GCM encrypted API key storage
+- **Sandboxed Terminal**: Isolated command execution via `nsjail` (Docker Compose only)
+- **Admin Dashboard**: User management and terminal audit logs with role-based access
+- **Landing Page**: Animated marketing page with feature showcase and terminal demo
+- **Carbon Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS |
-| Backend | Rust (Axum, Tokio, SQLx) |
-| Sandbox | Rust (Axum) + nsjail |
-| Database | SQLite (embedded, zero-config) |
-| Proxy | Caddy |
-| AI | NVIDIA NIM (BYOK) |
+| **Frontend** | React 18, Vite, TypeScript, Tailwind CSS, Framer Motion |
+| **Backend API** | Rust (Axum, Tokio, SQLx) |
+| **Sandbox** | Rust (Axum) + nsjail |
+| **Database** | SQLite (embedded, zero-config) |
+| **AI Provider** | NVIDIA NIM (BYOK) |
 
-## Deploy on Render
+## Quick Deploy (Render)
 
 ### Step 1: Create Web Service
 
 1. Go to [Render Dashboard](https://dashboard.render.com)
 2. Click **New +** → **Web Service**
 3. Connect your GitHub repo (`avneeshjadhav04/ai-assistant`)
-4. Name: `carbon-ai`
-5. Region: Choose your preferred region
-6. Branch: `main`
-7. Runtime: **Docker**
-8. Plan: Free (or Starter for better performance)
-9. Click **Create Web Service**
+4. Configure:
+   - **Name**: `carbon-ai`
+   - **Runtime**: Docker
+   - **Plan**: Starter (for disk support)
+5. Click **Create Web Service**
 
-### Step 2: Add Disk (Persistent Storage)
+### Step 2: Add Persistent Disk
 
-SQLite requires persistent storage or data will be lost on redeploy.
+SQLite needs persistent storage:
 
-1. In your service dashboard, go to **Disks** tab
-2. Click **Add Disk**
-3. Name: `carbon-ai-data`
-4. Mount Path: `/data`
-5. Size: 1 GB (minimum)
-6. Click **Create**
+1. Service dashboard → **Disks** tab → **Add Disk**
+2. **Name**: `carbon-ai-data`
+3. **Mount Path**: `/data`
+4. **Size**: 1 GB
+5. Click **Create**
 
-> **Note:** Free plan does not support disks. Upgrade to Starter ($7/month) or use Docker Compose for local deployment.
+> Free plan does not support disks. Use Starter plan or Docker Compose locally.
 
 ### Step 3: Set Environment Variables
 
-Go to **Environment** tab and add:
+Go to **Environment** tab:
 
-| Key | Value | Notes |
-|-----|-------|-------|
-| `MASTER_KEY` | `your-32-byte-secret-key-here!!!` | Generate a random 32+ character string |
+| Key | Value | Description |
+|-----|-------|-------------|
+| `MASTER_KEY` | `your-32-byte-secret-key!!!` | Random 32+ character string for encryption |
 | `ADMIN_DEFAULT_EMAIL` | `admin@local.local` | Default admin login |
-| `ADMIN_DEFAULT_PASSWORD` | `your-secure-admin-password` | Change this after first login |
+| `ADMIN_DEFAULT_PASSWORD` | `your-secure-password` | Change after first login |
 | `NIM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
 
-The `DATABASE_URL` is already set in the Dockerfile to `sqlite:/data/carbon_ai.db` which will use the mounted disk.
-
-Click **Save Changes**.
+`DATABASE_URL` defaults to `sqlite:/data/carbon_ai.db` (uses the mounted disk).
 
 ### Step 4: Deploy
 
 1. Click **Manual Deploy** → **Deploy latest commit**
-2. Wait for the build to complete (3-5 minutes)
-3. Your app will be live at the service URL
+2. Wait 3-5 minutes for build
+3. Your app is live!
 
-### Step 5: First Login
+### First Login
 
-- Visit your service URL
-- Login: `admin@local.local`
+- URL: Your Render service URL
+- Email: `admin@local.local`
 - Password: The `ADMIN_DEFAULT_PASSWORD` you set
 
-> **Note:** The sandboxed terminal requires privileged containers and only works with Docker Compose. All other features (AI chat, model selection, BYOK, admin dashboard) work fully on Render.
+> **Note:** The sandboxed terminal requires privileged containers (Docker Compose only). All other features work fully on Render.
 
 ---
 
-## Local Development (Docker Compose - Full Features)
+## Local Development
+
+### Option A: Docker Compose (Full Features)
 
 ```bash
 # 1. Setup environment
 cp .env.example .env
 # Edit .env with secure values
 
-# 2. Generate JWT keys (optional, falls back to HS256)
-mkdir -p secrets
-openssl genrsa -out secrets/jwt_private.pem 2048
-openssl rsa -in secrets/jwt_private.pem -pubout -out secrets/jwt_private.pem.pub
-
-# 3. Launch everything
+# 2. Launch everything
 docker compose up --build
 ```
 
-- App: http://localhost
+- App: http://localhost:8080
 - Default admin: `admin@local.local` / password from `.env`
 
-## Local Development (Without Docker)
+### Option B: Without Docker
 
 ```bash
 # Terminal 1: API
@@ -112,34 +109,82 @@ cd sandbox && cargo run
 cd web && npm install && npm run dev
 ```
 
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | No | `sqlite:./carbon_ai.db` | SQLite database file path |
-| `MASTER_KEY` | Yes | - | 32+ byte key for AES-256-GCM encryption |
-| `ADMIN_DEFAULT_EMAIL` | No | `admin@local.local` | Default admin login |
-| `ADMIN_DEFAULT_PASSWORD` | Yes | - | Default admin password |
-| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
-| `JWT_SECRET_PATH` | No | - | Path to RSA private key (auto-fallbacks to HS256) |
-| `PORT` | No | `8080` | HTTP port (Render auto-sets this) |
-
 ## Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   React     │────▶│   Caddy     │────▶│  Rust API   │
-│  Frontend   │     │   Proxy     │     │   (Axum)    │
-└─────────────┘     └─────────────┘     └──────┬──────┘
-                                               │
-                          ┌────────────────────┼────────────────────┐
-                          │                    │                    │
-                          ▼                    ▼                    ▼
-                   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-                   │   SQLite    │    │ NVIDIA NIM  │    │  Sandbox    │
-                   │  (file DB)  │    │   (AI API)  │    │  (nsjail)   │
-                   └─────────────┘    └─────────────┘    └─────────────┘
+│   React     │────▶│  Rust API   │────▶│   SQLite    │
+│  Frontend   │     │   (Axum)    │     │  (file DB)  │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+              ▼            ▼            ▼
+        ┌─────────┐ ┌──────────┐ ┌──────────┐
+        │ Sandbox │ │ NVIDIA   │ │  Admin   │
+        │(nsjail) │ │   NIM    │ │ Dashboard│
+        └─────────┘ └──────────┘ └──────────┘
 ```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `DATABASE_URL` | No | `sqlite:./carbon_ai.db` | SQLite database path |
+| `MASTER_KEY` | Yes | - | 32+ byte key for AES-256-GCM |
+| `ADMIN_DEFAULT_EMAIL` | No | `admin@local.local` | Admin login |
+| `ADMIN_DEFAULT_PASSWORD` | Yes | - | Admin password |
+| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
+| `JWT_SECRET_PATH` | No | - | RSA key path (falls back to HS256) |
+| `PORT` | No | `8080` | HTTP port |
+
+## Project Structure
+
+```
+├── api/                    # Rust API Gateway (Axum)
+│   ├── src/
+│   │   ├── main.rs         # Server & routing
+│   │   ├── auth.rs         # JWT, Argon2, AES-GCM
+│   │   ├── config.rs       # Environment config
+│   │   ├── db.rs           # SQLite connection
+│   │   ├── middleware.rs   # Auth guards
+│   │   ├── models.rs       # Data types
+│   │   └── routes/
+│   │       ├── auth.rs     # Login/signup
+│   │       ├── chat.rs     # SSE streaming
+│   │       ├── models.rs   # NIM model fetcher
+│   │       ├── terminal.rs # WS proxy
+│   │       └── admin.rs    # Admin endpoints
+│   ├── Cargo.toml
+│   └── Dockerfile
+├── sandbox/                # Rust Sandbox Executor
+│   ├── src/main.rs         # nsjail spawner
+│   ├── nsjail.cfg          # Jail config
+│   ├── Cargo.toml
+│   └── Dockerfile
+├── web/                    # React Frontend
+│   ├── src/
+│   │   ├── pages/          # Landing, Login, Chat, Admin
+│   │   ├── components/     # ChatInterface, Terminal, etc.
+│   │   ├── stores/         # Zustand auth store
+│   │   └── lib/            # API client
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── Dockerfile
+├── db/migrations/          # SQLite schema
+├── docker-compose.yml      # Local orchestration
+├── render.yaml             # Render Blueprint
+├── Dockerfile              # Unified production build
+└── .env.example            # Environment template
+```
+
+## Security
+
+- **Passwords**: Argon2id hashing
+- **API Keys**: AES-256-GCM encryption at rest
+- **Auth**: JWT via HttpOnly, SameSite=Strict cookies
+- **Terminal**: nsjail sandbox (no network, RO filesystem, resource limits)
+- **JWT Fallback**: HS256 when RSA keys not available
 
 ## License
 
