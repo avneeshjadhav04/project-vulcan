@@ -12,13 +12,13 @@ use tokio::sync::mpsc;
 use crate::{
     auth::decrypt_key,
     middleware::AppState,
-    models::{Chat, Claims, CreateChatRequest, Message, SendMessageRequest, User},
+    models::{Chat, Claims, CreateChatRequest, Message, RenameChatRequest, SendMessageRequest, User},
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
-        .route("/chats/:id", get(get_chat))
+        .route("/chats/:id", get(get_chat).patch(rename_chat))
         .route("/chats/:id/message", post(send_message))
         .route("/me", get(get_me))
         .route("/me/key", post(update_nim_key))
@@ -122,6 +122,33 @@ async fn get_chat(
         "chat": chat,
         "messages": messages,
     })))
+}
+
+async fn rename_chat(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(id): Path<String>,
+    Json(req): Json<RenameChatRequest>,
+) -> Result<Json<Chat>, StatusCode> {
+    let title = req.title.trim();
+    if title.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let chat: Chat = sqlx::query_as(
+        "UPDATE chats SET title = ?1 WHERE id = ?2 AND user_id = ?3 RETURNING *"
+    )
+    .bind(title)
+    .bind(id)
+    .bind(claims.sub.clone())
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Rename chat error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(chat))
 }
 
 async fn send_message(

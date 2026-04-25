@@ -2,25 +2,29 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
-import { ArrowLeft, Key, Save, Check, Shield } from 'lucide-react'
+import { ArrowLeft, Key, Save, Check, Shield, AlertCircle } from 'lucide-react'
 
 export default function Settings() {
   const user = useAuthStore((s) => s.user)
+  const fetchMe = useAuthStore((s) => s.fetchMe)
   const [apiKey, setApiKey] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const handleSave = async () => {
     if (!apiKey.trim()) return
+    setError('')
     setLoading(true)
     try {
       await api.post('/me/key', { api_key: apiKey })
       setSaved(true)
       setApiKey('')
       setTimeout(() => setSaved(false), 3000)
-    } catch {
-      alert('Failed to save API key')
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to save API key')
     } finally {
       setLoading(false)
     }
@@ -50,9 +54,15 @@ export default function Settings() {
               <span className="text-text-secondary">Email</span>
               <span className="text-text-primary">{user?.email}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between border-b border-border pb-3">
               <span className="text-text-secondary">Role</span>
               <span className="font-mono text-xs uppercase text-accent">{user?.role}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-secondary">NIM Key</span>
+              <span className={`font-mono text-xs uppercase ${user?.has_nim_key ? 'text-success' : 'text-text-secondary'}`}>
+                {user?.has_nim_key ? 'Saved' : 'Not set'}
+              </span>
             </div>
           </div>
         </div>
@@ -65,6 +75,13 @@ export default function Settings() {
           <p className="mb-4 text-sm text-text-secondary">
             Bring your own NVIDIA NIM API key. It is encrypted at rest and only decrypted in-memory during requests.
           </p>
+
+          {error && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
 
           <div className="flex gap-3">
             <input

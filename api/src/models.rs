@@ -90,3 +90,8 @@ pub struct SendMessageRequest {
 pub struct UpdateNimKeyRequest {
     pub api_key: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RenameChatRequest {
+    pub title: String,
+}
