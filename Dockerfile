@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Rust API
-FROM rust:1.86-slim-bookworm AS api-builder
+FROM rust:1.90-slim-bookworm AS api-builder
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
