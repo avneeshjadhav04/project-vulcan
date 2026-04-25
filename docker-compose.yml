@@ -1,43 +1,21 @@
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-assistant}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-assistant}
-      POSTGRES_DB: ${POSTGRES_DB:-assistant}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-assistant} -d ${POSTGRES_DB:-assistant}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: .
       dockerfile: ./api/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-assistant}:${POSTGRES_PASSWORD:-assistant}@db/${POSTGRES_DB:-assistant}
-      JWT_SECRET_PATH: /secrets/jwt_private.pem
+      DATABASE_URL: sqlite:./carbon_ai.db
       MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required}
-      NIM_BASE_URL: ${NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
       ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-admin@local.local}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?ADMIN_DEFAULT_PASSWORD is required}
+      NIM_BASE_URL: ${NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
       RUST_LOG: ${RUST_LOG:-info}
+      BIND_ADDR: 0.0.0.0:8080
     volumes:
-      - ./secrets:/secrets:ro
-    networks:
-      - backend
-      - frontend
-    depends_on:
-      db:
-        condition: service_healthy
+      - ./data:/data
+    ports:
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 10s
@@ -51,8 +29,6 @@ services:
     restart: unless-stopped
     environment:
       RUST_LOG: ${RUST_LOG:-info}
-    networks:
-      - backend
     privileged: true
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
@@ -65,8 +41,6 @@ services:
       context: ./web
       dockerfile: Dockerfile
     restart: unless-stopped
-    networks:
-      - frontend
     depends_on:
       - api
 
@@ -80,18 +54,10 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      - frontend
     depends_on:
       - api
       - web
 
 volumes:
-  postgres_data:
   caddy_data:
   caddy_config:
-
-networks:
-  backend:
-    internal: true
-  frontend:

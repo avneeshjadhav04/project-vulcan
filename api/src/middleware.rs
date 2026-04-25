@@ -10,7 +10,7 @@ use crate::{config::Config, models::Claims};
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
-    pub db: sqlx::PgPool,
+    pub db: sqlx::SqlitePool,
 }
 
 pub async fn auth_middleware(
