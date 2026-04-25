@@ -28,7 +28,7 @@ async fn get_me(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
@@ -50,7 +50,7 @@ async fn update_nim_key(
     let encrypted = crate::auth::encrypt_key(&req.api_key, &state.config.master_key)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    sqlx::query("UPDATE users SET encrypted_nim_key = $1 WHERE id = $2")
+    sqlx::query("UPDATE users SET encrypted_nim_key = ?1 WHERE id = ?2")
         .bind(&encrypted)
         .bind(claims.sub.clone())
         .execute(&state.db)
@@ -68,7 +68,7 @@ async fn create_chat(
     let title = req.title.unwrap_or_else(|| "New Chat".to_string());
 
     let chat: Chat = sqlx::query_as(
-        "INSERT INTO chats (user_id, title, model_id) VALUES ($1, $2, $3) RETURNING *"
+        "INSERT INTO chats (user_id, title, model_id) VALUES (?1, ?2, ?3) RETURNING *"
     )
     .bind(claims.sub.clone())
     .bind(&title)
@@ -88,7 +88,7 @@ async fn list_chats(
     claims: axum::Extension<Claims>,
 ) -> Result<Json<Vec<Chat>>, StatusCode> {
     let chats: Vec<Chat> = sqlx::query_as(
-        "SELECT * FROM chats WHERE user_id = $1 ORDER BY updated_at DESC"
+        "SELECT * FROM chats WHERE user_id = ?1 ORDER BY updated_at DESC"
     )
     .bind(claims.sub.clone())
     .fetch_all(&state.db)
@@ -103,7 +103,7 @@ async fn get_chat(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1 AND user_id = $2")
+    let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
         .bind(id.clone())
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
@@ -111,7 +111,7 @@ async fn get_chat(
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let messages: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC"
+        "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
     )
     .bind(id.clone())
     .fetch_all(&state.db)
@@ -130,7 +130,7 @@ async fn send_message(
     Path(id): Path<String>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
@@ -141,14 +141,14 @@ async fn send_message(
         None => return Err(StatusCode::PRECONDITION_FAILED),
     };
 
-    let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1 AND user_id = $2")
+    let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
         .bind(id.clone())
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES ($1, 'user', $2)")
+    sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
         .bind(id.clone())
         .bind(&req.content)
         .execute(&state.db)
@@ -156,7 +156,7 @@ async fn send_message(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let history: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC"
+        "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
     )
     .bind(id.clone())
     .fetch_all(&state.db)
@@ -219,7 +219,7 @@ async fn send_message(
                                 if data == "[DONE]" {
                                     let _ = tx.send("[DONE]".to_string());
                                     let _ = sqlx::query(
-                                        "INSERT INTO messages (chat_id, role, content) VALUES ($1, 'assistant', $2)"
+                                        "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
                                     )
                                     .bind(chat_id.clone())
                                     .bind(&full_content)
@@ -247,7 +247,7 @@ async fn send_message(
 
         if !full_content.is_empty() {
             let _ = sqlx::query(
-                "INSERT INTO messages (chat_id, role, content) VALUES ($1, 'assistant', $2)"
+                "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
             )
             .bind(chat_id)
             .bind(&full_content)

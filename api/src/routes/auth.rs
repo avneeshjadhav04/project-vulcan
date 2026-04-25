@@ -1,7 +1,7 @@
 use axum::{
     extract::State,
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json},
     routing::post,
     Router,
 };
@@ -22,27 +22,27 @@ pub fn router() -> Router<AppState> {
 async fn signup(
     State(state): State<AppState>,
     Json(req): Json<SignupRequest>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
     if req.email.is_empty() || req.password.len() < 6 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
     let hash = hash_password(&req.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let result = sqlx::query("INSERT INTO users (email, password_hash) VALUES ($1, $2)")
+    let result = sqlx::query("INSERT INTO users (email, password_hash) VALUES (?1, ?2)")
         .bind(&req.email)
         .bind(&hash)
         .execute(&state.db)
         .await;
 
     match result {
-        Ok(_) => Ok(StatusCode::CREATED),
+        Ok(_) => Ok((StatusCode::CREATED, Json(serde_json::json!({ "message": "Account created successfully" })))),
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            Err(StatusCode::CONFLICT)
+            Ok((StatusCode::CONFLICT, Json(serde_json::json!({ "error": "Email already registered" }))))
         }
         Err(e) => {
             tracing::error!("Signup error: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))))
         }
     }
 }
@@ -50,8 +50,8 @@ async fn signup(
 async fn login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
-) -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
-    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = $1")
+) -> Result<axum::response::Response, StatusCode> {
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE email = ?1")
         .bind(&req.email)
         .fetch_optional(&state.db)
         .await
@@ -62,11 +62,13 @@ async fn login(
 
     let user = match user {
         Some(u) => u,
-        None => return Err(StatusCode::UNAUTHORIZED),
+        None => {
+            return Ok((StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid email or password" }))).into_response());
+        }
     };
 
     if !verify_password(&req.password, &user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
-        return Err(StatusCode::UNAUTHORIZED);
+        return Ok((StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid email or password" }))).into_response());
     }
 
     let token = create_token(&user.id, &user.email, &user.role, &state.config)
@@ -83,7 +85,7 @@ async fn login(
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(axum::http::header::SET_COOKIE, cookie.parse().unwrap());
 
-    Ok((headers, Json(serde_json::json!({ "role": user.role }))))
+    Ok((headers, Json(serde_json::json!({ "role": user.role }))).into_response())
 }
 
 async fn logout() -> (axum::http::HeaderMap, StatusCode) {

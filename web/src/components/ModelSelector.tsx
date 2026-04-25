@@ -20,13 +20,14 @@ export default function ModelSelector({
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
       const res = await api.get('/models')
       return res.data.models as Model[]
     },
     enabled: open,
+    retry: false,
   })
 
   useEffect(() => {
@@ -54,6 +55,11 @@ export default function ModelSelector({
           {isLoading && (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+            </div>
+          )}
+          {error && (
+            <div className="px-3 py-2 text-xs text-error">
+              Failed to load models. Please check your connection or re-authenticate.
             </div>
           )}
           {data?.map((model) => (

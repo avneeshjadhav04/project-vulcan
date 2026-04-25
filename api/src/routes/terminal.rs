@@ -27,7 +27,11 @@ async fn handle_socket(mut socket: WebSocket, _user_id: String) {
         Ok(pair) => pair,
         Err(e) => {
             tracing::error!("Failed to connect to sandbox: {}", e);
-            let _ = socket.send(WsMessage::Text(format!("Error connecting to sandbox: {}", e))).await;
+            let msg = serde_json::json!({
+                "type": "stderr",
+                "data": format!("Sandbox unavailable: {}. Terminal requires Docker Compose with the sandbox service running.", e)
+            });
+            let _ = socket.send(WsMessage::Text(msg.to_string())).await;
             return;
         }
     };
