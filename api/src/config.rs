@@ -34,7 +34,10 @@ impl Config {
                 .unwrap_or_else(|_| "admin@local.local".to_string()),
             admin_default_password: env::var("ADMIN_DEFAULT_PASSWORD")
                 .context("ADMIN_DEFAULT_PASSWORD must be set")?,
-            bind_addr: env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string()),
+            bind_addr: env::var("PORT")
+                .map(|p| format!("0.0.0.0:{}", p))
+                .or_else(|_| env::var("BIND_ADDR"))
+                .unwrap_or_else(|_| "0.0.0.0:8080".to_string()),
         })
     }
 }
