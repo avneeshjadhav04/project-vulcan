@@ -1,0 +1,71 @@
+use axum::{
+    middleware::{from_fn, from_fn_with_state},
+    routing::get,
+    Router,
+};
+use std::net::SocketAddr;
+use tower_http::cors::CorsLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod auth;
+mod config;
+mod db;
+mod middleware;
+mod models;
+mod routes;
+
+use middleware::{admin_middleware, auth_middleware, AppState};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "api=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().json())
+        .init();
+
+    let config = config::Config::from_env()?;
+    let db_pool = db::init_db(&config).await?;
+
+    let state = AppState {
+        config: config.clone(),
+        db: db_pool,
+    };
+
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .merge(routes::auth::router())
+        .merge(
+            routes::chat::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::models::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::terminal::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::admin::router()
+                .layer(from_fn(admin_middleware))
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .layer(CorsLayer::permissive())
+        .with_state(state);
+
+    let addr: SocketAddr = config.bind_addr.parse()?;
+    tracing::info!("API listening on {}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+async fn health_check() -> &'static str {
+    "ok"
+}
