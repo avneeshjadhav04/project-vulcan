@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
-import { ArrowLeft, Trash2, Users, Activity } from 'lucide-react'
+import { ArrowLeft, Trash2, Users, Activity, Loader2 } from 'lucide-react'
 
 interface SafeUser {
   id: string
@@ -22,7 +22,7 @@ interface TerminalLog {
 export default function Admin() {
   const navigate = useNavigate()
 
-  const { data: usersData, refetch: refetchUsers } = useQuery({
+  const { data: usersData, refetch: refetchUsers, isLoading: usersLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
       const res = await api.get('/admin/users')
@@ -30,7 +30,7 @@ export default function Admin() {
     },
   })
 
-  const { data: logsData } = useQuery({
+  const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['admin-logs'],
     queryFn: async () => {
       const res = await api.get('/admin/terminal-logs')
@@ -78,7 +78,14 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {usersData?.map((u) => (
+                {usersLoading && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-text-secondary">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </td>
+                  </tr>
+                )}
+                {!usersLoading && usersData?.map((u) => (
                   <tr key={u.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
                     <td className="px-4 py-3 text-text-primary">{u.email}</td>
                     <td className="px-4 py-3">
@@ -90,6 +97,7 @@ export default function Admin() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => handleDelete(u.id)}
+                        aria-label="Delete user"
                         className="text-error transition-colors hover:text-error/80"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -97,7 +105,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
-                {(!usersData || usersData.length === 0) && (
+                {!usersLoading && (!usersData || usersData.length === 0) && (
                   <tr>
                     <td colSpan={4} className="px-4 py-8 text-center text-text-secondary">
                       No users found
@@ -124,7 +132,14 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {logsData?.map((log) => (
+                {logsLoading && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center text-text-secondary">
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </td>
+                  </tr>
+                )}
+                {!logsLoading && logsData?.map((log) => (
                   <tr key={log.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
                     <td className="px-4 py-3 font-mono text-text-primary">{log.command}</td>
                     <td className="px-4 py-3">
@@ -145,7 +160,7 @@ export default function Admin() {
                     </td>
                   </tr>
                 ))}
-                {(!logsData || logsData.length === 0) && (
+                {!logsLoading && (!logsData || logsData.length === 0) && (
                   <tr>
                     <td colSpan={3} className="px-4 py-8 text-center text-text-secondary">
                       No terminal sessions found

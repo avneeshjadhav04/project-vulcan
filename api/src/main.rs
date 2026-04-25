@@ -1,4 +1,6 @@
 use axum::{
+    extract::{DefaultBodyLimit, State},
+    http::StatusCode,
     middleware::{from_fn, from_fn_with_state},
     routing::get,
     Router,
@@ -7,6 +9,7 @@ use std::net::SocketAddr;
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
+    trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -48,14 +51,45 @@ async fn run() -> anyhow::Result<()> {
     let db_pool = db::init_db(&config).await?;
     println!("[INIT] Database ready");
 
+    // Load RSA public key at startup if available
+    let jwt_public_key = config.jwt_secret_path.as_ref().and_then(|path| {
+        let pub_path = format!("{}.pub", path);
+        if std::path::Path::new(&pub_path).exists() {
+            match std::fs::read(&pub_path) {
+                Ok(key) => {
+                    println!("[INIT] Loaded RSA public key from {}", pub_path);
+                    Some(key)
+                }
+                Err(e) => {
+                    println!("[INIT] Failed to read RSA public key: {}", e);
+                    None
+                }
+            }
+        } else {
+            println!("[INIT] No RSA public key found, using HS256 fallback");
+            None
+        }
+    });
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()?;
+
     let state = AppState {
         config: config.clone(),
         db: db_pool,
+        http_client,
+        jwt_public_key,
     };
 
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::mirror_request())
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::DELETE])
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::DELETE,
+            axum::http::Method::PATCH,
+        ])
         .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::COOKIE, axum::http::header::AUTHORIZATION])
         .allow_credentials(true);
 
@@ -79,7 +113,9 @@ async fn run() -> anyhow::Result<()> {
                 .layer(from_fn(admin_middleware))
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
+        .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB body limit
         .layer(cors)
+        .layer(TraceLayer::new_for_http())
         .with_state(state);
 
     // Serve static files if dist/ exists (production mode)
@@ -103,6 +139,10 @@ async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn health_check() -> &'static str {
-    "ok"
+async fn health_check(State(state): State<AppState>) -> Result<&'static str, StatusCode> {
+    sqlx::query_as::<_, (i32,)>("SELECT 1")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok("ok")
 }

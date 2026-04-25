@@ -56,8 +56,11 @@ export default function Sidebar({
     mutationFn: async (id: string) => {
       await api.delete(`/chats/${id}`)
     },
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['chats'] })
+      if (activeChatId === deletedId) {
+        onSelect('')
+      }
     },
     onError: (err: any) => {
       showError(err.response?.data?.error || err.response?.data?.message || 'Failed to delete chat')

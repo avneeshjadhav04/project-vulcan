@@ -15,10 +15,14 @@ use crate::{
     models::{Chat, Claims, CreateChatRequest, Message, RenameChatRequest, SendMessageRequest, User},
 };
 
+const MAX_MESSAGE_LENGTH: usize = 100_000;
+const MAX_TITLE_LENGTH: usize = 255;
+const MAX_API_KEY_LENGTH: usize = 512;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
-        .route("/chats/:id", get(get_chat).patch(rename_chat))
+        .route("/chats/:id", get(get_chat).patch(rename_chat).delete(delete_chat))
         .route("/chats/:id/message", post(send_message))
         .route("/me", get(get_me))
         .route("/me/key", post(update_nim_key))
@@ -47,6 +51,10 @@ async fn update_nim_key(
     claims: axum::Extension<Claims>,
     Json(req): Json<crate::models::UpdateNimKeyRequest>,
 ) -> Result<StatusCode, StatusCode> {
+    if req.api_key.len() > MAX_API_KEY_LENGTH {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let encrypted = crate::auth::encrypt_key(&req.api_key, &state.config.master_key)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -64,8 +72,11 @@ async fn create_chat(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
     Json(req): Json<CreateChatRequest>,
-) -> Result<Json<Chat>, StatusCode> {
+) -> Result<(StatusCode, Json<Chat>), StatusCode> {
     let title = req.title.unwrap_or_else(|| "New Chat".to_string());
+    if title.len() > MAX_TITLE_LENGTH {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     let chat: Chat = sqlx::query_as(
         "INSERT INTO chats (user_id, title, model_id) VALUES (?1, ?2, ?3) RETURNING *"
@@ -80,7 +91,7 @@ async fn create_chat(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(chat))
+    Ok((StatusCode::CREATED, Json(chat)))
 }
 
 async fn list_chats(
@@ -131,7 +142,7 @@ async fn rename_chat(
     Json(req): Json<RenameChatRequest>,
 ) -> Result<Json<Chat>, StatusCode> {
     let title = req.title.trim();
-    if title.is_empty() {
+    if title.is_empty() || title.len() > MAX_TITLE_LENGTH {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -151,12 +162,42 @@ async fn rename_chat(
     Ok(Json(chat))
 }
 
+async fn delete_chat(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    let result = sqlx::query("DELETE FROM chats WHERE id = ?1 AND user_id = ?2")
+        .bind(id)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Delete chat error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn send_message(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
+    let content = req.content.trim();
+    if content.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if content.len() > MAX_MESSAGE_LENGTH {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
@@ -177,10 +218,16 @@ async fn send_message(
 
     sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
         .bind(id.clone())
-        .bind(&req.content)
+        .bind(&content)
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Update chat's updated_at timestamp
+    let _ = sqlx::query("UPDATE chats SET updated_at = datetime('now') WHERE id = ?1")
+        .bind(id.clone())
+        .execute(&state.db)
+        .await;
 
     let history: Vec<Message> = sqlx::query_as(
         "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
@@ -209,8 +256,7 @@ async fn send_message(
         "max_tokens": 2048,
     });
 
-    let client = reqwest::Client::new();
-    let res = client
+    let res = state.http_client
         .post(format!("{}/chat/completions", state.config.nim_base_url))
         .header("Authorization", format!("Bearer {}", nim_key))
         .header("Content-Type", "application/json")
@@ -222,11 +268,18 @@ async fn send_message(
             StatusCode::BAD_GATEWAY
         })?;
 
+    if !res.status().is_success() {
+        let status = res.status();
+        let body_text = res.text().await.unwrap_or_default();
+        tracing::error!("NIM returned error status: {} body: {}", status, body_text);
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+
     let mut stream = res.bytes_stream();
     let db = state.db.clone();
     let chat_id = id;
 
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
+    let (tx, rx) = mpsc::channel::<String>(64);
 
     tokio::spawn(async move {
         let mut buffer = String::new();
@@ -244,7 +297,7 @@ async fn send_message(
                             if line.starts_with("data: ") {
                                 let data = &line[6..];
                                 if data == "[DONE]" {
-                                    let _ = tx.send("[DONE]".to_string());
+                                    let _ = tx.send("[DONE]".to_string()).await;
                                     let _ = sqlx::query(
                                         "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
                                     )
@@ -257,7 +310,7 @@ async fn send_message(
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
                                         full_content.push_str(content);
-                                        let _ = tx.send(content.to_string());
+                                        let _ = tx.send(content.to_string()).await;
                                     }
                                 }
                             }
@@ -266,7 +319,7 @@ async fn send_message(
                 }
                 Err(e) => {
                     tracing::error!("Stream chunk error: {}", e);
-                    let _ = tx.send("[ERROR]".to_string());
+                    let _ = tx.send("[ERROR]".to_string()).await;
                     break;
                 }
             }
@@ -283,7 +336,7 @@ async fn send_message(
         }
     });
 
-    let sse_stream = tokio_stream::wrappers::UnboundedReceiverStream::new(rx).map(|text| {
+    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
         Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
     });
 

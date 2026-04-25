@@ -20,7 +20,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
-  const setUser = useAuthStore((s) => s.setUser)
+  const fetchMe = useAuthStore((s) => s.fetchMe)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,22 +29,11 @@ export default function Login() {
     try {
       if (isSignup) {
         await api.post('/auth/signup', { email, password })
-        const loginRes = await api.post('/auth/login', { email, password })
-        setUser({
-          id: '',
-          email,
-          role: loginRes.data.role,
-          has_nim_key: false,
-        })
+        await api.post('/auth/login', { email, password })
       } else {
-        const res = await api.post('/auth/login', { email, password })
-        setUser({
-          id: '',
-          email,
-          role: res.data.role,
-          has_nim_key: false,
-        })
+        await api.post('/auth/login', { email, password })
       }
+      await fetchMe()
       navigate('/chat')
     } catch (err) {
       const data = (err as any).response?.data

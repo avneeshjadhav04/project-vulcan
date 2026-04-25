@@ -52,8 +52,13 @@ function CodeBlock({ children, className }: { children: string; className?: stri
 
   const handleCopy = () => {
     navigator.clipboard.writeText(children)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => {
+        setCopied(false)
+      })
   }
 
   return (
@@ -109,7 +114,15 @@ function MessageBubble({ msg }: { msg: MessageItem }) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ children, className }) {
+                code({ children, className, node, ...rest }) {
+                  const isInline = !className
+                  if (isInline) {
+                    return (
+                      <code className="rounded bg-surface px-1 py-0.5 font-mono text-sm text-text-primary" {...rest}>
+                        {children}
+                      </code>
+                    )
+                  }
                   return <CodeBlock className={className}>{String(children)}</CodeBlock>
                 },
               }}
@@ -118,7 +131,7 @@ function MessageBubble({ msg }: { msg: MessageItem }) {
             </ReactMarkdown>
           </div>
         ) : (
-          <p className="text-sm text-text-primary">{msg.content}</p>
+          <p className="whitespace-pre-wrap text-sm text-text-primary">{msg.content}</p>
         )}
       </div>
     </motion.div>
@@ -155,14 +168,35 @@ export default function ChatInterface({
   const [streaming, setStreaming] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
-  const { data: chatData, refetch } = useQuery({
+  const { data: chatData, refetch, isError } = useQuery({
     queryKey: ['chat', chatId],
     queryFn: async () => {
       const res = await api.get(`/chats/${chatId}`)
       return res.data as { chat: { title: string; model_id: string }; messages: MessageItem[] }
     },
   })
+
+  // Reset state when switching chats
+  useEffect(() => {
+    setInput('')
+    setStreaming(false)
+    setStreamedContent('')
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+  }, [chatId])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -175,15 +209,23 @@ export default function ChatInterface({
     setStreaming(true)
     setStreamedContent('')
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       const res = await fetch(`/api/chats/${chatId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ content: text }),
+        signal: controller.signal,
       })
 
       if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = '/login'
+          return
+        }
         if (res.status === 428) {
           throw new Error('Add your NVIDIA NIM API key in Settings to start chatting.')
         }
@@ -198,6 +240,7 @@ export default function ChatInterface({
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        if (controller.signal.aborted) break
         const chunk = decoder.decode(value, { stream: true })
         const lines = chunk.split('\n')
         for (const line of lines) {
@@ -220,14 +263,30 @@ export default function ChatInterface({
 
       setStreamedContent('')
       refetch()
-    } catch (err) {
-      alert((err as any).message || 'Failed to send message')
+    } catch (err: any) {
+      if (err.name === 'AbortError') return
+      alert(err.message || 'Failed to send message')
     } finally {
       setStreaming(false)
+      abortControllerRef.current = null
     }
   }
 
   const messages = chatData?.messages || []
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center text-text-secondary">
+        <p className="mb-4 text-sm">Chat not found or access denied.</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+        >
+          Refresh
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

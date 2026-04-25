@@ -8,7 +8,7 @@ use axum::{
 use serde_json::json;
 use crate::{
     middleware::AppState,
-    models::{TerminalSession, User},
+    models::{Claims, TerminalSession, User},
 };
 
 pub fn router() -> Router<AppState> {
@@ -22,7 +22,7 @@ async fn list_users(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let users: Vec<User> = sqlx::query_as(
-        "SELECT id, email, password_hash, encrypted_nim_key, role, created_at, updated_at FROM users ORDER BY created_at DESC"
+        "SELECT id, email, password_hash, encrypted_nim_key, role, created_at, updated_at FROM users ORDER BY created_at DESC LIMIT 1000"
     )
     .fetch_all(&state.db)
     .await
@@ -48,9 +48,41 @@ async fn list_users(
 
 async fn delete_user(
     State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    sqlx::query("DELETE FROM users WHERE id = ?1")
+    // Prevent self-deletion
+    if id == claims.sub {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    // Prevent deleting the last admin
+    let admin_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Admin count query error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let target: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Admin target user query error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if let Some(ref user) = target {
+        if user.role == "admin" && admin_count <= 1 {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    } else {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let result = sqlx::query("DELETE FROM users WHERE id = ?1")
         .bind(id)
         .execute(&state.db)
         .await
@@ -58,6 +90,10 @@ async fn delete_user(
             tracing::error!("Admin delete user error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
