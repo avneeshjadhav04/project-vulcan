@@ -7,14 +7,14 @@ use axum::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::{middleware::AppState, models::NimModel};
 
-type ModelCache = Arc<RwLock<(Vec<NimModel>, std::time::Instant)>>;
+type ModelCache = Arc<Mutex<(Vec<NimModel>, std::time::Instant)>>;
 
 pub fn router() -> Router<AppState> {
-    let cache: ModelCache = Arc::new(RwLock::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
+    let cache: ModelCache = Arc::new(Mutex::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
 
     Router::new()
         .route("/models", get(move |state| list_models(state, cache.clone())))
@@ -26,16 +26,24 @@ async fn list_models(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let now = std::time::Instant::now();
     let cache_duration = std::time::Duration::from_secs(300);
+    let _error_cache_duration = std::time::Duration::from_secs(30);
 
     {
-        let read = cache.read().await;
+        let read = cache.lock().await;
         if !read.0.is_empty() && now.duration_since(read.1) < cache_duration {
             return Ok(Json(json!({ "models": read.0.clone() })));
         }
     }
 
-    let client = reqwest::Client::new();
-    let res = client
+    // Thundering herd protection: only one request refreshes the cache
+    let mut write = cache.lock().await;
+
+    // Double-check after acquiring write lock
+    if !write.0.is_empty() && now.duration_since(write.1) < cache_duration {
+        return Ok(Json(json!({ "models": write.0.clone() })));
+    }
+
+    let res = state.http_client
         .get(format!("{}/models", state.config.nim_base_url))
         .send()
         .await
@@ -46,6 +54,8 @@ async fn list_models(
 
     if !res.status().is_success() {
         tracing::error!("NIM models endpoint returned status: {}", res.status());
+        // Cache empty list with short TTL to avoid hammering NIM during outage
+        *write = (Vec::new(), now);
         return Err(StatusCode::BAD_GATEWAY);
     }
 
@@ -60,7 +70,8 @@ async fn list_models(
         .iter()
         .filter_map(|m| {
             let id = m["id"].as_str()?.to_string();
-            if id.contains("instruct") || id.contains("chat") || id.contains("nemotron") {
+            let id_lower = id.to_lowercase();
+            if id_lower.contains("instruct") || id_lower.contains("chat") || id_lower.contains("nemotron") {
                 Some(NimModel {
                     id,
                     object: m["object"].as_str()?.to_string(),
@@ -73,10 +84,7 @@ async fn list_models(
         })
         .collect();
 
-    {
-        let mut write = cache.write().await;
-        *write = (models.clone(), now);
-    }
+    *write = (models.clone(), now);
 
     Ok(Json(json!({ "models": models })))
 }

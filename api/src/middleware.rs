@@ -11,6 +11,8 @@ use crate::{config::Config, models::Claims};
 pub struct AppState {
     pub config: Config,
     pub db: sqlx::SqlitePool,
+    pub http_client: reqwest::Client,
+    pub jwt_public_key: Option<Vec<u8>>,
 }
 
 pub async fn auth_middleware(
@@ -38,7 +40,7 @@ pub async fn auth_middleware(
         });
 
     let claims = match token {
-        Some(t) => crate::auth::verify_token(&t, &state.config).map_err(|e| {
+        Some(t) => crate::auth::verify_token(&t, &state).map_err(|e| {
             tracing::warn!("Token verification failed: {}", e);
             StatusCode::UNAUTHORIZED
         })?,
