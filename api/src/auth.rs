@@ -14,6 +14,7 @@ use crate::middleware::AppState;
 use crate::models::Claims;
 
 pub const MAX_PASSWORD_LENGTH: usize = 256;
+pub const MAX_EMAIL_LENGTH: usize = 254;
 pub const JWT_ISSUER: &str = "carbon-ai";
 pub const JWT_AUDIENCE: &str = "carbon-ai";
 
@@ -38,6 +39,21 @@ pub fn normalize_email(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
+pub fn validate_email(email: &str) -> Result<()> {
+    if email.is_empty() {
+        anyhow::bail!("Email is required");
+    }
+    if email.len() > MAX_EMAIL_LENGTH {
+        anyhow::bail!("Email must be at most {} characters", MAX_EMAIL_LENGTH);
+    }
+    // Basic RFC 5322-ish validation
+    let re = regex::Regex::new(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").unwrap();
+    if !re.is_match(email) {
+        anyhow::bail!("Invalid email format");
+    }
+    Ok(())
+}
+
 pub fn validate_password(password: &str) -> Result<()> {
     if password.len() < 6 {
         anyhow::bail!("Password must be at least 6 characters");
@@ -51,7 +67,7 @@ pub fn validate_password(password: &str) -> Result<()> {
 pub fn create_token(user_id: &str, email: &str, role: &str, state: &AppState) -> Result<String> {
     let exp = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("Timestamp overflow"))?
         .timestamp() as usize;
 
     let claims = Claims {

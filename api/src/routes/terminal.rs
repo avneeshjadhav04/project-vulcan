@@ -52,6 +52,10 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) 
     let (mut sandbox_sender, mut sandbox_receiver) = sandbox_ws.split();
 
     let db = state.db.clone();
+    let db2 = state.db.clone();
+    let user_id2 = user_id.clone();
+    let user_id3 = user_id.clone();
+
     let forward_to_sandbox = async move {
         while let Some(msg_result) = receiver.next().await {
             match msg_result {
@@ -94,6 +98,19 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) 
                         tokio_tungstenite::tungstenite::Message::Close(_) => break,
                         _ => continue,
                     };
+                    // Try to parse status messages and update DB
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(status) = parsed["status"].as_str() {
+                            let db_status = if status == "success" { "success" } else { "error" };
+                            let _ = sqlx::query(
+                                "UPDATE terminal_sessions SET status = ?1, ended_at = datetime('now') WHERE user_id = ?2 AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+                            )
+                            .bind(db_status)
+                            .bind(&user_id2)
+                            .execute(&db2)
+                            .await;
+                        }
+                    }
                     if sender.send(WsMessage::Text(text)).await.is_err() {
                         break;
                     }
@@ -110,4 +127,12 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) 
         _ = forward_to_sandbox => {},
         _ = forward_to_client => {},
     }
+
+    // Connection closed: mark any remaining running sessions as killed
+    let _ = sqlx::query(
+        "UPDATE terminal_sessions SET status = 'killed', ended_at = datetime('now') WHERE user_id = ?1 AND status = 'running'"
+    )
+    .bind(&user_id3)
+    .execute(&state.db)
+    .await;
 }

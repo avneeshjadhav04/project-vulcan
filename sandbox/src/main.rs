@@ -7,7 +7,7 @@ use axum::{
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::process::Command;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Semaphore;
 
 #[derive(Clone)]
 struct SandboxState {
@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let state = SandboxState {
-        semaphore: Arc::new(Semaphore::new(1)),
+        semaphore: Arc::new(Semaphore::new(4)),
     };
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
@@ -37,17 +37,16 @@ async fn main() -> anyhow::Result<()> {
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    State(_state): State<SandboxState>,
+    State(state): State<SandboxState>,
 ) -> Response {
     ws.max_message_size(64 * 1024)
         .max_frame_size(64 * 1024)
-        .on_upgrade(handle_socket)
+        .on_upgrade(move |socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(socket: WebSocket) {
+async fn handle_socket(socket: WebSocket, state: SandboxState) {
     let (sender, mut receiver) = socket.split();
-    let sender = Arc::new(Mutex::new(sender));
-    let permit = Arc::new(Mutex::new(None));
+    let sender = Arc::new(tokio::sync::Mutex::new(sender));
 
     while let Some(msg_result) = receiver.next().await {
         match msg_result {
@@ -62,18 +61,16 @@ async fn handle_socket(socket: WebSocket) {
                 }
 
                 let sender_clone = sender.clone();
-                let permit_clone = permit.clone();
+                let semaphore = state.semaphore.clone();
                 tokio::spawn(async move {
-                    let sem = tokio::sync::Semaphore::acquire_owned(
-                        permit_clone.lock().await.get_or_insert_with(|| {
-                            Arc::new(tokio::sync::Semaphore::new(1))
-                        }).clone()
-                    ).await;
-                    if sem.is_err() {
-                        let payload = serde_json::json!({"status": "error", "message": "A command is already running"}).to_string();
-                        let _ = sender_clone.lock().await.send(WsMessage::Text(payload)).await;
-                        return;
-                    }
+                    let _permit = match semaphore.acquire().await {
+                        Ok(p) => p,
+                        Err(_) => {
+                            let payload = serde_json::json!({"status": "error", "message": "Server overloaded"}).to_string();
+                            let _ = sender_clone.lock().await.send(WsMessage::Text(payload)).await;
+                            return;
+                        }
+                    };
                     run_command(&command, sender_clone).await;
                 });
             }
@@ -87,7 +84,19 @@ async fn handle_socket(socket: WebSocket) {
     }
 }
 
-async fn run_command(command: &str, sender: Arc<Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+async fn run_command(command: &str, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        run_command_inner(command, sender.clone())
+    ).await;
+
+    if result.is_err() {
+        let payload = serde_json::json!({"status": "error", "message": "Command timed out after 60 seconds"}).to_string();
+        let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
+    }
+}
+
+async fn run_command_inner(command: &str, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
     let mut child = match Command::new("nsjail")
         .args(&[
             "--config", "/etc/nsjail.cfg",
@@ -109,8 +118,8 @@ async fn run_command(command: &str, sender: Arc<Mutex<futures::stream::SplitSink
     let stdout = child.stdout.take().expect("stdout was piped");
     let stderr = child.stderr.take().expect("stderr was piped");
 
-    let mut stdout_reader = tokio::io::BufReader::new(stdout);
-    let mut stderr_reader = tokio::io::BufReader::new(stderr);
+    let stdout_reader = tokio::io::BufReader::new(stdout);
+    let stderr_reader = tokio::io::BufReader::new(stderr);
 
     let sender_stdout = sender.clone();
     let sender_stderr = sender.clone();

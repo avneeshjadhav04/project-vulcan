@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
@@ -17,14 +17,24 @@ export default function Login() {
   const [isSignup, setIsSignup] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const fetchMe = useAuthStore((s) => s.fetchMe)
+
+  const redirectTo = searchParams.get('redirect') || '/chat'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (isSignup && password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
     setLoading(true)
     try {
       if (isSignup) {
@@ -34,7 +44,7 @@ export default function Login() {
         await api.post('/auth/login', { email, password })
       }
       await fetchMe()
-      navigate('/chat')
+      navigate(redirectTo)
     } catch (err) {
       const data = (err as any).response?.data
       setError(data?.error || data?.message || 'Authentication failed')
@@ -132,6 +142,32 @@ export default function Login() {
                 </div>
               </div>
 
+              <AnimatePresence>
+                {isSignup && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#525252]">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#525252]" />
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] py-3 pl-10 pr-4 text-sm text-white outline-none transition-all placeholder:text-[#525252] focus:border-[#0f62fe] focus:ring-1 focus:ring-[#0f62fe]/50"
+                        placeholder="••••••••"
+                        required={isSignup}
+                        minLength={6}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -154,6 +190,7 @@ export default function Login() {
                 onClick={() => {
                   setIsSignup(!isSignup)
                   setError('')
+                  setConfirmPassword('')
                 }}
                 className="font-semibold text-[#0f62fe] transition-colors hover:text-[#78a9ff]"
               >

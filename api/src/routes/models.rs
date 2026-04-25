@@ -7,14 +7,14 @@ use axum::{
 };
 use serde_json::json;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::{middleware::AppState, models::NimModel};
 
-type ModelCache = Arc<Mutex<(Vec<NimModel>, std::time::Instant)>>;
+type ModelCache = Arc<RwLock<(Vec<NimModel>, std::time::Instant)>>;
 
 pub fn router() -> Router<AppState> {
-    let cache: ModelCache = Arc::new(Mutex::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
+    let cache: ModelCache = Arc::new(RwLock::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
 
     Router::new()
         .route("/models", get(move |state| list_models(state, cache.clone())))
@@ -26,21 +26,26 @@ async fn list_models(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let now = std::time::Instant::now();
     let cache_duration = std::time::Duration::from_secs(300);
-    let _error_cache_duration = std::time::Duration::from_secs(30);
+    let error_cache_duration = std::time::Duration::from_secs(30);
 
     {
-        let read = cache.lock().await;
+        let read = cache.read().await;
         if !read.0.is_empty() && now.duration_since(read.1) < cache_duration {
             return Ok(Json(json!({ "models": read.0.clone() })));
         }
     }
 
-    // Thundering herd protection: only one request refreshes the cache
-    let mut write = cache.lock().await;
+    // Only one request refreshes the cache
+    let mut write = cache.write().await;
 
     // Double-check after acquiring write lock
     if !write.0.is_empty() && now.duration_since(write.1) < cache_duration {
         return Ok(Json(json!({ "models": write.0.clone() })));
+    }
+
+    // If we previously cached an error, check error TTL
+    if write.0.is_empty() && now.duration_since(write.1) < error_cache_duration {
+        return Err(StatusCode::BAD_GATEWAY);
     }
 
     let res = state.http_client
@@ -49,18 +54,19 @@ async fn list_models(
         .await
         .map_err(|e| {
             tracing::error!("Failed to fetch models: {}", e);
+            *write = (Vec::new(), now);
             StatusCode::BAD_GATEWAY
         })?;
 
     if !res.status().is_success() {
         tracing::error!("NIM models endpoint returned status: {}", res.status());
-        // Cache empty list with short TTL to avoid hammering NIM during outage
         *write = (Vec::new(), now);
         return Err(StatusCode::BAD_GATEWAY);
     }
 
     let data: serde_json::Value = res.json().await.map_err(|e| {
         tracing::error!("Failed to parse models response: {}", e);
+        *write = (Vec::new(), now);
         StatusCode::BAD_GATEWAY
     })?;
 
