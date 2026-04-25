@@ -7,7 +7,7 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tower_http::{
-    cors::CorsLayer,
+    cors::{AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
@@ -82,21 +82,39 @@ async fn run() -> anyhow::Result<()> {
         jwt_public_key,
     };
 
-    let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::AllowOrigin::mirror_request())
-        .allow_methods([
-            axum::http::Method::GET,
-            axum::http::Method::POST,
-            axum::http::Method::DELETE,
-            axum::http::Method::PATCH,
-        ])
-        .allow_headers([
-            axum::http::header::CONTENT_TYPE,
-            axum::http::header::COOKIE,
-            axum::http::header::AUTHORIZATION,
-            axum::http::header::HeaderName::from_static("x-csrf-token"),
-        ])
-        .allow_credentials(true);
+    let cors = if let Some(ref origin) = config.cors_origin {
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::exact(origin.parse()?))
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::DELETE,
+                axum::http::Method::PATCH,
+            ])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::COOKIE,
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::HeaderName::from_static("x-csrf-token"),
+            ])
+            .allow_credentials(true)
+    } else {
+        CorsLayer::new()
+            .allow_origin(AllowOrigin::mirror_request())
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::DELETE,
+                axum::http::Method::PATCH,
+            ])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::COOKIE,
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::HeaderName::from_static("x-csrf-token"),
+            ])
+            .allow_credentials(true)
+    };
 
     let api_routes = Router::new()
         .route("/health", get(health_check))

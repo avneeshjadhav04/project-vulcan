@@ -4,7 +4,12 @@ import remarkGfm from 'remark-gfm'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
-import { Send, Bot, User, Loader2, Copy, Check } from 'lucide-react'
+import { Send, Bot, User, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
+
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/csrf_token=([^;]+)/)
+  return match ? match[1] : null
+}
 
 interface MessageItem {
   id: string
@@ -167,6 +172,7 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
+  const [sendError, setSendError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -208,18 +214,27 @@ export default function ChatInterface({
     setInput('')
     setStreaming(true)
     setStreamedContent('')
+    setSendError('')
 
     const controller = new AbortController()
     abortControllerRef.current = controller
 
+    // Network timeout: abort after 120 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 120000)
+
     try {
       const res = await fetch(`/api/chats/${chatId}/message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken() || '',
+        },
         credentials: 'include',
         body: JSON.stringify({ content: text }),
         signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       if (!res.ok) {
         if (res.status === 401) {
@@ -264,8 +279,9 @@ export default function ChatInterface({
       setStreamedContent('')
       refetch()
     } catch (err: any) {
+      clearTimeout(timeoutId)
       if (err.name === 'AbortError') return
-      alert(err.message || 'Failed to send message')
+      setSendError(err.message || 'Failed to send message')
     } finally {
       setStreaming(false)
       abortControllerRef.current = null
@@ -325,8 +341,15 @@ export default function ChatInterface({
       </div>
 
       <div className="border-t border-border bg-background/80 px-6 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl gap-3">
-          <AutoResizeTextarea
+        <div className="mx-auto max-w-3xl">
+          {sendError && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {sendError}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <AutoResizeTextarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -347,5 +370,6 @@ export default function ChatInterface({
         </div>
       </div>
     </div>
+  </div>
   )
 }

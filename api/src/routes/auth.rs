@@ -2,22 +2,43 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::post,
+    routing::{get, post},
     Router,
 };
 
 use crate::{
-    auth::{create_token, hash_password, normalize_email, validate_password, verify_password, generate_csrf_token},
+    auth::{create_token, hash_password, normalize_email, validate_email, validate_password, verify_password, generate_csrf_token},
     middleware::AppState,
     models::{LoginRequest, SignupRequest, User},
 };
+
+fn build_cookie(name: &str, value: &str, max_age: i64, http_only: bool, secure: bool) -> Result<axum::http::HeaderValue, StatusCode> {
+    let mut parts = vec![
+        format!("{}={}", name, value),
+        "SameSite=Strict".to_string(),
+        "Path=/".to_string(),
+    ];
+    if http_only {
+        parts.push("HttpOnly".to_string());
+    }
+    if secure {
+        parts.push("Secure".to_string());
+    }
+    if max_age >= 0 {
+        parts.push(format!("Max-Age={}", max_age));
+    } else {
+        parts.push("Max-Age=0".to_string());
+    }
+    axum::http::HeaderValue::from_str(&parts.join("; "))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
-        .route("/auth/csrf", post(csrf_token))
+        .route("/auth/csrf", get(csrf_token))
 }
 
 async fn signup(
@@ -25,8 +46,8 @@ async fn signup(
     Json(req): Json<SignupRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
     let email = normalize_email(&req.email);
-    if email.is_empty() {
-        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Email is required" }))));
+    if let Err(e) = validate_email(&email) {
+        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e.to_string() }))));
     }
 
     if let Err(e) = validate_password(&req.password) {
@@ -88,19 +109,14 @@ async fn login(
         })?;
 
     let csrf = generate_csrf_token();
+    let secure = state.config.cookie_secure;
 
-    let auth_cookie = format!(
-        "token={}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400; Secure",
-        token
-    );
-    let csrf_cookie = format!(
-        "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400; Secure",
-        csrf
-    );
+    let auth_cookie = build_cookie("token", &token, 86400, true, secure)?;
+    let csrf_cookie = build_cookie("csrf_token", &csrf, 86400, false, secure)?;
 
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, auth_cookie.parse().unwrap());
-    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, auth_cookie);
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
 
     Ok((headers, Json(serde_json::json!({
         "id": user.id,
@@ -111,22 +127,21 @@ async fn login(
     }))).into_response())
 }
 
-async fn logout() -> (axum::http::HeaderMap, StatusCode) {
-    let auth_cookie = "token=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Secure";
-    let csrf_cookie = "csrf_token=; SameSite=Strict; Path=/; Max-Age=0; Secure";
+async fn logout(State(state): State<AppState>) -> Result<(axum::http::HeaderMap, StatusCode), StatusCode> {
+    let secure = state.config.cookie_secure;
+    let auth_cookie = build_cookie("token", "", -1, true, secure)?;
+    let csrf_cookie = build_cookie("csrf_token", "", -1, false, secure)?;
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, auth_cookie.parse().unwrap());
-    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
-    (headers, StatusCode::OK)
+    headers.insert(axum::http::header::SET_COOKIE, auth_cookie);
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
+    Ok((headers, StatusCode::OK))
 }
 
-async fn csrf_token() -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
+async fn csrf_token(State(state): State<AppState>) -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
     let csrf = generate_csrf_token();
-    let csrf_cookie = format!(
-        "csrf_token={}; SameSite=Strict; Path=/; Max-Age=86400; Secure",
-        csrf
-    );
+    let secure = state.config.cookie_secure;
+    let csrf_cookie = build_cookie("csrf_token", &csrf, 86400, false, secure)?;
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie.parse().unwrap());
+    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
     Ok((headers, Json(serde_json::json!({ "csrf_token": csrf }))))
 }

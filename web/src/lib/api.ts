@@ -22,12 +22,14 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      window.location.href = '/login'
-    }
-    return Promise.reject(error)
+// NOTE: We do NOT globally redirect on 401 here.
+// 401 handling is done in route guards and explicit auth checks.
+// This prevents unauthenticated users from being redirected away from the landing page.
+
+export async function fetchCsrfToken() {
+  try {
+    await api.get('/auth/csrf')
+  } catch {
+    // Silently ignore — CSRF is optional for read-only endpoints
   }
-)
+}

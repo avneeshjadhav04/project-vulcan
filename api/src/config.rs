@@ -11,6 +11,8 @@ pub struct Config {
     pub admin_default_email: String,
     pub admin_default_password: String,
     pub bind_addr: String,
+    pub cookie_secure: bool,
+    pub cors_origin: Option<String>,
 }
 
 impl Config {
@@ -53,6 +55,21 @@ impl Config {
                 "0.0.0.0:8080".to_string()
             });
 
+        let cookie_secure = env::var("COOKIE_SECURE")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or_else(|_| {
+                // Default to false for local dev, true for production if HTTPS is expected
+                bind_addr.contains(":443") || env::var("RENDER").is_ok()
+            });
+        println!("[CONFIG] Cookie Secure={}", cookie_secure);
+
+        let cors_origin = env::var("CORS_ORIGIN").ok();
+        if let Some(ref origin) = cors_origin {
+            println!("[CONFIG] CORS restricted to: {}", origin);
+        } else {
+            println!("[CONFIG] CORS using mirror_request (dev mode)");
+        }
+
         Ok(Self {
             database_url,
             jwt_secret_path,
@@ -65,6 +82,8 @@ impl Config {
             admin_default_password: env::var("ADMIN_DEFAULT_PASSWORD")
                 .context("ADMIN_DEFAULT_PASSWORD must be set")?,
             bind_addr,
+            cookie_secure,
+            cors_origin,
         })
     }
 }

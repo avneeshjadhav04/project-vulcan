@@ -77,6 +77,9 @@ async fn create_chat(
     if title.len() > MAX_TITLE_LENGTH {
         return Err(StatusCode::BAD_REQUEST);
     }
+    if req.model_id.is_empty() || req.model_id.len() > 255 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     let chat: Chat = sqlx::query_as(
         "INSERT INTO chats (user_id, title, model_id) VALUES (?1, ?2, ?3) RETURNING *"
@@ -284,11 +287,17 @@ async fn send_message(
     tokio::spawn(async move {
         let mut buffer = String::new();
         let mut full_content = String::new();
+        const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
 
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
                 Ok(bytes) => {
                     buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    if buffer.len() > MAX_BUFFER_SIZE {
+                        tracing::error!("SSE buffer exceeded max size, aborting stream");
+                        let _ = tx.send("[ERROR]".to_string()).await;
+                        break;
+                    }
                     while let Some(pos) = buffer.find("\n\n") {
                         let frame = buffer[..pos].to_string();
                         buffer = buffer[pos + 2..].to_string();
@@ -298,13 +307,15 @@ async fn send_message(
                                 let data = &line[6..];
                                 if data == "[DONE]" {
                                     let _ = tx.send("[DONE]".to_string()).await;
-                                    let _ = sqlx::query(
+                                    if let Err(e) = sqlx::query(
                                         "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
                                     )
                                     .bind(chat_id.clone())
                                     .bind(&full_content)
                                     .execute(&db)
-                                    .await;
+                                    .await {
+                                        tracing::error!("Failed to persist assistant message: {}", e);
+                                    }
                                     return;
                                 }
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
@@ -326,13 +337,15 @@ async fn send_message(
         }
 
         if !full_content.is_empty() {
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
             )
             .bind(chat_id)
             .bind(&full_content)
             .execute(&db)
-            .await;
+            .await {
+                tracing::error!("Failed to persist assistant message: {}", e);
+            }
         }
     });
 

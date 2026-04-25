@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
@@ -8,6 +8,7 @@ import Admin from './pages/Admin'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuthStore()
+  const location = useLocation()
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -15,7 +16,7 @@ function ProtectedRoute() {
       </div>
     )
   }
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
+  return isAuthenticated ? <Outlet /> : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
 }
 
 function AdminRoute() {

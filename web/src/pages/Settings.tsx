@@ -16,6 +16,7 @@ export default function Settings() {
   const handleSave = async () => {
     if (!apiKey.trim()) return
     setError('')
+    setSaved(false)
     setLoading(true)
     try {
       await api.post('/me/key', { api_key: apiKey })
