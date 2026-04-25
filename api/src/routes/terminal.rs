@@ -14,13 +14,13 @@ pub fn router() -> Router<AppState> {
 
 async fn terminal_handler(
     ws: WebSocketUpgrade,
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, claims.sub.clone()))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, claims.sub.clone()))
 }
 
-async fn handle_socket(mut socket: WebSocket, _user_id: String) {
+async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) {
     let sandbox_url = std::env::var("SANDBOX_URL").unwrap_or_else(|_| "ws://sandbox:8081/execute".to_string());
 
     let (sandbox_ws, _) = match tokio_tungstenite::connect_async(&sandbox_url).await {
@@ -39,11 +39,24 @@ async fn handle_socket(mut socket: WebSocket, _user_id: String) {
     let (mut sender, mut receiver) = socket.split();
     let (mut sandbox_sender, mut sandbox_receiver) = sandbox_ws.split();
 
-    let forward_to_sandbox = async {
+    let db = state.db.clone();
+    let forward_to_sandbox = async move {
         while let Some(Ok(msg)) = receiver.next().await {
             if let WsMessage::Text(text) = msg {
-                let payload = serde_json::json!({ "command": text });
-                if sandbox_sender.send(tokio_tungstenite::tungstenite::Message::Text(payload.to_string())).await.is_err() {
+                // Log command to DB for audit
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(cmd) = parsed["command"].as_str() {
+                        let _ = sqlx::query(
+                            "INSERT INTO terminal_sessions (user_id, command, status) VALUES (?1, ?2, 'running')"
+                        )
+                        .bind(&user_id)
+                        .bind(cmd)
+                        .execute(&db)
+                        .await;
+                    }
+                }
+                // Forward raw text (already JSON from client: {"command":"..."})
+                if sandbox_sender.send(tokio_tungstenite::tungstenite::Message::Text(text)).await.is_err() {
                     break;
                 }
             }

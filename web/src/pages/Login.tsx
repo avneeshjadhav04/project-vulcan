@@ -47,7 +47,8 @@ export default function Login() {
       }
       navigate('/chat')
     } catch (err) {
-      setError((err as any).response?.data?.message || 'Authentication failed')
+      const data = (err as any).response?.data
+      setError(data?.error || data?.message || 'Authentication failed')
     } finally {
       setLoading(false)
     }
