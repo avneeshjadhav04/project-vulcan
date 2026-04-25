@@ -40,7 +40,7 @@ export default function Terminal() {
     xtermRef.current = term
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${protocol}://${window.location.host}/ws/terminal`)
+    const ws = new WebSocket(`${protocol}://${window.location.host}/api/terminal`)
     wsRef.current = ws
 
     ws.onopen = () => {
