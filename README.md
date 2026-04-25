@@ -24,17 +24,45 @@ Full-stack SaaS personal AI assistant platform with a sleek Carbon Design System
 
 ## Deploy on Render
 
-1. Fork/clone this repo to your GitHub account
-2. In Render Dashboard, click **New +** → **Blueprint**
-3. Connect your GitHub repo
-4. Render will read `render.yaml` and create:
-   - A **Web Service** (`carbon-ai`) running the API + frontend
-   - A **PostgreSQL database** (`carbon-ai-db`)
-5. After deployment, visit your service URL and log in with:
-   - **Email**: `admin@local.local`
-   - **Password**: Check Render dashboard → Environment Variables → `ADMIN_DEFAULT_PASSWORD`
+### Important: Database First!
 
-> **Note**: The sandboxed terminal feature requires Docker Compose with privileged containers and is not available on Render. All other features (chat, model selection, BYOK, admin) work fully.
+Render deploys services and databases from `render.yaml` (Blueprint). However, the database may take 1-2 minutes to provision. If the web service starts before the database is ready, `DATABASE_URL` will be empty and the app will crash.
+
+**Recommended deployment process:**
+
+1. **Fork/clone this repo** to your GitHub account
+
+2. **In Render Dashboard, create the database first:**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click **New +** → **PostgreSQL**
+   - Name it: `carbon-ai-db`
+   - Region: Choose same region as your future web service
+   - Plan: Free
+   - Click **Create Database**
+   - Wait until status shows **Available** (usually 1-2 minutes)
+
+3. **Deploy the Blueprint:**
+   - Click **New +** → **Blueprint**
+   - Connect your GitHub repo (`avneeshjadhav04/ai-assistant`)
+   - Render will read `render.yaml` and create the web service
+   - The database `carbon-ai-db` should already exist and be auto-linked
+
+4. **After deployment:**
+   - Visit your service URL
+   - Login: `admin@local.local`
+   - Password: Check Render dashboard → `carbon-ai` service → Environment → `ADMIN_DEFAULT_PASSWORD`
+
+### Troubleshooting Render Deploy
+
+If you see `DATABASE_URL must be set` or `DATABASE_URL is empty`:
+1. Verify `carbon-ai-db` PostgreSQL database exists and is **Available**
+2. Go to your `carbon-ai` web service → Environment
+3. Check that `DATABASE_URL` is populated with a connection string
+4. If empty, manually copy the **Internal Connection String** from the database dashboard
+5. Add it as an environment variable: `DATABASE_URL=<internal_connection_string>`
+6. Click **Save Changes** and **Manual Deploy** → **Deploy latest commit**
+
+> **Note:** The sandboxed terminal requires privileged containers and only works with Docker Compose. All other features (AI chat, model selection, BYOK, admin dashboard) work fully on Render.
 
 ## Local Development (Docker Compose - Full Features)
 
@@ -81,6 +109,7 @@ cd web && npm install && npm run dev
 | `ADMIN_DEFAULT_PASSWORD` | Yes | Default admin password |
 | `NIM_BASE_URL` | No | NVIDIA NIM endpoint (default: https://integrate.api.nvidia.com/v1) |
 | `JWT_SECRET_PATH` | No | Path to RSA private key (auto-fallbacks to HS256) |
+| `PORT` | No | HTTP port (Render auto-sets this) |
 
 ## Architecture
 
