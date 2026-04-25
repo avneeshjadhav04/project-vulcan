@@ -4,7 +4,10 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
-use tower_http::cors::CorsLayer;
+use tower_http::{
+    cors::CorsLayer,
+    services::{ServeDir, ServeFile},
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
@@ -34,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
         db: db_pool,
     };
 
-    let app = Router::new()
+    let api_routes = Router::new()
         .route("/health", get(health_check))
         .merge(routes::auth::router())
         .merge(
@@ -56,6 +59,15 @@ async fn main() -> anyhow::Result<()> {
         )
         .layer(CorsLayer::permissive())
         .with_state(state);
+
+    // Serve static files if dist/ exists (production mode)
+    let app = if std::path::Path::new("./dist").exists() {
+        Router::new()
+            .nest("/api", api_routes)
+            .nest_service("/", ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")))
+    } else {
+        api_routes
+    };
 
     let addr: SocketAddr = config.bind_addr.parse()?;
     tracing::info!("API listening on {}", addr);
