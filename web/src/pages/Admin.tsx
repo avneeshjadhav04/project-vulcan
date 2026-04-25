@@ -52,7 +52,7 @@ export default function Admin() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex items-center gap-4 border-b border-border px-6 py-4">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/chat')}
           className="flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
         >
           <ArrowLeft className="h-4 w-4" />

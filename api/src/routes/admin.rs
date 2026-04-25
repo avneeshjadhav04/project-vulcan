@@ -6,8 +6,6 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use uuid::Uuid;
-
 use crate::{
     middleware::AppState,
     models::{TerminalSession, User},
@@ -50,7 +48,7 @@ async fn list_users(
 
 async fn delete_user(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)

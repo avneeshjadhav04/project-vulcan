@@ -1,0 +1,26 @@
+========================================
+  Carbon AI Assistant - API Starting
+========================================
+[INIT] Loading configuration...
+[CONFIG] Loading environment variables...
+[CONFIG] MASTER_KEY loaded
+[CONFIG] DATABASE_URL loaded from environment
+[CONFIG] JWT_SECRET_PATH not set, will use HS256 fallback
+[CONFIG] Using default BIND_ADDR=0.0.0.0:8080
+[INIT] Configuration loaded
+[INIT] Initializing database...
+[DB] Attempting to connect to SQLite database at: sqlite:./carbon_ai.db
+[DB] Failed to open at configured location: error returned from database: (code: 14) unable to open database file
+[DB] Trying fallback location: sqlite:carbon_ai.db
+[DB] Creating directory: 
+[DB] Fallback 1 failed: error returned from database: (code: 14) unable to open database file
+[DB] Trying in-memory database (all data will be lost on restart)
+[DB] Connected to in-memory database
+[DB] Running migrations...
+[DB] Migrations complete
+[DB] Created default admin user: admin@local.local
+[INIT] Database ready
+[INIT] Serving static frontend from ./dist
+[INIT] Binding to 0.0.0.0:8080
+[INIT] Server starting...
+2026-04-25T18:10:06.245343Z ERROR api::routes::auth: Login query error: error occurred while decoding column "id": invalid length: expected 16 bytes, found 32

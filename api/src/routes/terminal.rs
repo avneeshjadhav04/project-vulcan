@@ -17,10 +17,10 @@ async fn terminal_handler(
     State(_state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, claims.sub))
+    ws.on_upgrade(move |socket| handle_socket(socket, claims.sub.clone()))
 }
 
-async fn handle_socket(mut socket: WebSocket, _user_id: uuid::Uuid) {
+async fn handle_socket(mut socket: WebSocket, _user_id: String) {
     let sandbox_url = std::env::var("SANDBOX_URL").unwrap_or_else(|_| "ws://sandbox:8081/execute".to_string());
 
     let (sandbox_ws, _) = match tokio_tungstenite::connect_async(&sandbox_url).await {

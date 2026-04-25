@@ -9,8 +9,6 @@ use futures::stream::StreamExt;
 use serde_json::json;
 use std::convert::Infallible;
 use tokio::sync::mpsc;
-use uuid::Uuid;
-
 use crate::{
     auth::decrypt_key,
     middleware::AppState,
@@ -31,7 +29,7 @@ async fn get_me(
     claims: axum::Extension<Claims>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
-        .bind(claims.sub)
+        .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -54,7 +52,7 @@ async fn update_nim_key(
 
     sqlx::query("UPDATE users SET encrypted_nim_key = $1 WHERE id = $2")
         .bind(&encrypted)
-        .bind(claims.sub)
+        .bind(claims.sub.clone())
         .execute(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -72,7 +70,7 @@ async fn create_chat(
     let chat: Chat = sqlx::query_as(
         "INSERT INTO chats (user_id, title, model_id) VALUES ($1, $2, $3) RETURNING *"
     )
-    .bind(claims.sub)
+    .bind(claims.sub.clone())
     .bind(&title)
     .bind(&req.model_id)
     .fetch_one(&state.db)
@@ -92,7 +90,7 @@ async fn list_chats(
     let chats: Vec<Chat> = sqlx::query_as(
         "SELECT * FROM chats WHERE user_id = $1 ORDER BY updated_at DESC"
     )
-    .bind(claims.sub)
+    .bind(claims.sub.clone())
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -103,11 +101,11 @@ async fn list_chats(
 async fn get_chat(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(claims.sub)
+        .bind(id.clone())
+        .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -115,7 +113,7 @@ async fn get_chat(
     let messages: Vec<Message> = sqlx::query_as(
         "SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC"
     )
-    .bind(id)
+    .bind(id.clone())
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -129,11 +127,11 @@ async fn get_chat(
 async fn send_message(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<String>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = $1")
-        .bind(claims.sub)
+        .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -144,14 +142,14 @@ async fn send_message(
     };
 
     let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(claims.sub)
+        .bind(id.clone())
+        .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES ($1, 'user', $2)")
-        .bind(id)
+        .bind(id.clone())
         .bind(&req.content)
         .execute(&state.db)
         .await
@@ -160,7 +158,7 @@ async fn send_message(
     let history: Vec<Message> = sqlx::query_as(
         "SELECT * FROM messages WHERE chat_id = $1 ORDER BY created_at ASC"
     )
-    .bind(id)
+    .bind(id.clone())
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -223,7 +221,7 @@ async fn send_message(
                                     let _ = sqlx::query(
                                         "INSERT INTO messages (chat_id, role, content) VALUES ($1, 'assistant', $2)"
                                     )
-                                    .bind(chat_id)
+                                    .bind(chat_id.clone())
                                     .bind(&full_content)
                                     .execute(&db)
                                     .await;
