@@ -71,6 +71,12 @@ pub async fn csrf_middleware(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    let path = request.uri().path();
+    // Skip CSRF for login and signup - users don't have a CSRF token yet
+    if path == "/auth/login" || path == "/auth/signup" {
+        return Ok(next.run(request).await);
+    }
+
     let method = request.method().clone();
     // Only check CSRF for state-changing methods
     if method != axum::http::Method::GET && method != axum::http::Method::HEAD && method != axum::http::Method::OPTIONS {

@@ -9,7 +9,7 @@ use axum::{
 use crate::{
     auth::{create_token, hash_password, normalize_email, validate_email, validate_password, verify_password, generate_csrf_token},
     middleware::AppState,
-    models::{LoginRequest, SignupRequest, User},
+    models::{Claims, LoginRequest, SignupRequest, User},
 };
 
 fn build_cookie(name: &str, value: &str, max_age: i64, http_only: bool, secure: bool) -> Result<axum::http::HeaderValue, StatusCode> {
@@ -144,4 +144,30 @@ async fn csrf_token(State(state): State<AppState>) -> Result<(axum::http::Header
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
     Ok((headers, Json(serde_json::json!({ "csrf_token": csrf }))))
+}
+
+pub async fn me(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Me query error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let user = match user {
+        Some(u) => u,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    Ok(Json(serde_json::json!({
+        "id": user.id,
+        "email": user.email,
+        "role": user.role,
+        "has_nim_key": user.encrypted_nim_key.is_some(),
+    })))
 }
