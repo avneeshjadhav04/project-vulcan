@@ -16,6 +16,9 @@ import {
   Zap,
   ChevronDown,
   StopCircle,
+  Terminal,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react'
 
 function getCsrfToken(): string | null {
@@ -313,13 +316,79 @@ function TypingIndicator() {
   )
 }
 
+/* ─── Tool Execution Card ─── */
+function ToolExecutionCard({ tool }: { tool: { command: string; stdout: string; stderr: string; status: string } }) {
+  const [expanded, setExpanded] = useState(true)
+  const isSuccess = tool.status === 'success'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="my-3 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]"
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between px-4 py-2.5"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isSuccess ? 'bg-[#24a148]/10' : 'bg-[#da1e28]/10'}`}>
+            {isSuccess ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-[#24a148]" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5 text-[#da1e28]" />
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Terminal className="h-3.5 w-3.5 text-[#525252]" />
+            <span className="truncate font-mono text-xs text-[#c6c6c6]">{tool.command}</span>
+          </div>
+        </div>
+        <span className={`text-[10px] font-semibold uppercase ${isSuccess ? 'text-[#24a148]' : 'text-[#da1e28]'}`}>
+          {tool.status}
+        </span>
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-[#2a2a2a]">
+              {tool.stdout && (
+                <div className="px-4 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#525252]">Output</p>
+                  <pre className="max-h-40 overflow-auto rounded-lg bg-[#0f0f0f] p-3 font-mono text-xs text-[#c6c6c6]">
+                    {tool.stdout}
+                  </pre>
+                </div>
+              )}
+              {tool.stderr && (
+                <div className="px-4 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#525252]">Stderr</p>
+                  <pre className="max-h-40 overflow-auto rounded-lg bg-[#0f0f0f] p-3 font-mono text-xs text-[#da1e28]">
+                    {tool.stderr}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 /* ─── Empty State ─── */
 function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
   const suggestions = [
-    { icon: '✨', text: 'Explain quantum computing in simple terms' },
+    { icon: '🖥️', text: 'List all files in the current directory' },
     { icon: '🐍', text: 'Write a Python script to fetch weather data' },
-    { icon: '🎨', text: 'Help me design a modern landing page' },
-    { icon: '⚡', text: 'Optimize this SQL query for better performance' },
+    { icon: '⚡', text: 'Check what version of Node.js is installed' },
+    { icon: '🔍', text: 'Find all .log files and show their sizes' },
   ]
 
   return (
@@ -387,6 +456,7 @@ export default function ChatInterface({
   const [streamedContent, setStreamedContent] = useState('')
   const [sendError, setSendError] = useState('')
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -406,6 +476,7 @@ export default function ChatInterface({
     setStreaming(false)
     setStreamedContent('')
     setSendError('')
+    setToolExecution(null)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -494,32 +565,68 @@ export default function ChatInterface({
       const reader = res.body?.getReader()
       if (!reader) return
       const decoder = new TextDecoder()
+      let buffer = ''
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         if (controller.signal.aborted) break
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            if (data === '[DONE]') {
-              setStreamedContent('')
-              refetch()
-              setStreaming(false)
-              return
+        buffer += decoder.decode(value, { stream: true })
+
+        // Process complete SSE events from buffer
+        const events = buffer.split('\n\n')
+        buffer = events.pop() || '' // Keep incomplete event in buffer
+
+        for (const event of events) {
+          for (const line of event.split('\n')) {
+            if (!line.startsWith('data: ')) continue
+            const raw = line.slice(6)
+            if (!raw.trim()) continue
+
+            try {
+              const msg = JSON.parse(raw)
+              if (msg.t === 'done') {
+                setStreamedContent('')
+                setToolExecution(null)
+                refetch()
+                setStreaming(false)
+                return
+              }
+              if (msg.t === 'error') {
+                setStreaming(false)
+                return
+              }
+              if (msg.t === 'tool') {
+                setToolExecution({
+                  command: msg.command || '',
+                  stdout: msg.stdout || '',
+                  stderr: msg.stderr || '',
+                  status: msg.status || 'error',
+                })
+              }
+              if (msg.t === 'text' && msg.d) {
+                setStreamedContent((prev) => prev + msg.d)
+              }
+            } catch {
+              // Fallback: treat as raw text (legacy compatibility)
+              if (raw === '[DONE]') {
+                setStreamedContent('')
+                refetch()
+                setStreaming(false)
+                return
+              }
+              if (raw === '[ERROR]') {
+                setStreaming(false)
+                return
+              }
+              setStreamedContent((prev) => prev + raw)
             }
-            if (data === '[ERROR]') {
-              setStreaming(false)
-              return
-            }
-            setStreamedContent((prev) => prev + data)
           }
         }
       }
 
       setStreamedContent('')
+      setToolExecution(null)
       refetch()
     } catch (err: any) {
       clearTimeout(timeoutId)
@@ -604,12 +711,24 @@ export default function ChatInterface({
               ))}
 
               <AnimatePresence>
+                {toolExecution && streaming && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                  >
+                    <ToolExecutionCard tool={toolExecution} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
                 {streaming && streamedContent && (
                   <StreamingMessage content={streamedContent} />
                 )}
               </AnimatePresence>
 
-              {streaming && !streamedContent && <TypingIndicator />}
+              {streaming && !streamedContent && !toolExecution && <TypingIndicator />}
             </>
           )}
           <div ref={messagesEndRef} />
