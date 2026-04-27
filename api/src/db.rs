@@ -6,12 +6,28 @@ use std::path::Path;
 use crate::config::Config;
 use crate::models::User;
 
-pub async fn init_db(config: &Config) -> Result<SqlitePool> {
-    let database_url = if config.database_url.starts_with("sqlite:") {
-        config.database_url.clone()
+fn normalize_sqlite_url(url: &str) -> String {
+    // sqlx expects sqlite:///absolute/path or sqlite:relative/path
+    if url.starts_with("sqlite://") {
+        url.to_string()
+    } else if url.starts_with("sqlite:") {
+        // Convert legacy single-slash format to proper sqlx format
+        let path = &url["sqlite:".len()..];
+        if path.starts_with("/") || path.starts_with("./") {
+            // Absolute or explicit relative path: needs triple slash
+            format!("sqlite://{}", path)
+        } else {
+            // Plain relative path
+            format!("sqlite:{}", path)
+        }
     } else {
-        format!("sqlite:{}", config.database_url)
-    };
+        // No prefix: treat as plain relative path
+        format!("sqlite:{}", url)
+    }
+}
+
+pub async fn init_db(config: &Config) -> Result<SqlitePool> {
+    let database_url = normalize_sqlite_url(&config.database_url);
 
     println!("[DB] Attempting to connect to SQLite database at: {}", database_url);
 
@@ -28,7 +44,7 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
     }
 
     // Fallback: Try in current working directory (ephemeral, lost on redeploy)
-    let fallback = "sqlite:./carbon_ai.db".to_string();
+    let fallback = "sqlite:carbon_ai.db".to_string();
     println!("[DB] Trying fallback location: {}", fallback);
     match try_connect(&fallback).await {
         Ok(pool) => {
@@ -45,14 +61,21 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
 }
 
 async fn try_connect(database_url: &str) -> Result<SqlitePool> {
-    if let Some(path) = database_url.strip_prefix("sqlite:") {
+    let file_path = database_url.strip_prefix("sqlite://")
+        .or_else(|| database_url.strip_prefix("sqlite:"));
+
+    if let Some(path) = file_path {
         if path != ":memory:" && !path.is_empty() {
             let path_obj = Path::new(path);
 
             // Log resolved absolute path for debugging
-            let abs_path = std::env::current_dir()
-                .unwrap_or_default()
-                .join(path_obj);
+            let abs_path = if path.starts_with("/") {
+                path_obj.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join(path_obj)
+            };
             println!("[DB] Resolved absolute path: {}", abs_path.display());
 
             let parent = path_obj.parent();
