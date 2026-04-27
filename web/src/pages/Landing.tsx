@@ -11,7 +11,6 @@ import {
   Globe,
   Cpu,
   ArrowRight,
-  Github,
 } from 'lucide-react'
 
 function SkipToContent() {
@@ -344,17 +343,8 @@ function Footer() {
           <span className="text-sm font-semibold text-white">Carbon AI</span>
         </div>
         <p className="text-sm text-[#525252]">
-          Built with Rust, React, and NVIDIA NIM. Open source.
+          Built with Rust, React, and NVIDIA NIM.
         </p>
-        <a
-          href="https://github.com/avneeshjadhav04/ai-assistant"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 text-sm text-[#525252] transition-colors hover:text-white"
-        >
-          <Github className="h-4 w-4" />
-          GitHub
-        </a>
       </div>
     </footer>
   )

@@ -184,3 +184,5 @@ cd web && npm install && npm run dev
 - **Auth**: JWT via HttpOnly, SameSite=Strict cookies
 - **Terminal**: nsjail sandbox (no network, RO filesystem, resource limits)
 - **JWT Fallback**: HS256 when RSA keys not available
+
+
