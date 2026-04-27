@@ -116,16 +116,11 @@ async fn run() -> anyhow::Result<()> {
             .allow_credentials(true)
     };
 
-    let me_route = Router::new()
-        .route("/me", get(routes::auth::me))
-        .layer(from_fn_with_state(state.clone(), auth_middleware));
-
     let api_routes = Router::new()
         .route("/health", get(health_check))
         .route("/live", get(live_check))
         .route("/ready", get(ready_check))
         .merge(routes::auth::router())
-        .merge(me_route)
         .merge(
             routes::chat::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
