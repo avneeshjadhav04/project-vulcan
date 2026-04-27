@@ -106,7 +106,7 @@ export default function Sidebar({
             exit={{ opacity: 0, y: -8, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex items-center gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+            <div className="flex items-center gap-2 rounded-xl border border-[#da1e28]/30 bg-[#da1e28]/10 px-3 py-2 text-xs text-[#da1e28]">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {error}
             </div>
@@ -114,30 +114,34 @@ export default function Sidebar({
         )}
       </AnimatePresence>
 
-      <button
+      {/* New Chat Button */}
+      <motion.button
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.98 }}
         onClick={() => createChat.mutate(selectedModel)}
         disabled={createChat.isPending}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-background py-2.5 text-sm font-medium text-text-primary transition-all hover:border-accent/50 hover:bg-surface-hover disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#2a2a2a] bg-gradient-to-r from-[#1a1a1a] to-[#1a1a1a] py-2.5 text-sm font-medium text-white transition-all hover:border-[#0f62fe]/50 hover:shadow-lg hover:shadow-[#0f62fe]/10 disabled:opacity-50"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="h-4 w-4 text-[#0f62fe]" />
         New Chat
-      </button>
+      </motion.button>
 
+      {/* Chat List */}
       <div className="space-y-0.5">
         {chats?.map((chat, index) => (
           <motion.div
             key={chat.id}
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.05 }}
+            transition={{ delay: index * 0.03 }}
             onClick={() => navigate(`/chat/${chat.id}`)}
-            className={`group flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-all ${
+            className={`group flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-all ${
               activeChatId === chat.id
-                ? 'bg-accent/10 text-text-primary'
-                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                ? 'bg-gradient-to-r from-[#0f62fe]/15 to-transparent border border-[#0f62fe]/20'
+                : 'text-[#525252] hover:bg-[#1a1a1a] hover:text-white'
             }`}
           >
-            <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${activeChatId === chat.id ? 'text-accent' : ''}`} />
+            <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${activeChatId === chat.id ? 'text-[#0f62fe]' : ''}`} />
             <div className="min-w-0 flex-1">
               {editingId === chat.id ? (
                 <input
@@ -150,12 +154,14 @@ export default function Sidebar({
                   }}
                   onBlur={submitRename}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-full bg-transparent text-xs font-medium text-text-primary outline-none"
+                  className="w-full bg-transparent text-xs font-medium text-white outline-none"
                 />
               ) : (
                 <>
-                  <p className="truncate text-xs font-medium">{chat.title}</p>
-                  <p className="flex items-center gap-1 truncate text-[10px] text-text-secondary/70">
+                  <p className={`truncate text-xs font-medium ${activeChatId === chat.id ? 'text-white' : ''}`}>
+                    {chat.title}
+                  </p>
+                  <p className="flex items-center gap-1 truncate text-[10px] text-[#525252]">
                     <Clock className="h-2.5 w-2.5" />
                     {new Date(chat.updated_at).toLocaleDateString(undefined, {
                       month: 'short',
@@ -165,13 +171,13 @@ export default function Sidebar({
                 </>
               )}
             </div>
-            <div className="flex shrink-0 opacity-0 gap-0.5 group-hover:opacity-100">
+            <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   startEdit(chat)
                 }}
-                className="rounded p-1 text-text-secondary transition-all hover:bg-accent/10 hover:text-accent"
+                className="rounded-lg p-1.5 text-[#525252] transition-all hover:bg-[#0f62fe]/10 hover:text-[#0f62fe]"
                 title="Rename"
               >
                 <Pencil className="h-3 w-3" />
@@ -183,7 +189,7 @@ export default function Sidebar({
                     deleteChat.mutate(chat.id)
                   }
                 }}
-                className="rounded p-1 text-text-secondary transition-all hover:bg-error/10 hover:text-error"
+                className="rounded-lg p-1.5 text-[#525252] transition-all hover:bg-[#da1e28]/10 hover:text-[#da1e28]"
                 title="Delete"
               >
                 <Trash2 className="h-3 w-3" />
@@ -193,9 +199,10 @@ export default function Sidebar({
         ))}
 
         {(!chats || chats.length === 0) && (
-          <div className="py-8 text-center text-xs text-text-secondary">
-            <MessageSquare className="mx-auto mb-2 h-8 w-8 opacity-20" />
-            No chats yet
+          <div className="py-8 text-center">
+            <MessageSquare className="mx-auto mb-3 h-10 w-10 text-[#2a2a2a]" />
+            <p className="text-xs text-[#525252]">No chats yet</p>
+            <p className="mt-1 text-[10px] text-[#525252]/70">Click "New Chat" to start</p>
           </div>
         )}
       </div>
