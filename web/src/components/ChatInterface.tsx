@@ -1,10 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
-import { Send, Bot, User, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
+import {
+  Send,
+  Bot,
+  User,
+  Copy,
+  Check,
+  AlertCircle,
+  RotateCcw,
+  Sparkles,
+  Zap,
+  ChevronDown,
+  StopCircle,
+} from 'lucide-react'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -18,150 +30,351 @@ interface MessageItem {
   created_at: string
 }
 
-function AutoResizeTextarea({
-  value,
-  onChange,
-  onKeyDown,
-  placeholder,
-}: {
-  value: string
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
-  placeholder: string
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.style.height = 'auto'
-      ref.current.style.height = `${Math.min(ref.current.scrollHeight, 128)}px`
-    }
-  }, [value])
-
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      onChange={onChange}
-      onKeyDown={onKeyDown}
-      placeholder={placeholder}
-      rows={1}
-      className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-primary outline-none transition-all focus:border-accent focus:ring-1 focus:ring-accent/50"
-    />
-  )
-}
-
+/* ─── Code Block ─── */
 function CodeBlock({ children, className }: { children: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   const language = className?.replace('language-', '') || 'text'
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(children)
-      .then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      })
-      .catch(() => {
-        setCopied(false)
-      })
+    navigator.clipboard.writeText(children).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   return (
-    <div className="my-3 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center justify-between border-b border-border bg-background px-3 py-1.5">
-        <span className="text-xs font-mono text-text-secondary">{language}</span>
+    <div className="my-4 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] shadow-lg">
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2">
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1.5">
+            <div className="h-2.5 w-2.5 rounded-full bg-[#da1e28]" />
+            <div className="h-2.5 w-2.5 rounded-full bg-[#f1c21b]" />
+            <div className="h-2.5 w-2.5 rounded-full bg-[#24a148]" />
+          </div>
+          <span className="ml-2 text-xs font-mono font-medium text-[#525252]">{language}</span>
+        </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
         >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          {copied ? <Check className="h-3 w-3 text-[#24a148]" /> : <Copy className="h-3 w-3" />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="overflow-x-auto bg-background p-3">
-        <code className="font-mono text-sm text-text-primary">{children}</code>
+      <pre className="overflow-x-auto p-4">
+        <code className="font-mono text-sm leading-relaxed text-[#c6c6c6]">{children}</code>
       </pre>
     </div>
   )
 }
 
-function MessageBubble({ msg }: { msg: MessageItem }) {
+/* ─── Inline Code ─── */
+function InlineCode({ children }: { children: React.ReactNode }) {
+  return (
+    <code className="rounded-md bg-[#1a1a1a] px-1.5 py-0.5 font-mono text-sm text-[#78a9ff] border border-[#2a2a2a]">
+      {children}
+    </code>
+  )
+}
+
+/* ─── Message Actions ─── */
+function MessageActions({ content, onRegenerate }: { content: string; onRegenerate?: () => void }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <button
+        onClick={handleCopy}
+        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+        title="Copy response"
+      >
+        {copied ? <Check className="h-3 w-3 text-[#24a148]" /> : <Copy className="h-3 w-3" />}
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+      {onRegenerate && (
+        <button
+          onClick={onRegenerate}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+          title="Regenerate response"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Regenerate
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* ─── Time Ago ─── */
+function timeAgo(date: string): string {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
+  if (seconds < 60) return 'Just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+/* ─── Message Bubble ─── */
+function MessageBubble({ msg, onRegenerate }: { msg: MessageItem; onRegenerate?: () => void }) {
   const isAssistant = msg.role === 'assistant'
+  const isUser = msg.role === 'user'
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className={`flex gap-4 py-4 ${isAssistant ? 'bg-surface/30' : ''}`}
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className={`group flex gap-4 py-5 ${isUser ? 'flex-row-reverse' : ''}`}
     >
-      <div className="flex shrink-0 flex-col items-center">
-        <div
-          className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-            isAssistant ? 'bg-accent/10' : 'bg-surface'
+      {/* Avatar */}
+      <div className="flex shrink-0 flex-col items-center pt-1">
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          className={`flex h-9 w-9 items-center justify-center rounded-xl shadow-lg ${
+            isAssistant
+              ? 'bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-[#0f62fe]/20'
+              : 'bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] border border-[#2a2a2a]'
           }`}
         >
           {isAssistant ? (
-            <Bot className="h-4 w-4 text-accent" />
+            <Sparkles className="h-4 w-4 text-white" />
           ) : (
-            <User className="h-4 w-4 text-text-secondary" />
+            <User className="h-4 w-4 text-[#c6c6c6]" />
           )}
+        </motion.div>
+      </div>
+
+      {/* Content */}
+      <div className={`min-w-0 max-w-[85%] flex-1 ${isUser ? 'text-right' : ''}`}>
+        <div className={`mb-1.5 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
+          <span className="text-xs font-semibold text-white">
+            {isAssistant ? 'Carbon AI' : 'You'}
+          </span>
+          <span className="text-[10px] text-[#525252]">{timeAgo(msg.created_at)}</span>
+        </div>
+
+        <div
+          className={`inline-block rounded-2xl px-5 py-3.5 text-left shadow-sm ${
+            isUser
+              ? 'bg-gradient-to-br from-[#0f62fe] to-[#0353e9] text-white'
+              : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#f4f4f4]'
+          }`}
+        >
+          {isAssistant ? (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ children, className }) {
+                    const isInline = !className
+                    if (isInline) {
+                      return <InlineCode>{children}</InlineCode>
+                    }
+                    return <CodeBlock className={className}>{String(children)}</CodeBlock>
+                  },
+                  p({ children }) {
+                    return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
+                  },
+                  ul({ children }) {
+                    return <ul className="mb-3 list-disc pl-5 space-y-1">{children}</ul>
+                  },
+                  ol({ children }) {
+                    return <ol className="mb-3 list-decimal pl-5 space-y-1">{children}</ol>
+                  },
+                  li({ children }) {
+                    return <li className="leading-relaxed">{children}</li>
+                  },
+                  h1({ children }) {
+                    return <h1 className="mb-3 text-lg font-bold text-white">{children}</h1>
+                  },
+                  h2({ children }) {
+                    return <h2 className="mb-2 text-base font-bold text-white">{children}</h2>
+                  },
+                  h3({ children }) {
+                    return <h3 className="mb-2 text-sm font-bold text-white">{children}</h3>
+                  },
+                  blockquote({ children }) {
+                    return (
+                      <blockquote className="mb-3 border-l-2 border-[#0f62fe] pl-4 italic text-[#a8a8a8]">
+                        {children}
+                      </blockquote>
+                    )
+                  },
+                  a({ children, href }) {
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#78a9ff] underline underline-offset-2 transition-colors hover:text-[#a8c8ff]"
+                      >
+                        {children}
+                      </a>
+                    )
+                  },
+                  table({ children }) {
+                    return (
+                      <div className="mb-3 overflow-x-auto rounded-lg border border-[#2a2a2a]">
+                        <table className="w-full text-sm">{children}</table>
+                      </div>
+                    )
+                  },
+                  thead({ children }) {
+                    return <thead className="bg-[#1a1a1a]">{children}</thead>
+                  },
+                  th({ children }) {
+                    return <th className="border-b border-[#2a2a2a] px-3 py-2 text-left text-xs font-semibold text-[#c6c6c6]">{children}</th>
+                  },
+                  td({ children }) {
+                    return <td className="border-b border-[#2a2a2a] px-3 py-2 text-[#c6c6c6]">{children}</td>
+                  },
+                  hr() {
+                    return <hr className="my-4 border-[#2a2a2a]" />
+                  },
+                }}
+              >
+                {msg.content}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+          )}
+        </div>
+
+        {isAssistant && <MessageActions content={msg.content} onRegenerate={onRegenerate} />}
+      </div>
+    </motion.div>
+  )
+}
+
+/* ─── Streaming Indicator ─── */
+function StreamingMessage({ content }: { content: string }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex gap-4 py-5"
+    >
+      <div className="flex shrink-0 flex-col items-center pt-1">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-lg shadow-[#0f62fe]/20">
+          <Sparkles className="h-4 w-4 text-white" />
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-xs font-medium text-text-primary">
-            {isAssistant ? 'Carbon AI' : 'You'}
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className="text-xs font-semibold text-white">Carbon AI</span>
+          <span className="flex items-center gap-1 text-[10px] text-[#0f62fe]">
+            <Zap className="h-3 w-3 animate-pulse" />
+            Generating...
           </span>
         </div>
-        {isAssistant ? (
-          <div className="prose prose-invert prose-sm max-w-none text-text-primary">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ children, className, node, ...rest }) {
-                  const isInline = !className
-                  if (isInline) {
-                    return (
-                      <code className="rounded bg-surface px-1 py-0.5 font-mono text-sm text-text-primary" {...rest}>
-                        {children}
-                      </code>
-                    )
-                  }
-                  return <CodeBlock className={className}>{String(children)}</CodeBlock>
-                },
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <p className="whitespace-pre-wrap text-sm text-text-primary">{msg.content}</p>
-        )}
+        <div className="inline-block rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] px-5 py-3.5 shadow-sm">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#f4f4f4]">
+            {content}
+            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[#0f62fe] align-middle" />
+          </p>
+        </div>
       </div>
     </motion.div>
   )
 }
 
+/* ─── Typing Indicator ─── */
 function TypingIndicator() {
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex gap-4 py-4"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex gap-4 py-5"
     >
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-        <Bot className="h-4 w-4 text-accent" />
+      <div className="flex shrink-0 flex-col items-center pt-1">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-lg shadow-[#0f62fe]/20">
+          <Sparkles className="h-4 w-4 text-white" />
+        </div>
       </div>
-      <div className="flex items-center gap-1">
-        <div className="h-2 w-2 animate-bounce rounded-full bg-accent" style={{ animationDelay: '0ms' }} />
-        <div className="h-2 w-2 animate-bounce rounded-full bg-accent" style={{ animationDelay: '150ms' }} />
-        <div className="h-2 w-2 animate-bounce rounded-full bg-accent" style={{ animationDelay: '300ms' }} />
+      <div className="flex items-center">
+        <div className="flex items-center gap-1.5 rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3">
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '0ms' }} />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '150ms' }} />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '300ms' }} />
+        </div>
       </div>
     </motion.div>
   )
 }
 
+/* ─── Empty State ─── */
+function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
+  const suggestions = [
+    { icon: '✨', text: 'Explain quantum computing in simple terms' },
+    { icon: '🐍', text: 'Write a Python script to fetch weather data' },
+    { icon: '🎨', text: 'Help me design a modern landing page' },
+    { icon: '⚡', text: 'Optimize this SQL query for better performance' },
+  ]
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6 }}
+      className="flex flex-1 flex-col items-center justify-center px-6"
+    >
+      <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10 shadow-2xl shadow-[#0f62fe]/10">
+        <Bot className="h-10 w-10 text-[#0f62fe]" />
+      </div>
+      <h2 className="mb-2 text-2xl font-bold text-white">How can I help you today?</h2>
+      <p className="mb-8 max-w-md text-center text-sm text-[#525252]">
+        I can write code, analyze data, answer questions, help with creative projects, and much more.
+      </p>
+      <div className="grid w-full max-w-lg gap-3 sm:grid-cols-2">
+        {suggestions.map((s, i) => (
+          <motion.button
+            key={i}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + i * 0.1 }}
+            onClick={() => onSuggestion(s.text)}
+            className="flex items-start gap-3 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] p-4 text-left transition-all hover:border-[#0f62fe]/50 hover:bg-[#1a1a1a]/80 hover:shadow-lg hover:shadow-[#0f62fe]/5"
+          >
+            <span className="text-lg">{s.icon}</span>
+            <span className="text-sm text-[#c6c6c6]">{s.text}</span>
+          </motion.button>
+        ))}
+      </div>
+    </motion.div>
+  )
+}
+
+/* ─── Scroll to Bottom Button ─── */
+function ScrollToBottom({ onClick, visible }: { onClick: () => void; visible: boolean }) {
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.button
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          onClick={onClick}
+          className="absolute bottom-24 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#525252] shadow-lg transition-all hover:border-[#0f62fe]/50 hover:text-white"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </motion.button>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/* ─── Main Component ─── */
 export default function ChatInterface({
   chatId,
   selectedModel,
@@ -173,8 +386,11 @@ export default function ChatInterface({
   const [streaming, setStreaming] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
   const [sendError, setSendError] = useState('')
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: chatData, refetch, isError } = useQuery({
     queryKey: ['chat', chatId],
@@ -189,6 +405,7 @@ export default function ChatInterface({
     setInput('')
     setStreaming(false)
     setStreamedContent('')
+    setSendError('')
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -204,22 +421,48 @@ export default function ChatInterface({
     }
   }, [])
 
+  // Smart auto-scroll: only scroll if user is near bottom
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100
+    setShowScrollBtn(!nearBottom)
+  }, [])
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = scrollContainerRef.current
+    if (!container) return
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
+    if (nearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [chatData?.messages, streamedContent])
 
-  const handleSend = async () => {
-    if (!input.trim() || streaming) return
-    const text = input.trim()
-    setInput('')
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+    }
+  }, [input])
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const handleSend = async (textOverride?: string) => {
+    const text = textOverride || input.trim()
+    if (!text || streaming) return
+
+    if (!textOverride) setInput('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
 
     const controller = new AbortController()
     abortControllerRef.current = controller
-
-    // Network timeout: abort after 120 seconds
     const timeoutId = setTimeout(() => controller.abort(), 120000)
 
     try {
@@ -288,88 +531,150 @@ export default function ChatInterface({
     }
   }
 
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    setStreaming(false)
+    setStreamedContent('')
+  }
+
+  const handleRegenerate = () => {
+    const lastUserMessage = messages.slice().reverse().find((m) => m.role === 'user')
+    if (lastUserMessage) {
+      handleSend(lastUserMessage.content)
+    }
+  }
+
   const messages = chatData?.messages || []
 
   if (isError) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center text-text-secondary">
-        <p className="mb-4 text-sm">Chat not found or access denied.</p>
+      <div className="flex flex-1 flex-col items-center justify-center text-[#525252]">
+        <AlertCircle className="mb-4 h-12 w-12 text-[#da1e28]" />
+        <p className="mb-2 text-lg font-medium text-white">Chat not found</p>
+        <p className="mb-6 text-sm text-[#525252]">This chat may have been deleted or you don&apos;t have access.</p>
         <button
           onClick={() => window.location.reload()}
-          className="rounded-xl bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+          className="rounded-xl bg-[#0f62fe] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
         >
-          Refresh
+          Refresh Page
         </button>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border bg-background/80 px-6 py-3 backdrop-blur">
-        <h2 className="text-sm font-medium text-text-primary">
-          {chatData?.chat.title || 'Chat'}
-        </h2>
-        <span className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-xs text-text-secondary">
-          {chatData?.chat.model_id || selectedModel}
-        </span>
+    <div className="flex flex-1 flex-col overflow-hidden bg-[#0f0f0f]">
+      {/* Header */}
+      <header className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#0f0f0f]/80 px-6 py-3 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <h2 className="max-w-[300px] truncate text-sm font-semibold text-white">
+            {chatData?.chat.title || 'New Chat'}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0f62fe]/10">
+            <Zap className="h-3 w-3 text-[#0f62fe]" />
+          </div>
+          <span className="max-w-[200px] truncate rounded-full border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1 font-mono text-[11px] text-[#525252]">
+            {chatData?.chat.model_id || selectedModel}
+          </span>
+        </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} />
-          ))}
+      {/* Messages */}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="relative flex-1 overflow-y-auto"
+      >
+        <div className="mx-auto max-w-3xl px-4 pb-4">
+          {messages.length === 0 && !streaming ? (
+            <EmptyState onSuggestion={handleSend} />
+          ) : (
+            <>
+              {messages.map((msg, index) => (
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  onRegenerate={index === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+                />
+              ))}
 
-          <AnimatePresence>
-            {streaming && streamedContent && (
-              <MessageBubble
-                msg={{
-                  id: 'streaming',
-                  role: 'assistant',
-                  content: streamedContent,
-                  created_at: new Date().toISOString(),
-                }}
-              />
-            )}
-          </AnimatePresence>
+              <AnimatePresence>
+                {streaming && streamedContent && (
+                  <StreamingMessage content={streamedContent} />
+                )}
+              </AnimatePresence>
 
-          {streaming && !streamedContent && <TypingIndicator />}
-
+              {streaming && !streamedContent && <TypingIndicator />}
+            </>
+          )}
           <div ref={messagesEndRef} />
         </div>
+
+        <ScrollToBottom onClick={scrollToBottom} visible={showScrollBtn} />
       </div>
 
-      <div className="border-t border-border bg-background/80 px-6 py-4 backdrop-blur">
+      {/* Input */}
+      <div className="border-t border-[#2a2a2a] bg-[#0f0f0f]/90 px-4 py-4 backdrop-blur-xl">
         <div className="mx-auto max-w-3xl">
           {sendError && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-3 flex items-center gap-2 rounded-xl border border-[#da1e28]/30 bg-[#da1e28]/10 px-4 py-2.5 text-xs text-[#da1e28]"
+            >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {sendError}
-            </div>
+            </motion.div>
           )}
-          <div className="flex gap-3">
-            <AutoResizeTextarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSend()
-              }
-            }}
-            placeholder="Message Carbon AI..."
-          />
-          <button
-            onClick={handleSend}
-            disabled={streaming || !input.trim()}
-            className="flex shrink-0 items-center justify-center rounded-xl bg-accent px-4 text-white transition-all hover:bg-accent-hover disabled:opacity-50"
-          >
-            {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
+
+          <div className="relative flex items-end gap-2 rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-2 shadow-lg transition-all focus-within:border-[#0f62fe]/50 focus-within:shadow-[#0f62fe]/5">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              placeholder="Message Carbon AI..."
+              rows={1}
+              disabled={streaming}
+              className="max-h-[200px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
+            />
+
+            {streaming ? (
+              <button
+                onClick={handleStop}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#da1e28]/10 text-[#da1e28] transition-all hover:bg-[#da1e28]/20"
+                title="Stop generating"
+              >
+                <StopCircle className="h-5 w-5" />
+              </button>
+            ) : (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleSend()}
+                disabled={!input.trim()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30 disabled:opacity-30 disabled:shadow-none"
+              >
+                <Send className="h-4 w-4" />
+              </motion.button>
+            )}
+          </div>
+
+          <p className="mt-2 text-center text-[10px] text-[#525252]">
+            Carbon AI can make mistakes. Consider checking important information.
+          </p>
         </div>
       </div>
     </div>
-  </div>
   )
 }
