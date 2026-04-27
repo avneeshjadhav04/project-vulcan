@@ -29,8 +29,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/execute", get(ws_handler))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8081").await?;
-    tracing::info!("Sandbox listening on 0.0.0.0:8081");
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8081".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Sandbox listening on {}", addr);
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -97,21 +99,42 @@ async fn run_command(command: &str, sender: Arc<tokio::sync::Mutex<futures::stre
 }
 
 async fn run_command_inner(command: &str, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
-    let mut child = match Command::new("nsjail")
-        .args(&[
-            "--config", "/etc/nsjail.cfg",
-            "--",
-            "/bin/sh", "-c", command,
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
-            let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
-            return;
+    // Check if nsjail is available; fall back to direct execution for local dev
+    let use_nsjail = Command::new("which").arg("nsjail").output().await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let mut child = if use_nsjail {
+        match Command::new("nsjail")
+            .args(&[
+                "--config", "/etc/nsjail.cfg",
+                "--",
+                "/bin/sh", "-c", command,
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+                let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
+                return;
+            }
+        }
+    } else {
+        match Command::new("/bin/sh")
+            .args(&["-c", command])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+                let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
+                return;
+            }
         }
     };
 
