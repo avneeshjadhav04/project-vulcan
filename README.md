@@ -4,7 +4,6 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 
 ![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 ## Features
 
@@ -186,6 +185,4 @@ cd web && npm install && npm run dev
 - **Terminal**: nsjail sandbox (no network, RO filesystem, resource limits)
 - **JWT Fallback**: HS256 when RSA keys not available
 
-## License
 
-MIT
