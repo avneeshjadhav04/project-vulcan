@@ -1,7 +1,7 @@
 use axum::{
-    extract::{ws::{Message as WsMessage, WebSocket, WebSocketUpgrade}, State},
+    extract::{ws::{Message as WsMessage, WebSocket, WebSocketUpgrade}, State, Json},
     response::Response,
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use futures::{SinkExt, StreamExt};
@@ -12,6 +12,19 @@ use tokio::sync::Semaphore;
 #[derive(Clone)]
 struct SandboxState {
     semaphore: Arc<Semaphore>,
+}
+
+#[derive(serde::Deserialize)]
+struct RunRequest {
+    command: String,
+}
+
+#[derive(serde::Serialize)]
+struct RunResponse {
+    stdout: String,
+    stderr: String,
+    status: String,
+    code: Option<i32>,
 }
 
 #[tokio::main]
@@ -27,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .route("/execute", get(ws_handler))
+        .route("/run", post(http_execute))
         .with_state(state);
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8081".to_string());
@@ -35,6 +49,76 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Sandbox listening on {}", addr);
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+async fn http_execute(
+    State(state): State<SandboxState>,
+    Json(req): Json<RunRequest>,
+) -> Result<Json<RunResponse>, axum::http::StatusCode> {
+    let _permit = state.semaphore.acquire().await.map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+
+    let use_nsjail = Command::new("which").arg("nsjail").output().await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    let mut child = if use_nsjail {
+        Command::new("nsjail")
+            .args(&["--config", "/etc/nsjail.cfg", "--", "/bin/sh", "-c", &req.command])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+    } else {
+        Command::new("/bin/sh")
+            .args(&["-c", &req.command])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+    }.map_err(|e| {
+        tracing::error!("Failed to spawn command: {}", e);
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        async {
+            let mut stdout_buf = Vec::new();
+            let mut stderr_buf = Vec::new();
+
+            let mut stdout_reader = tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
+            let mut stderr_reader = tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
+
+            let stdout_fut = tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
+            let stderr_fut = tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
+
+            let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
+            if stdout_res.is_err() || stderr_res.is_err() {
+                return Err("Failed to read output");
+            }
+
+            let status = child.wait().await.map_err(|_| "Wait failed")?;
+
+            Ok(RunResponse {
+                stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
+                stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
+                status: if status.success() { "success".to_string() } else { "error".to_string() },
+                code: status.code(),
+            })
+        }
+    ).await;
+
+    match result {
+        Ok(Ok(resp)) => Ok(Json(resp)),
+        Ok(Err(e)) => {
+            tracing::error!("Command execution error: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(_) => Ok(Json(RunResponse {
+            stdout: String::new(),
+            stderr: "Command timed out after 60 seconds".to_string(),
+            status: "timeout".to_string(),
+            code: Some(-1),
+        })),
+    }
 }
 
 async fn ws_handler(

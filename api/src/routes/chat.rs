@@ -252,9 +252,165 @@ async fn send_message(
         }));
     }
 
-    let body = json!({
+    let tools = json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "execute_terminal_command",
+                "description": "Execute a shell command in a sandboxed terminal environment. Use this when the user asks you to run code, check system status, list files, or perform any terminal operation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute, e.g. 'ls -la', 'python3 script.py', 'cat file.txt'"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }
+    ]);
+
+    // Try tool call first (non-streaming)
+    let tool_body = json!({
         "model": chat.model_id,
-        "messages": messages_payload,
+        "messages": messages_payload.clone(),
+        "tools": tools,
+        "tool_choice": "auto",
+        "max_tokens": 2048,
+    });
+
+    let tool_res = state.http_client
+        .post(format!("{}/chat/completions", state.config.nim_base_url))
+        .header("Authorization", format!("Bearer {}", nim_key))
+        .header("Content-Type", "application/json")
+        .json(&tool_body)
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!("NIM tool request error: {}", e);
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    if !tool_res.status().is_success() {
+        let status = tool_res.status();
+        let body_text = tool_res.text().await.unwrap_or_default();
+        tracing::error!("NIM tool request returned status: {} body: {}", status, body_text);
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+
+    let tool_data: serde_json::Value = tool_res.json().await.map_err(|e| {
+        tracing::error!("Failed to parse tool response: {}", e);
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    // Check if AI wants to call a tool
+    let tool_calls = tool_data["choices"][0]["message"]["tool_calls"].as_array();
+
+    if let Some(calls) = tool_calls {
+        if !calls.is_empty() {
+            // Extract the tool call
+            if let Some(call) = calls.first() {
+                if let Some(func) = call["function"].as_object() {
+                    let name = func["name"].as_str().unwrap_or("");
+                    let args_str = func["arguments"].as_str().unwrap_or("{}");
+                    
+                    if name == "execute_terminal_command" {
+                        if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
+                            if let Some(cmd) = args["command"].as_str() {
+                                tracing::info!("AI executing command: {}", cmd);
+                                
+                                // Execute via HTTP to sandbox
+                                let sandbox_url = std::env::var("SANDBOX_URL")
+                                    .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string())
+                                    .replace("ws://", "http://")
+                                    .replace("/execute", "");
+                                
+                                let exec_res = state.http_client
+                                    .post(format!("{}/run", sandbox_url))
+                                    .json(&json!({"command": cmd}))
+                                    .send()
+                                    .await;
+
+                                let tool_result = match exec_res {
+                                    Ok(r) => {
+                                        if let Ok(body) = r.json::<serde_json::Value>().await {
+                                            json!({
+                                                "stdout": body["stdout"].as_str().unwrap_or(""),
+                                                "stderr": body["stderr"].as_str().unwrap_or(""),
+                                                "status": body["status"].as_str().unwrap_or("error"),
+                                                "code": body["code"].as_i64().unwrap_or(-1),
+                                            })
+                                        } else {
+                                            json!({"stdout": "", "stderr": "Failed to parse sandbox response", "status": "error", "code": -1})
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Sandbox execution error: {}", e);
+                                        json!({"stdout": "", "stderr": format!("Sandbox unavailable: {}", e), "status": "error", "code": -1})
+                                    }
+                                };
+
+                                // Build messages with tool call and result
+                                let mut tool_messages = messages_payload.clone();
+                                
+                                // Add assistant message with tool_call
+                                tool_messages.push(json!({
+                                    "role": "assistant",
+                                    "content": null,
+                                    "tool_calls": [{
+                                        "id": call["id"].as_str().unwrap_or("call_1"),
+                                        "type": "function",
+                                        "function": {
+                                            "name": "execute_terminal_command",
+                                            "arguments": args_str
+                                        }
+                                    }]
+                                }));
+
+                                // Add tool result
+                                tool_messages.push(json!({
+                                    "role": "tool",
+                                    "tool_call_id": call["id"].as_str().unwrap_or("call_1"),
+                                    "content": serde_json::to_string(&tool_result).unwrap_or_default(),
+                                }));
+
+                                // Stream final response with tool execution prefix
+                                let db = state.db.clone();
+                                return stream_final_response(
+                                    state, nim_key, chat.model_id, tool_messages,
+                                    id, db, Some(cmd.to_string()), tool_result.clone(),
+                                ).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // No tool call — stream as normal
+    let db = state.db.clone();
+    stream_final_response(
+        state, nim_key, chat.model_id, messages_payload,
+        id, db, None, json!({}),
+    ).await
+}
+
+async fn stream_final_response(
+    state: AppState,
+    nim_key: String,
+    model_id: String,
+    messages: Vec<serde_json::Value>,
+    chat_id: String,
+    db: sqlx::SqlitePool,
+    tool_command: Option<String>,
+    tool_result: serde_json::Value,
+) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
+    let body = json!({
+        "model": model_id,
+        "messages": messages,
         "stream": true,
         "max_tokens": 2048,
     });
@@ -279,12 +435,21 @@ async fn send_message(
     }
 
     let mut stream = res.bytes_stream();
-    let db = state.db.clone();
-    let chat_id = id;
-
     let (tx, rx) = mpsc::channel::<String>(64);
 
     tokio::spawn(async move {
+        // Send tool execution info first if applicable
+        if let Some(cmd) = tool_command {
+            let tool_event = serde_json::json!({
+                "t": "tool",
+                "command": cmd,
+                "stdout": tool_result["stdout"].as_str().unwrap_or(""),
+                "stderr": tool_result["stderr"].as_str().unwrap_or(""),
+                "status": tool_result["status"].as_str().unwrap_or("error"),
+            });
+            let _ = tx.send(tool_event.to_string()).await;
+        }
+
         let mut buffer = String::new();
         let mut full_content = String::new();
         const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
@@ -295,7 +460,7 @@ async fn send_message(
                     buffer.push_str(&String::from_utf8_lossy(&bytes));
                     if buffer.len() > MAX_BUFFER_SIZE {
                         tracing::error!("SSE buffer exceeded max size, aborting stream");
-                        let _ = tx.send("[ERROR]".to_string()).await;
+                        let _ = tx.send(serde_json::json!({"t": "error"}).to_string()).await;
                         break;
                     }
                     while let Some(pos) = buffer.find("\n\n") {
@@ -306,7 +471,7 @@ async fn send_message(
                             if line.starts_with("data: ") {
                                 let data = &line[6..];
                                 if data == "[DONE]" {
-                                    let _ = tx.send("[DONE]".to_string()).await;
+                                    let _ = tx.send(serde_json::json!({"t": "done"}).to_string()).await;
                                     if let Err(e) = sqlx::query(
                                         "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
                                     )
@@ -321,7 +486,7 @@ async fn send_message(
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
                                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
                                         full_content.push_str(content);
-                                        let _ = tx.send(content.to_string()).await;
+                                        let _ = tx.send(serde_json::json!({"t": "text", "d": content}).to_string()).await;
                                     }
                                 }
                             }
@@ -330,7 +495,7 @@ async fn send_message(
                 }
                 Err(e) => {
                     tracing::error!("Stream chunk error: {}", e);
-                    let _ = tx.send("[ERROR]".to_string()).await;
+                    let _ = tx.send(serde_json::json!({"t": "error"}).to_string()).await;
                     break;
                 }
             }
