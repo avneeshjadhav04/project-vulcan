@@ -13,6 +13,46 @@ use crate::{middleware::AppState, models::NimModel};
 
 type ModelCache = Arc<RwLock<(Vec<NimModel>, std::time::Instant)>>;
 
+fn fallback_models() -> Vec<NimModel> {
+    vec![
+        NimModel { id: "nvidia/llama-3.1-nemotron-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/llama-3.1-nemotron-51b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/llama-3.3-nemotron-super-49b-v1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "meta/llama-3.3-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.1-405b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.1-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.1-8b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.2-1b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.2-3b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.2-11b-vision-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.2-90b-vision-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "mistralai/mistral-large-2-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        NimModel { id: "mistralai/mixtral-8x22b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        NimModel { id: "mistralai/mixtral-8x7b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        NimModel { id: "mistralai/mistral-7b-instruct-v0.3".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        NimModel { id: "google/gemma-2-27b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        NimModel { id: "google/gemma-2-9b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        NimModel { id: "google/gemma-2-2b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        NimModel { id: "microsoft/phi-4".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
+        NimModel { id: "microsoft/phi-3.5-moe-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
+        NimModel { id: "microsoft/phi-3-mini-128k-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
+        NimModel { id: "qwen/qwen2.5-72b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        NimModel { id: "qwen/qwen2.5-7b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        NimModel { id: "qwen/qwen2.5-coder-32b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        NimModel { id: "qwen/qwq-32b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        NimModel { id: "deepseek-ai/deepseek-r1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
+        NimModel { id: "deepseek-ai/deepseek-r1-distill-llama-70b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
+        NimModel { id: "deepseek-ai/deepseek-r1-distill-qwen-32b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
+        NimModel { id: "nvidia/cosmos-nemotron-34b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/ace-agent-llama-3.2-3b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/embed-qa-4".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/e5-mistral-7b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/llama-3.2-nv-embedqa-1b-v2".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        NimModel { id: "nvidia/llama-3.2-nv-rerankqa-1b-v2".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+    ]
+}
+
 pub fn router() -> Router<AppState> {
     let cache: ModelCache = Arc::new(RwLock::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
 
@@ -43,52 +83,60 @@ async fn list_models(
         return Ok(Json(json!({ "models": write.0.clone() })));
     }
 
-    // If we previously cached an error, check error TTL
+    // If we previously cached an error, check error TTL before falling back
     if write.0.is_empty() && now.duration_since(write.1) < error_cache_duration {
-        return Err(StatusCode::BAD_GATEWAY);
+        tracing::warn!("Returning fallback models — NIM API was recently unreachable");
+        return Ok(Json(json!({ "models": fallback_models() })));
     }
 
-    let res = state.http_client
+    let res = match state.http_client
         .get(format!("{}/models", state.config.nim_base_url))
         .send()
         .await
-        .map_err(|e| {
+    {
+        Ok(r) => r,
+        Err(e) => {
             tracing::error!("Failed to fetch models: {}", e);
             *write = (Vec::new(), now);
-            StatusCode::BAD_GATEWAY
-        })?;
+            return Ok(Json(json!({ "models": fallback_models() })));
+        }
+    };
 
     if !res.status().is_success() {
         tracing::error!("NIM models endpoint returned status: {}", res.status());
         *write = (Vec::new(), now);
-        return Err(StatusCode::BAD_GATEWAY);
+        return Ok(Json(json!({ "models": fallback_models() })));
     }
 
-    let data: serde_json::Value = res.json().await.map_err(|e| {
-        tracing::error!("Failed to parse models response: {}", e);
-        *write = (Vec::new(), now);
-        StatusCode::BAD_GATEWAY
-    })?;
+    let data: serde_json::Value = match res.json().await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!("Failed to parse models response: {}", e);
+            *write = (Vec::new(), now);
+            return Ok(Json(json!({ "models": fallback_models() })));
+        }
+    };
 
     let models: Vec<NimModel> = data["data"]
         .as_array()
         .unwrap_or(&Vec::new())
         .iter()
         .filter_map(|m| {
-            let id = m["id"].as_str()?.to_string();
-            let id_lower = id.to_lowercase();
-            if id_lower.contains("instruct") || id_lower.contains("chat") || id_lower.contains("nemotron") {
-                Some(NimModel {
-                    id,
-                    object: m["object"].as_str()?.to_string(),
-                    created: m["created"].as_i64()?,
-                    owned_by: m["owned_by"].as_str()?.to_string(),
-                })
-            } else {
-                None
-            }
+            Some(NimModel {
+                id: m["id"].as_str()?.to_string(),
+                object: m["object"].as_str()?.to_string(),
+                created: m["created"].as_i64()?,
+                owned_by: m["owned_by"].as_str()?.to_string(),
+            })
         })
         .collect();
+
+    let models = if models.is_empty() {
+        tracing::warn!("NIM API returned empty model list, using fallback");
+        fallback_models()
+    } else {
+        models
+    };
 
     *write = (models.clone(), now);
 
