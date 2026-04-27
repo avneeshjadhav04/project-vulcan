@@ -1,7 +1,9 @@
 use anyhow::{Result, bail};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
+use std::str::FromStr;
 
 use crate::config::Config;
 use crate::models::User;
@@ -128,7 +130,12 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
     }
 
     println!("[DB] Opening SQLite connection...");
-    let pool = SqlitePool::connect(database_url).await?;
+    let opts = SqliteConnectOptions::from_str(database_url)
+        .map_err(|e| anyhow::anyhow!("Invalid SQLite connection URL: {}", e))?
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .connect_with(opts)
+        .await?;
     println!("[DB] SQLite pool created successfully");
 
     // Enable foreign keys and WAL mode for every connection
