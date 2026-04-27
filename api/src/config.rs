@@ -31,8 +31,8 @@ impl Config {
                 url
             }
             _ => {
-                println!("[CONFIG] DATABASE_URL not set, using default: sqlite:/data/carbon_ai.db");
-                "sqlite:/data/carbon_ai.db".to_string()
+                println!("[CONFIG] DATABASE_URL not set, using default: sqlite:///data/carbon_ai.db");
+                "sqlite:///data/carbon_ai.db".to_string()
             }
         };
 
