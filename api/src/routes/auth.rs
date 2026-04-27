@@ -115,8 +115,8 @@ async fn login(
     let csrf_cookie = build_cookie("csrf_token", &csrf, 86400, false, secure)?;
 
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, auth_cookie);
-    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
+    headers.append(axum::http::header::SET_COOKIE, auth_cookie);
+    headers.append(axum::http::header::SET_COOKIE, csrf_cookie);
 
     Ok((headers, Json(serde_json::json!({
         "id": user.id,
@@ -132,8 +132,8 @@ async fn logout(State(state): State<AppState>) -> Result<(axum::http::HeaderMap,
     let auth_cookie = build_cookie("token", "", -1, true, secure)?;
     let csrf_cookie = build_cookie("csrf_token", "", -1, false, secure)?;
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, auth_cookie);
-    headers.insert(axum::http::header::SET_COOKIE, csrf_cookie);
+    headers.append(axum::http::header::SET_COOKIE, auth_cookie);
+    headers.append(axum::http::header::SET_COOKIE, csrf_cookie);
     Ok((headers, StatusCode::OK))
 }
 
