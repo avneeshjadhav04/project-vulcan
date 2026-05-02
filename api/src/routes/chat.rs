@@ -432,104 +432,112 @@ async fn stream_final_response(
         "max_tokens": 2048,
     });
 
-    let res = state.http_client
+    let (tx, rx) = mpsc::channel::<String>(64);
+
+    match state.http_client
         .post(format!("{}/chat/completions", state.config.nim_base_url))
         .header("Authorization", format!("Bearer {}", nim_key))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
-            tracing::error!("NIM request error: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
+    {
+        Ok(res) => {
+            if !res.status().is_success() {
+                let status = res.status();
+                let body_text = res.text().await.unwrap_or_default();
+                tracing::error!("NIM returned error status: {} body: {}", status, body_text);
+                // Stream error to client instead of returning 502
+                let _ = tx.send(serde_json::json!({"t": "error", "message": format!("AI provider returned error {}. Please check your API key and try again.", status)}).to_string()).await;
+                let _ = tx.send(serde_json::json!({"t": "done"}).to_string()).await;
+            } else {
 
-    if !res.status().is_success() {
-        let status = res.status();
-        let body_text = res.text().await.unwrap_or_default();
-        tracing::error!("NIM returned error status: {} body: {}", status, body_text);
-        return Err(StatusCode::BAD_GATEWAY);
-    }
+            let mut stream = res.bytes_stream();
 
-    let mut stream = res.bytes_stream();
-    let (tx, rx) = mpsc::channel::<String>(64);
+            tokio::spawn(async move {
+                // Send tool execution info first if applicable
+                if let Some(cmd) = tool_command {
+                    let tool_event = serde_json::json!({
+                        "t": "tool",
+                        "command": cmd,
+                        "stdout": tool_result["stdout"].as_str().unwrap_or(""),
+                        "stderr": tool_result["stderr"].as_str().unwrap_or(""),
+                        "status": tool_result["status"].as_str().unwrap_or("error"),
+                    });
+                    let _ = tx.send(tool_event.to_string()).await;
+                }
 
-    tokio::spawn(async move {
-        // Send tool execution info first if applicable
-        if let Some(cmd) = tool_command {
-            let tool_event = serde_json::json!({
-                "t": "tool",
-                "command": cmd,
-                "stdout": tool_result["stdout"].as_str().unwrap_or(""),
-                "stderr": tool_result["stderr"].as_str().unwrap_or(""),
-                "status": tool_result["status"].as_str().unwrap_or("error"),
-            });
-            let _ = tx.send(tool_event.to_string()).await;
-        }
+                let mut buffer = String::new();
+                let mut full_content = String::new();
+                const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
 
-        let mut buffer = String::new();
-        let mut full_content = String::new();
-        const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
+                while let Some(chunk_result) = stream.next().await {
+                    match chunk_result {
+                        Ok(bytes) => {
+                            buffer.push_str(&String::from_utf8_lossy(&bytes));
+                            if buffer.len() > MAX_BUFFER_SIZE {
+                                tracing::error!("SSE buffer exceeded max size, aborting stream");
+                                let _ = tx.send(serde_json::json!({"t": "error", "message": "Response too large"}).to_string()).await;
+                                break;
+                            }
+                            while let Some(pos) = buffer.find("\n\n") {
+                                let frame = buffer[..pos].to_string();
+                                buffer = buffer[pos + 2..].to_string();
 
-        while let Some(chunk_result) = stream.next().await {
-            match chunk_result {
-                Ok(bytes) => {
-                    buffer.push_str(&String::from_utf8_lossy(&bytes));
-                    if buffer.len() > MAX_BUFFER_SIZE {
-                        tracing::error!("SSE buffer exceeded max size, aborting stream");
-                        let _ = tx.send(serde_json::json!({"t": "error"}).to_string()).await;
-                        break;
-                    }
-                    while let Some(pos) = buffer.find("\n\n") {
-                        let frame = buffer[..pos].to_string();
-                        buffer = buffer[pos + 2..].to_string();
-
-                        for line in frame.lines() {
-                            if line.starts_with("data: ") {
-                                let data = &line[6..];
-                                if data == "[DONE]" {
-                                    let _ = tx.send(serde_json::json!({"t": "done"}).to_string()).await;
-                                    if let Err(e) = sqlx::query(
-                                        "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
-                                    )
-                                    .bind(chat_id.clone())
-                                    .bind(&full_content)
-                                    .execute(&db)
-                                    .await {
-                                        tracing::error!("Failed to persist assistant message: {}", e);
-                                    }
-                                    return;
-                                }
-                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                                    if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                                        full_content.push_str(content);
-                                        let _ = tx.send(serde_json::json!({"t": "text", "d": content}).to_string()).await;
+                                for line in frame.lines() {
+                                    if line.starts_with("data: ") {
+                                        let data = &line[6..];
+                                        if data == "[DONE]" {
+                                            let _ = tx.send(serde_json::json!({"t": "done"}).to_string()).await;
+                                            if let Err(e) = sqlx::query(
+                                                "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
+                                            )
+                                            .bind(chat_id.clone())
+                                            .bind(&full_content)
+                                            .execute(&db)
+                                            .await {
+                                                tracing::error!("Failed to persist assistant message: {}", e);
+                                            }
+                                            return;
+                                        }
+                                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                                            if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
+                                                full_content.push_str(content);
+                                                let _ = tx.send(serde_json::json!({"t": "text", "d": content}).to_string()).await;
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        Err(e) => {
+                            tracing::error!("Stream chunk error: {}", e);
+                            let _ = tx.send(serde_json::json!({"t": "error", "message": "Stream interrupted"}).to_string()).await;
+                            break;
+                        }
                     }
                 }
-                Err(e) => {
-                    tracing::error!("Stream chunk error: {}", e);
-                    let _ = tx.send(serde_json::json!({"t": "error"}).to_string()).await;
-                    break;
-                }
-            }
-        }
 
-        if !full_content.is_empty() {
-            if let Err(e) = sqlx::query(
-                "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
-            )
-            .bind(chat_id)
-            .bind(&full_content)
-            .execute(&db)
-            .await {
-                tracing::error!("Failed to persist assistant message: {}", e);
+                if !full_content.is_empty() {
+                    if let Err(e) = sqlx::query(
+                        "INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)"
+                    )
+                    .bind(chat_id)
+                    .bind(&full_content)
+                    .execute(&db)
+                    .await {
+                        tracing::error!("Failed to persist assistant message: {}", e);
+                    }
+                }
+            });
             }
         }
-    });
+        Err(e) => {
+            tracing::error!("NIM request error: {}", e);
+            let _ = tx.send(serde_json::json!({"t": "error", "message": "Failed to connect to AI provider. Please check your internet connection and API key."}).to_string()).await;
+            let _ = tx.send(serde_json::json!({"t": "done"}).to_string()).await;
+        }
+    }
 
     let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
         Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
