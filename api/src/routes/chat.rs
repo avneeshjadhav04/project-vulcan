@@ -252,145 +252,162 @@ async fn send_message(
         }));
     }
 
-    let tools = json!([
-        {
-            "type": "function",
-            "function": {
-                "name": "execute_terminal_command",
-                "description": "Execute a shell command in a sandboxed terminal environment. Use this when the user asks you to run code, check system status, list files, or perform any terminal operation.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "The shell command to execute, e.g. 'ls -la', 'python3 script.py', 'cat file.txt'"
-                        }
-                    },
-                    "required": ["command"]
-                }
-            }
-        }
-    ]);
+    // Try tool call first (non-streaming) — gracefully fallback on any error
+    let should_use_tools = std::env::var("DISABLE_TOOLS").is_err();
 
-    // Try tool call first (non-streaming)
-    let tool_body = json!({
-        "model": chat.model_id,
-        "messages": messages_payload.clone(),
-        "tools": tools,
-        "tool_choice": "auto",
-        "max_tokens": 2048,
-    });
-
-    let tool_res = state.http_client
-        .post(format!("{}/chat/completions", state.config.nim_base_url))
-        .header("Authorization", format!("Bearer {}", nim_key))
-        .header("Content-Type", "application/json")
-        .json(&tool_body)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("NIM tool request error: {}", e);
-            StatusCode::BAD_GATEWAY
-        })?;
-
-    if !tool_res.status().is_success() {
-        let status = tool_res.status();
-        let body_text = tool_res.text().await.unwrap_or_default();
-        tracing::error!("NIM tool request returned status: {} body: {}", status, body_text);
-        return Err(StatusCode::BAD_GATEWAY);
-    }
-
-    let tool_data: serde_json::Value = tool_res.json().await.map_err(|e| {
-        tracing::error!("Failed to parse tool response: {}", e);
-        StatusCode::BAD_GATEWAY
-    })?;
-
-    // Check if AI wants to call a tool
-    let tool_calls = tool_data["choices"][0]["message"]["tool_calls"].as_array();
-
-    if let Some(calls) = tool_calls {
-        if !calls.is_empty() {
-            // Extract the tool call
-            if let Some(call) = calls.first() {
-                if let Some(func) = call["function"].as_object() {
-                    let name = func["name"].as_str().unwrap_or("");
-                    let args_str = func["arguments"].as_str().unwrap_or("{}");
-                    
-                    if name == "execute_terminal_command" {
-                        if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
-                            if let Some(cmd) = args["command"].as_str() {
-                                tracing::info!("AI executing command: {}", cmd);
-                                
-                                // Execute via HTTP to sandbox
-                                let sandbox_url = std::env::var("SANDBOX_URL")
-                                    .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string())
-                                    .replace("ws://", "http://")
-                                    .replace("/execute", "");
-                                
-                                let exec_res = state.http_client
-                                    .post(format!("{}/run", sandbox_url))
-                                    .json(&json!({"command": cmd}))
-                                    .send()
-                                    .await;
-
-                                let tool_result = match exec_res {
-                                    Ok(r) => {
-                                        if let Ok(body) = r.json::<serde_json::Value>().await {
-                                            json!({
-                                                "stdout": body["stdout"].as_str().unwrap_or(""),
-                                                "stderr": body["stderr"].as_str().unwrap_or(""),
-                                                "status": body["status"].as_str().unwrap_or("error"),
-                                                "code": body["code"].as_i64().unwrap_or(-1),
-                                            })
-                                        } else {
-                                            json!({"stdout": "", "stderr": "Failed to parse sandbox response", "status": "error", "code": -1})
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::error!("Sandbox execution error: {}", e);
-                                        json!({"stdout": "", "stderr": format!("Sandbox unavailable: {}", e), "status": "error", "code": -1})
-                                    }
-                                };
-
-                                // Build messages with tool call and result
-                                let mut tool_messages = messages_payload.clone();
-                                
-                                // Add assistant message with tool_call
-                                tool_messages.push(json!({
-                                    "role": "assistant",
-                                    "content": null,
-                                    "tool_calls": [{
-                                        "id": call["id"].as_str().unwrap_or("call_1"),
-                                        "type": "function",
-                                        "function": {
-                                            "name": "execute_terminal_command",
-                                            "arguments": args_str
-                                        }
-                                    }]
-                                }));
-
-                                // Add tool result
-                                tool_messages.push(json!({
-                                    "role": "tool",
-                                    "tool_call_id": call["id"].as_str().unwrap_or("call_1"),
-                                    "content": serde_json::to_string(&tool_result).unwrap_or_default(),
-                                }));
-
-                                // Stream final response with tool execution prefix
-                                let db = state.db.clone();
-                                return stream_final_response(
-                                    state, nim_key, chat.model_id, tool_messages,
-                                    id, db, Some(cmd.to_string()), tool_result.clone(),
-                                ).await;
+    if should_use_tools {
+        let tools = json!([
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_terminal_command",
+                    "description": "Execute a shell command in a sandboxed terminal environment. Use this when the user asks you to run code, check system status, list files, or perform any terminal operation.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "The shell command to execute, e.g. 'ls -la', 'python3 script.py', 'cat file.txt'"
                             }
-                        }
+                        },
+                        "required": ["command"]
                     }
                 }
             }
+        ]);
+
+        let tool_body = json!({
+            "model": chat.model_id,
+            "messages": messages_payload.clone(),
+            "tools": tools,
+            "tool_choice": "auto",
+            "max_tokens": 2048,
+        });
+
+        match state.http_client
+            .post(format!("{}/chat/completions", state.config.nim_base_url))
+            .header("Authorization", format!("Bearer {}", nim_key))
+            .header("Content-Type", "application/json")
+            .json(&tool_body)
+            .send()
+            .await
+        {
+            Ok(tool_res) => {
+                if tool_res.status().is_success() {
+                    if let Ok(tool_data) = tool_res.json::<serde_json::Value>().await {
+                        if let Some(calls) = tool_data["choices"][0]["message"]["tool_calls"].as_array() {
+                            if !calls.is_empty() {
+                                if let Some(call) = calls.first() {
+                                    if let Some(func) = call["function"].as_object() {
+                                        let name = func["name"].as_str().unwrap_or("");
+                                        let args_str = func["arguments"].as_str().unwrap_or("{}");
+                                        
+                                        if name == "execute_terminal_command" {
+                                            if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
+                                                if let Some(cmd) = args["command"].as_str() {
+                                                    tracing::info!("AI executing command: {}", cmd);
+                                                    
+                                                    let sandbox_url = std::env::var("SANDBOX_URL")
+                                                        .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string())
+                                                        .replace("ws://", "http://")
+                                                        .replace("/execute", "");
+                                                    
+                                                    let exec_res = state.http_client
+                                                        .post(format!("{}/run", sandbox_url))
+                                                        .json(&json!({"command": cmd}))
+                                                        .send()
+                                                        .await;
+
+                                                    let tool_result = match exec_res {
+                                                        Ok(r) => {
+                                                            if let Ok(body) = r.json::<serde_json::Value>().await {
+                                                                json!({
+                                                                    "stdout": body["stdout"].as_str().unwrap_or(""),
+                                                                    "stderr": body["stderr"].as_str().unwrap_or(""),
+                                                                    "status": body["status"].as_str().unwrap_or("error"),
+                                                                    "code": body["code"].as_i64().unwrap_or(-1),
+                                                                })
+                                                            } else {
+                                                                json!({"stdout": "", "stderr": "Failed to parse sandbox response", "status": "error", "code": -1})
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            tracing::warn!("Sandbox execution failed, streaming without tool result: {}", e);
+                                                            // Don't fail — stream normally and let AI know sandbox is unavailable
+                                                            let mut tool_messages = messages_payload.clone();
+                                                            tool_messages.push(json!({
+                                                                "role": "assistant",
+                                                                "content": null,
+                                                                "tool_calls": [{
+                                                                    "id": call["id"].as_str().unwrap_or("call_1"),
+                                                                    "type": "function",
+                                                                    "function": {
+                                                                        "name": "execute_terminal_command",
+                                                                        "arguments": args_str
+                                                                    }
+                                                                }]
+                                                            }));
+                                                            tool_messages.push(json!({
+                                                                "role": "tool",
+                                                                "tool_call_id": call["id"].as_str().unwrap_or("call_1"),
+                                                                "content": "Sandbox is currently unavailable. Please inform the user that terminal execution is not available at this time.",
+                                                            }));
+                                                            let db = state.db.clone();
+                                                            return stream_final_response(
+                                                                state, nim_key, chat.model_id, tool_messages,
+                                                                id, db, Some(cmd.to_string()), json!({"status": "unavailable"}),
+                                                            ).await;
+                                                        }
+                                                    };
+
+                                                    // Build messages with tool call and result
+                                                    let mut tool_messages = messages_payload.clone();
+                                                    tool_messages.push(json!({
+                                                        "role": "assistant",
+                                                        "content": null,
+                                                        "tool_calls": [{
+                                                            "id": call["id"].as_str().unwrap_or("call_1"),
+                                                            "type": "function",
+                                                            "function": {
+                                                                "name": "execute_terminal_command",
+                                                                "arguments": args_str
+                                                            }
+                                                        }]
+                                                    }));
+                                                    tool_messages.push(json!({
+                                                        "role": "tool",
+                                                        "tool_call_id": call["id"].as_str().unwrap_or("call_1"),
+                                                        "content": serde_json::to_string(&tool_result).unwrap_or_default(),
+                                                    }));
+
+                                                    let db = state.db.clone();
+                                                    return stream_final_response(
+                                                        state, nim_key, chat.model_id, tool_messages,
+                                                        id, db, Some(cmd.to_string()), tool_result.clone(),
+                                                    ).await;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        tracing::warn!("Failed to parse tool response JSON, falling back to normal streaming");
+                    }
+                } else {
+                    let status = tool_res.status();
+                    let body_text = tool_res.text().await.unwrap_or_default();
+                    tracing::warn!("NIM tool request returned non-success status: {} body: {}. Falling back to normal streaming.", status, body_text);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("NIM tool request failed: {}. Falling back to normal streaming.", e);
+            }
         }
     }
 
-    // No tool call — stream as normal
+    // No tool call or tool call failed — stream as normal
     let db = state.db.clone();
     stream_final_response(
         state, nim_key, chat.model_id, messages_payload,
