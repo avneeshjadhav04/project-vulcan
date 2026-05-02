@@ -604,6 +604,11 @@ export default function ChatInterface({
                   status: msg.status || 'error',
                 })
               }
+              if (msg.t === 'error') {
+                setSendError(msg.message || 'An error occurred while generating the response')
+                setStreaming(false)
+                return
+              }
               if (msg.t === 'text' && msg.d) {
                 setStreamedContent((prev) => prev + msg.d)
               }
