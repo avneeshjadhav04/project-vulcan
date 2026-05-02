@@ -21,7 +21,7 @@ async fn terminal_handler(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) {
-    let sandbox_url = std::env::var("SANDBOX_URL").unwrap_or_else(|_| "ws://sandbox:8081/execute".to_string());
+    let sandbox_url = std::env::var("SANDBOX_URL").unwrap_or_else(|_| "ws://127.0.0.1:8081/execute".to_string());
 
     let (sandbox_ws, _) = match tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -29,19 +29,19 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, user_id: String) 
     ).await {
         Ok(Ok(pair)) => pair,
         Ok(Err(e)) => {
-            tracing::error!("Failed to connect to sandbox: {}", e);
+            tracing::error!("Failed to connect to sandbox at {}: {}", sandbox_url, e);
             let msg = serde_json::json!({
                 "type": "stderr",
-                "data": format!("Sandbox unavailable: {}. Terminal requires Docker Compose with the sandbox service running.", e)
+                "data": format!("Terminal sandbox is unavailable ({}). The sandbox service may not be running or is misconfigured.", e)
             });
             let _ = socket.send(WsMessage::Text(msg.to_string())).await;
             return;
         }
         Err(_) => {
-            tracing::error!("Sandbox connection timed out");
+            tracing::error!("Sandbox connection timed out at {}", sandbox_url);
             let msg = serde_json::json!({
                 "type": "stderr",
-                "data": "Sandbox connection timed out. Terminal requires Docker Compose with the sandbox service running."
+                "data": "Terminal sandbox connection timed out. The sandbox service may not be running."
             });
             let _ = socket.send(WsMessage::Text(msg.to_string())).await;
             return;
