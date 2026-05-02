@@ -21,6 +21,8 @@ services:
         value: https://integrate.api.nvidia.com/v1
       - key: SANDBOX_URL
         value: ws://carbon-ai-sandbox:8081/execute
+      - key: DISABLE_TOOLS
+        value: "1"
       - key: RUST_LOG
         value: info
     disk:
