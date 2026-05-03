@@ -583,49 +583,36 @@ export default function ChatInterface({
             const raw = line.slice(6)
             if (!raw.trim()) continue
 
-            try {
-              const msg = JSON.parse(raw)
-              if (msg.t === 'done') {
-                setStreamedContent('')
-                setToolExecution(null)
-                refetch()
-                setStreaming(false)
-                return
-              }
-              if (msg.t === 'error') {
-                setStreaming(false)
-                return
-              }
-              if (msg.t === 'tool') {
-                setToolExecution({
-                  command: msg.command || '',
-                  stdout: msg.stdout || '',
-                  stderr: msg.stderr || '',
-                  status: msg.status || 'error',
-                })
-              }
-              if (msg.t === 'error') {
-                setSendError(msg.message || 'An error occurred while generating the response')
-                setStreaming(false)
-                return
-              }
-              if (msg.t === 'text' && msg.d) {
-                setStreamedContent((prev) => prev + msg.d)
-              }
-            } catch {
-              // Fallback: treat as raw text (legacy compatibility)
-              if (raw === '[DONE]') {
-                setStreamedContent('')
-                refetch()
-                setStreaming(false)
-                return
-              }
-              if (raw === '[ERROR]') {
-                setStreaming(false)
-                return
-              }
-              setStreamedContent((prev) => prev + raw)
+            // Check for markers first
+            if (raw === '[DONE]') {
+              setStreamedContent('')
+              setToolExecution(null)
+              refetch()
+              setStreaming(false)
+              return
             }
+            if (raw.startsWith('[ERR]') && raw.endsWith('[/ERR]')) {
+              const errorMsg = raw.slice(5, -6)
+              setSendError(errorMsg || 'An error occurred')
+              setStreaming(false)
+              return
+            }
+            if (raw.startsWith('[TOOL]') && raw.endsWith('[/TOOL]')) {
+              try {
+                const toolData = JSON.parse(raw.slice(6, -7))
+                setToolExecution({
+                  command: toolData.command || '',
+                  stdout: toolData.stdout || '',
+                  stderr: toolData.stderr || '',
+                  status: toolData.status || 'error',
+                })
+              } catch {
+                // Ignore malformed tool data
+              }
+              continue
+            }
+            // Regular text chunk
+            setStreamedContent((prev) => prev + raw)
           }
         }
       }
