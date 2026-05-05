@@ -19,8 +19,6 @@ services:
         generateValue: true
       - key: NIM_BASE_URL
         value: https://integrate.api.nvidia.com/v1
-      - key: SANDBOX_URL
-        value: ws://carbon-ai-sandbox:8081/execute
       - key: DISABLE_TOOLS
         value: "1"
       - key: RUST_LOG
@@ -30,16 +28,3 @@ services:
       mountPath: /data
       sizeGB: 1
     healthCheckPath: /api/health
-
-  - type: web
-    name: carbon-ai-sandbox
-    runtime: docker
-    repo: https://github.com/avneeshjadhav04/ai-assistant
-    plan: starter
-    dockerfilePath: ./sandbox/Dockerfile
-    envVars:
-      - key: RUST_LOG
-        value: info
-      - key: PORT
-        value: 8081
-    healthCheckPath: /health

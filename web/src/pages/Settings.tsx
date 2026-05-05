@@ -31,6 +31,8 @@ export default function Settings() {
   const [error, setError] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; status?: number} | null>(null)
+  const [validating, setValidating] = useState(false)
   const navigate = useNavigate()
 
   // Auto-hide saved state
@@ -78,6 +80,20 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to remove API key')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleValidate = async () => {
+    setValidating(true)
+    setValidationResult(null)
+    setError('')
+    try {
+      const res = await api.get('/me/key/validate')
+      setValidationResult(res.data)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to validate API key')
+    } finally {
+      setValidating(false)
     }
   }
 
@@ -291,21 +307,62 @@ export default function Settings() {
             <p className="text-[11px] text-[#525252]">
               Your key never leaves this device unencrypted.
             </p>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleSave}
-              disabled={loading || !apiKey.trim()}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30 disabled:opacity-40 disabled:shadow-none"
-            >
-              {loading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              ) : (
-                <Save className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              {user?.has_nim_key && (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleValidate}
+                  disabled={validating}
+                  className="flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] px-4 py-2.5 text-sm font-medium text-[#c6c6c6] transition-all hover:bg-[#2a2a2a] hover:text-white disabled:opacity-40"
+                >
+                  {validating ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  Test Key
+                </motion.button>
               )}
-              Save Key
-            </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSave}
+                disabled={loading || !apiKey.trim()}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30 disabled:opacity-40 disabled:shadow-none"
+              >
+                {loading ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Save Key
+              </motion.button>
+            </div>
           </div>
+
+          <AnimatePresence>
+            {validationResult && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: 'auto' }}
+                exit={{ opacity: 0, y: 8, height: 0 }}
+                className="mt-4 overflow-hidden"
+              >
+                {validationResult.valid ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#24a148]/30 bg-[#24a148]/10 px-4 py-3 text-xs text-[#24a148]">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    API key is valid and working!
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#da1e28]/30 bg-[#da1e28]/10 px-4 py-3 text-xs text-[#da1e28]">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {validationResult.error || `API key validation failed (status ${validationResult.status})`}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Security Info */}

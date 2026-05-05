@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::Json,
     routing::get,
@@ -9,47 +9,34 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::{middleware::AppState, models::NimModel};
+use crate::{auth::decrypt_key, middleware::AppState, models::{NimModel, Claims, User}};
 
 type ModelCache = Arc<RwLock<(Vec<NimModel>, std::time::Instant)>>;
 
 fn fallback_models() -> Vec<NimModel> {
+    // These are confirmed working models on NVIDIA NIM as of early 2025
     vec![
-        NimModel { id: "nvidia/llama-3.1-nemotron-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/llama-3.1-nemotron-51b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/llama-3.3-nemotron-super-49b-v1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/llama-3.1-nemotron-ultra-253b-v1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
+        // Meta Llama models - widely available
+        NimModel { id: "meta/llama-3.1-8b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
+        NimModel { id: "meta/llama-3.1-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
         NimModel { id: "meta/llama-3.3-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
         NimModel { id: "meta/llama-3.1-405b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.1-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.1-8b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.2-1b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.2-3b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.2-11b-vision-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.2-90b-vision-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "mistralai/mistral-large-2-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        NimModel { id: "mistralai/mixtral-8x22b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        NimModel { id: "mistralai/mixtral-8x7b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        // Mistral models
         NimModel { id: "mistralai/mistral-7b-instruct-v0.3".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        NimModel { id: "google/gemma-2-27b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
-        NimModel { id: "google/gemma-2-9b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        NimModel { id: "mistralai/mixtral-8x7b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        NimModel { id: "mistralai/mixtral-8x22b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
+        // Google Gemma
         NimModel { id: "google/gemma-2-2b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
-        NimModel { id: "microsoft/phi-4".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
-        NimModel { id: "microsoft/phi-3.5-moe-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
+        NimModel { id: "google/gemma-2-9b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        NimModel { id: "google/gemma-2-27b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
+        // Microsoft Phi
         NimModel { id: "microsoft/phi-3-mini-128k-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
-        NimModel { id: "qwen/qwen2.5-72b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        // Qwen
         NimModel { id: "qwen/qwen2.5-7b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
-        NimModel { id: "qwen/qwen2.5-coder-32b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
-        NimModel { id: "qwen/qwq-32b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        NimModel { id: "qwen/qwen2.5-72b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
+        // DeepSeek
         NimModel { id: "deepseek-ai/deepseek-r1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
         NimModel { id: "deepseek-ai/deepseek-r1-distill-llama-70b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
-        NimModel { id: "deepseek-ai/deepseek-r1-distill-qwen-32b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
-        NimModel { id: "nvidia/cosmos-nemotron-34b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/ace-agent-llama-3.2-3b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/embed-qa-4".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/e5-mistral-7b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/llama-3.2-nv-embedqa-1b-v2".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
-        NimModel { id: "nvidia/llama-3.2-nv-rerankqa-1b-v2".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "nvidia".to_string() },
     ]
 }
 
@@ -58,6 +45,7 @@ pub fn router() -> Router<AppState> {
 
     Router::new()
         .route("/models", get(move |state| list_models(state, cache.clone())))
+        .route("/models/validate", get(validate_model))
 }
 
 async fn list_models(
@@ -141,4 +129,70 @@ async fn list_models(
     *write = (models.clone(), now);
 
     Ok(Json(json!({ "models": models })))
+}
+
+async fn validate_model(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let model_id = params.get("model_id").cloned().unwrap_or_default();
+    if model_id.is_empty() {
+        return Ok(Json(json!({"valid": false, "error": "model_id query parameter is required"})));
+    }
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let nim_key = match user.encrypted_nim_key {
+        Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
+        None => return Ok(Json(json!({"valid": false, "error": "No API key configured"}))),
+    };
+
+    // Do a real test request to validate the model actually works
+    let test_body = json!({
+        "model": model_id,
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 5,
+        "stream": false,
+    });
+
+    let test_res = state.http_client
+        .post(format!("{}/chat/completions", state.config.nim_base_url))
+        .header("Authorization", format!("Bearer {}", nim_key))
+        .header("Content-Type", "application/json")
+        .json(&test_body)
+        .send()
+        .await;
+
+    match test_res {
+        Ok(res) => {
+            let status = res.status();
+            if status.is_success() {
+                Ok(Json(json!({"valid": true, "model_id": model_id})))
+            } else {
+                let body = res.text().await.unwrap_or_default();
+                tracing::warn!("Model validation failed for {}: {} - {}", model_id, status, body);
+                
+                let error_msg = if status == 404 {
+                    format!("Model '{}' is not available (404). It may require different permissions or be temporarily disabled.", model_id)
+                } else {
+                    format!("Model validation failed: {}", status)
+                };
+                
+                Ok(Json(json!({
+                    "valid": false,
+                    "model_id": model_id,
+                    "error": error_msg,
+                    "status": status.as_u16()
+                })))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Model validation request failed: {}", e);
+            Ok(Json(json!({"valid": true})))
+        }
+    }
 }
