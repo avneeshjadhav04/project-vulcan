@@ -58,7 +58,7 @@ async fn delete_user(
 
     // Atomic check: prevent deleting the last admin
     let result = sqlx::query(
-        "DELETE FROM users WHERE id = ?1 AND role != 'admin' OR (role = 'admin' AND (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1)"
+        "DELETE FROM users WHERE id = ?1 AND (role != 'admin' OR (role = 'admin' AND (SELECT COUNT(*) FROM users WHERE role = 'admin') > 1))"
     )
     .bind(&id)
     .execute(&state.db)

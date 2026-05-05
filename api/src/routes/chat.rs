@@ -64,11 +64,16 @@ async fn update_nim_key(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let encrypted = crate::auth::encrypt_key(&req.api_key, &state.config.master_key)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Treat empty string as a removal (set to NULL)
+    let encrypted: Option<String> = if req.api_key.trim().is_empty() {
+        None
+    } else {
+        Some(crate::auth::encrypt_key(&req.api_key, &state.config.master_key)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+    };
 
     sqlx::query("UPDATE users SET encrypted_nim_key = ?1 WHERE id = ?2")
-        .bind(&encrypted)
+        .bind(encrypted)
         .bind(claims.sub.clone())
         .execute(&state.db)
         .await
