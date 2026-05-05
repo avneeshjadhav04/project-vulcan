@@ -19,6 +19,7 @@ mod db;
 mod middleware;
 mod models;
 mod routes;
+mod sandbox_engine;
 
 use middleware::{admin_middleware, auth_middleware, csrf_middleware, AppState};
 
@@ -80,6 +81,7 @@ async fn run() -> anyhow::Result<()> {
         db: db_pool,
         http_client,
         jwt_public_key,
+        sandbox: sandbox_engine::SandboxState::new(),
     };
 
     let cors = if let Some(ref origin) = config.cors_origin {
@@ -131,6 +133,14 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::terminal::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::files::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::templates::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(

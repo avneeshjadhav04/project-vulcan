@@ -19,12 +19,15 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 nsjail && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Create data directory with open permissions for SQLite
 RUN mkdir -p /data && chmod 777 /data
+
+# Copy nsjail config for sandboxed command execution
+COPY sandbox/nsjail.cfg /etc/nsjail.cfg
 
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api

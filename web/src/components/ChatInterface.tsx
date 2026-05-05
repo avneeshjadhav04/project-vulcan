@@ -19,7 +19,18 @@ import {
   Terminal,
   CheckCircle2,
   XCircle,
+  Pencil,
+  Workflow,
+  Download,
+  Mic,
+  MicOff,
+  Hash,
+  Key,
+  Settings,
+  ExternalLink,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import FileUpload, { UploadedFile } from './FileUpload'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -31,6 +42,7 @@ interface MessageItem {
   role: string
   content: string
   created_at: string
+  tokens_used?: number
 }
 
 /* ─── Code Block ─── */
@@ -128,9 +140,18 @@ function timeAgo(date: string): string {
 }
 
 /* ─── Message Bubble ─── */
-function MessageBubble({ msg, onRegenerate }: { msg: MessageItem; onRegenerate?: () => void }) {
+function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRegenerate?: () => void; onEdit?: (id: string, content: string) => void }) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState(msg.content)
+
+  const handleSave = () => {
+    if (editContent.trim() && editContent !== msg.content && onEdit) {
+      onEdit(msg.id, editContent.trim())
+    }
+    setIsEditing(false)
+  }
 
   return (
     <motion.div
@@ -164,6 +185,12 @@ function MessageBubble({ msg, onRegenerate }: { msg: MessageItem; onRegenerate?:
             {isAssistant ? 'Carbon AI' : 'You'}
           </span>
           <span className="text-[10px] text-[#525252]">{timeAgo(msg.created_at)}</span>
+          {msg.tokens_used && (
+            <span className="flex items-center gap-0.5 text-[10px] text-[#525252]">
+              <Hash className="h-2.5 w-2.5" />
+              {msg.tokens_used}
+            </span>
+          )}
         </div>
 
         <div
@@ -173,7 +200,44 @@ function MessageBubble({ msg, onRegenerate }: { msg: MessageItem; onRegenerate?:
               : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#f4f4f4]'
           }`}
         >
-          {isAssistant ? (
+          {isEditing ? (
+            <div className="min-w-[200px]">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    handleSave()
+                  }
+                  if (e.key === 'Escape') {
+                    setIsEditing(false)
+                    setEditContent(msg.content)
+                  }
+                }}
+                className="w-full resize-none rounded-lg bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/50"
+                rows={3}
+                autoFocus
+              />
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setIsEditing(false)
+                    setEditContent(msg.content)
+                  }}
+                  className="rounded-lg px-3 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="rounded-lg bg-white/20 px-3 py-1 text-[11px] text-white transition-colors hover:bg-white/30"
+                >
+                  Save & Regenerate
+                </button>
+              </div>
+            </div>
+          ) : isAssistant ? (
             <div className="prose prose-invert prose-sm max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -255,6 +319,21 @@ function MessageBubble({ msg, onRegenerate }: { msg: MessageItem; onRegenerate?:
         </div>
 
         {isAssistant && <MessageActions content={msg.content} onRegenerate={onRegenerate} />}
+        {isUser && onEdit && !isEditing && (
+          <div className="mt-2 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              onClick={() => {
+                setEditContent(msg.content)
+                setIsEditing(true)
+              }}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+              title="Edit message"
+            >
+              <Pencil className="h-3 w-3" />
+              Edit
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   )
@@ -457,16 +536,32 @@ export default function ChatInterface({
   const [sendError, setSendError] = useState('')
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
+  const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
+  const [agentMode, setAgentMode] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [voiceSupported, setVoiceSupported] = useState(false)
+  const [modelValidation, setModelValidation] = useState<{valid: boolean; error?: string; model_id?: string} | null>(null)
+  const [validatingModel, setValidatingModel] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const navigate = useNavigate()
 
   const { data: chatData, refetch, isError } = useQuery({
     queryKey: ['chat', chatId],
     queryFn: async () => {
       const res = await api.get(`/chats/${chatId}`)
       return res.data as { chat: { title: string; model_id: string }; messages: MessageItem[] }
+    },
+  })
+
+  const { data: userData } = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const res = await api.get('/me')
+      return res.data as { has_nim_key: boolean }
     },
   })
 
@@ -477,11 +572,51 @@ export default function ChatInterface({
     setStreamedContent('')
     setSendError('')
     setToolExecution(null)
+    setAttachedFiles([])
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
   }, [chatId])
+
+  // Load attached files for chat
+  useEffect(() => {
+    if (!chatId) return
+    api.get(`/chats/${chatId}/files`)
+      .then(res => setAttachedFiles(res.data || []))
+      .catch(() => setAttachedFiles([]))
+  }, [chatId])
+
+  // Check voice support
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    setVoiceSupported(!!SpeechRecognition)
+  }, [])
+
+  // Validate model when chat loads
+  useEffect(() => {
+    const currentModelId = chatData?.chat.model_id
+    if (!currentModelId || !userData?.has_nim_key) {
+      setModelValidation(null)
+      return
+    }
+
+    let cancelled = false
+    setValidatingModel(true)
+    
+    api.get(`/models/validate?model_id=${encodeURIComponent(currentModelId)}`)
+      .then(res => {
+        if (!cancelled) setModelValidation(res.data)
+      })
+      .catch(() => {
+        if (!cancelled) setModelValidation(null)
+      })
+      .finally(() => {
+        if (!cancelled) setValidatingModel(false)
+      })
+
+    return () => { cancelled = true }
+  }, [chatData?.chat.model_id, userData?.has_nim_key])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -521,6 +656,33 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const toggleVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+
+    if (isListening) {
+      setIsListening(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+
+    recognition.onstart = () => setIsListening(true)
+    recognition.onend = () => setIsListening(false)
+    recognition.onerror = () => setIsListening(false)
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+      setInput(transcript)
+    }
+
+    recognition.start()
+  }
+
   const handleSend = async (textOverride?: string) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
@@ -537,14 +699,22 @@ export default function ChatInterface({
     const timeoutId = setTimeout(() => controller.abort(), 120000)
 
     try {
-      const res = await fetch(`/api/chats/${chatId}/message`, {
+      // Build content with file context if files are attached
+      let messageContent = text
+      if (attachedFiles.length > 0) {
+        const fileContext = attachedFiles.map(f => `[File: ${f.filename}]`).join('\n')
+        messageContent = `${fileContext}\n\n${text}`
+      }
+
+      const endpoint = agentMode ? `/api/chats/${chatId}/agent` : `/api/chats/${chatId}/message`
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': getCsrfToken() || '',
         },
         credentials: 'include',
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ content: messageContent }),
         signal: controller.signal,
       })
 
@@ -611,6 +781,11 @@ export default function ChatInterface({
               }
               continue
             }
+            if (raw.startsWith('[AGENT]') && raw.endsWith('[/AGENT]')) {
+              const agentMsg = raw.slice(7, -8)
+              setStreamedContent((prev) => prev + `\n[Agent: ${agentMsg}]\n`)
+              continue
+            }
             // Regular text chunk
             setStreamedContent((prev) => prev + raw)
           }
@@ -646,6 +821,41 @@ export default function ChatInterface({
     }
   }
 
+  const handleEditMessage = async (msgId: string, newContent: string) => {
+    try {
+      const csrfToken = getCsrfToken()
+      // Update the message
+      const patchRes = await fetch(`/api/chats/${chatId}/messages/${msgId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ content: newContent }),
+      })
+      if (!patchRes.ok) throw new Error('Failed to edit message')
+
+      // Delete subsequent messages
+      const deleteRes = await fetch(`/api/chats/${chatId}/messages/${msgId}/after`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRF-Token': csrfToken || '',
+        },
+        credentials: 'include',
+      })
+      if (!deleteRes.ok) throw new Error('Failed to clear subsequent messages')
+
+      // Refresh chat data
+      await refetch()
+
+      // Re-send the edited message to get a new AI response
+      handleSend(newContent)
+    } catch (err: any) {
+      setSendError(err.message || 'Failed to edit message')
+    }
+  }
+
   const messages = chatData?.messages || []
 
   if (isError) {
@@ -674,6 +884,17 @@ export default function ChatInterface({
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const format = confirm('Export as JSON? (Cancel for Markdown)') ? 'json' : 'markdown'
+              window.open(`/api/chats/${chatId}/export?format=${format}`, '_blank')
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            title="Export chat"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </button>
           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0f62fe]/10">
             <Zap className="h-3 w-3 text-[#0f62fe]" />
           </div>
@@ -682,6 +903,99 @@ export default function ChatInterface({
           </span>
         </div>
       </header>
+
+      {/* API Key Required Overlay */}
+      <AnimatePresence>
+        {userData && !userData.has_nim_key && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0f0f0f]/95 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="mx-4 max-w-md rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-8 text-center shadow-2xl"
+            >
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
+                <Key className="h-8 w-8 text-[#0f62fe]" />
+              </div>
+              <h2 className="mb-2 text-xl font-bold text-white">NVIDIA NIM API Key Required</h2>
+              <p className="mb-6 text-sm text-[#525252]">
+                To use Carbon AI, you need to add a valid NVIDIA NIM API key. 
+                You can get one for free from NVIDIA's website.
+              </p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] px-6 py-3 text-sm font-medium text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30"
+                >
+                  <Settings className="h-4 w-4" />
+                  Go to Settings
+                </button>
+                <a
+                  href="https://build.nvidia.com/explore/discover"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] px-6 py-3 text-sm text-[#c6c6c6] transition-all hover:bg-[#2a2a2a] hover:text-white"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Get Free API Key
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Model Validation Warning */}
+      <AnimatePresence>
+        {validatingModel && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-b border-[#2a2a2a] bg-[#1a1a1a] px-6 py-2"
+          >
+            <div className="mx-auto flex max-w-3xl items-center gap-2 text-[11px] text-[#525252]">
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#525252]/30 border-t-[#0f62fe]" />
+              Checking model availability...
+            </div>
+          </motion.div>
+        )}
+        {modelValidation && !modelValidation.valid && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-b border-[#f1c21b]/30 bg-[#f1c21b]/10 px-6 py-3"
+          >
+            <div className="mx-auto flex max-w-3xl items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-[#f1c21b]">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{modelValidation.error || `Model '${modelValidation.model_id}' is not available`}</span>
+              </div>
+              <button
+                onClick={() => {
+                  // Update chat to use a default working model
+                  const csrf = getCsrfToken()
+                  fetch(`/api/chats/${chatId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf || '' },
+                    credentials: 'include',
+                    body: JSON.stringify({ title: chatData?.chat.title, model_id: 'meta/llama-3.1-8b-instruct' })
+                  }).then(() => refetch())
+                }}
+                className="rounded-lg bg-[#f1c21b]/20 px-3 py-1.5 text-[11px] font-medium text-[#f1c21b] transition-colors hover:bg-[#f1c21b]/30"
+              >
+                Switch to meta/llama-3.1-8b-instruct
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages */}
       <div
@@ -699,6 +1013,7 @@ export default function ChatInterface({
                   key={msg.id}
                   msg={msg}
                   onRegenerate={index === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+                  onEdit={msg.role === 'user' ? handleEditMessage : undefined}
                 />
               ))}
 
@@ -743,7 +1058,24 @@ export default function ChatInterface({
             </motion.div>
           )}
 
-          <div className="relative flex items-end gap-2 rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-2 shadow-lg transition-all focus-within:border-[#0f62fe]/50 focus-within:shadow-[#0f62fe]/5">
+          <div
+            onDrop={(e) => {
+              e.preventDefault()
+              const files = e.dataTransfer.files
+              if (files.length > 0) {
+                const input = document.querySelector('input[type="file"]') as HTMLInputElement
+                if (input) {
+                  const dt = new DataTransfer()
+                  for (const f of files) dt.items.add(f)
+                  input.files = dt.files
+                  input.dispatchEvent(new Event('change', { bubbles: true }))
+                }
+              }
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            className="relative flex items-end gap-2 rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-2 shadow-lg transition-all focus-within:border-[#0f62fe]/50 focus-within:shadow-[#0f62fe]/5"
+          >
+            <FileUpload chatId={chatId} files={attachedFiles} onFilesChange={setAttachedFiles} />
             <textarea
               ref={textareaRef}
               value={input}
@@ -759,6 +1091,32 @@ export default function ChatInterface({
               disabled={streaming}
               className="max-h-[200px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
             />
+
+            <button
+              onClick={() => setAgentMode(!agentMode)}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+                agentMode
+                  ? 'bg-[#0f62fe]/20 text-[#0f62fe]'
+                  : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+              }`}
+              title={agentMode ? 'Agent Mode On' : 'Agent Mode Off'}
+            >
+              <Workflow className="h-4 w-4" />
+            </button>
+
+            {voiceSupported && (
+              <button
+                onClick={toggleVoiceInput}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+                  isListening
+                    ? 'bg-[#da1e28]/20 text-[#da1e28] animate-pulse'
+                    : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+                }`}
+                title={isListening ? 'Stop listening' : 'Voice input'}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+            )}
 
             {streaming ? (
               <button
@@ -782,7 +1140,9 @@ export default function ChatInterface({
           </div>
 
           <p className="mt-2 text-center text-[10px] text-[#525252]">
-            Carbon AI can make mistakes. Consider checking important information.
+            {agentMode
+              ? 'Agent Mode: AI will plan and execute multiple steps automatically.'
+              : 'Carbon AI can make mistakes. Consider checking important information.'}
           </p>
         </div>
       </div>

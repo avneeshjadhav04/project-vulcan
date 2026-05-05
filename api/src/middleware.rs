@@ -5,7 +5,7 @@ use axum::{
     response::Response,
 };
 
-use crate::{config::Config, models::Claims};
+use crate::{config::Config, models::Claims, sandbox_engine::SandboxState};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -13,6 +13,7 @@ pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub http_client: reqwest::Client,
     pub jwt_public_key: Option<Vec<u8>>,
+    pub sandbox: SandboxState,
 }
 
 pub async fn auth_middleware(

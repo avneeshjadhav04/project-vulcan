@@ -21,6 +21,10 @@ pub struct Chat {
     pub user_id: String,
     pub title: String,
     pub model_id: String,
+    pub folder: String,
+    pub tags: String,
+    pub is_pinned: i32,
+    pub is_archived: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -93,7 +97,30 @@ pub struct UpdateNimKeyRequest {
     pub api_key: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FileRecord {
+    pub id: String,
+    pub chat_id: String,
+    pub message_id: Option<String>,
+    pub user_id: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub size_bytes: i64,
+    pub storage_path: String,
+    pub extracted_text: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RenameChatRequest {
-    pub title: String,
+pub struct UpdateChatOrganizationRequest {
+    pub title: Option<String>,
+    pub folder: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub is_pinned: Option<bool>,
+    pub is_archived: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EditMessageRequest {
+    pub content: String,
 }
