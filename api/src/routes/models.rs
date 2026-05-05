@@ -192,7 +192,7 @@ async fn validate_model(
         }
         Err(e) => {
             tracing::error!("Model validation request failed: {}", e);
-            Ok(Json(json!({"valid": true})))
+            Ok(Json(json!({"valid": false, "error": format!("Connection failed: {}", e)})))
         }
     }
 }

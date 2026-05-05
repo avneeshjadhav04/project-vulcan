@@ -148,7 +148,7 @@ async fn run() -> anyhow::Result<()> {
                 .layer(from_fn(admin_middleware))
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
-        .layer(DefaultBodyLimit::max(1024 * 1024)) // 1MB body limit
+        .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

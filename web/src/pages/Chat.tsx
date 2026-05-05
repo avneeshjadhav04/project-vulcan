@@ -23,7 +23,7 @@ export default function Chat() {
   const navigate = useNavigate()
   const [showTerminal, setShowTerminal] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [selectedModel, setSelectedModel] = useState('nvidia/llama-3.1-nemotron-70b')
+  const [selectedModel, setSelectedModel] = useState('meta/llama-3.1-8b-instruct')
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)

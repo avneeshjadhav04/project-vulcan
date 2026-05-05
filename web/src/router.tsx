@@ -11,8 +11,8 @@ function ProtectedRoute() {
   const location = useLocation()
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      <div className="flex h-screen items-center justify-center bg-[#0f0f0f]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0f62fe] border-t-transparent" />
       </div>
     )
   }
@@ -23,8 +23,8 @@ function AdminRoute() {
   const { isAdmin, isLoading } = useAuthStore()
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      <div className="flex h-screen items-center justify-center bg-[#0f0f0f]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0f62fe] border-t-transparent" />
       </div>
     )
   }

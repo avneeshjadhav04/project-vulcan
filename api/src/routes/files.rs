@@ -5,7 +5,6 @@ use axum::{
     routing::{delete, post},
     Router,
 };
-use std::io::Write;
 
 use crate::{middleware::AppState, models::Claims};
 
@@ -37,7 +36,7 @@ async fn upload_file(
 
     let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string());
     let chat_dir = std::path::Path::new(&upload_dir).join(&chat_id);
-    std::fs::create_dir_all(&chat_dir).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tokio::fs::create_dir_all(&chat_dir).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut uploaded_files = Vec::new();
 
@@ -62,14 +61,13 @@ async fn upload_file(
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("bin");
-        let storage_filename = format!("{}. {}", file_id, ext);
+        let storage_filename = format!("{}.{}", file_id, ext);
         let storage_path = chat_dir.join(&storage_filename);
 
-        let mut file = std::fs::File::create(&storage_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        file.write_all(&data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        tokio::fs::write(&storage_path, &data).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Extract text from common file types
-        let extracted_text = extract_text(&data, &content_type, &filename).await;
+        let extracted_text = extract_text(&data, &content_type, &filename);
 
         let storage_path_str = storage_path.to_string_lossy().to_string();
 
@@ -143,7 +141,7 @@ async fn delete_file(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(f) = file {
-        let _ = std::fs::remove_file(&f.storage_path);
+        let _ = tokio::fs::remove_file(&f.storage_path).await;
         sqlx::query("DELETE FROM files WHERE id = ?1")
             .bind(&file_id)
             .execute(&state.db)
@@ -186,7 +184,7 @@ async fn download_file(
     }
 }
 
-async fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> {
+fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> {
     match mime_type {
         "text/plain" | "text/markdown" | "text/x-markdown" => {
             String::from_utf8(data.to_vec()).ok()

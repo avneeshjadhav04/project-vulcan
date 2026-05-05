@@ -91,8 +91,12 @@ export default function FileUpload({ chatId, files, onFilesChange }: FileUploadP
 
   const removeFile = useCallback(async (fileId: string) => {
     try {
+      const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
       const res = await fetch(`/api/chats/${chatId}/files/${fileId}`, {
         method: 'DELETE',
+        headers: {
+          'X-CSRF-Token': csrfToken,
+        },
         credentials: 'include',
       })
       if (res.ok) {
