@@ -28,6 +28,7 @@ import {
   Key,
   Settings,
   ExternalLink,
+  Wrench,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
@@ -559,11 +560,11 @@ export default function ChatInterface({
     },
   })
 
-  const { data: userData } = useQuery({
+  const { data: userData, refetch: refetchUser } = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean }
+      return res.data as { has_nim_key: boolean; tools_enabled: boolean }
     },
   })
 
@@ -1175,6 +1176,25 @@ export default function ChatInterface({
               <Workflow className="h-4 w-4" />
             </button>
 
+            <button
+              onClick={async () => {
+                try {
+                  await api.post('/me/tools', { tools_enabled: !userData?.tools_enabled })
+                  await refetchUser()
+                } catch (err: any) {
+                  setSendError(err.response?.data?.error || 'Failed to toggle tools')
+                }
+              }}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+                userData?.tools_enabled
+                  ? 'bg-[#24a148]/20 text-[#24a148]'
+                  : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+              }`}
+              title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
+            >
+              <Wrench className="h-4 w-4" />
+            </button>
+
             {voiceSupported && (
               <button
                 onClick={toggleVoiceInput}
@@ -1212,8 +1232,8 @@ export default function ChatInterface({
 
           <p className="mt-2 text-center text-[10px] text-[#525252]">
             {agentMode
-              ? 'Agent Mode: AI will plan and execute multiple steps automatically.'
-              : 'Carbon AI can make mistakes. Consider checking important information.'}
+              ? `Agent Mode · ${userData?.tools_enabled ? 'Tools On' : 'Tools Off'} — AI will plan and execute multiple steps automatically.`
+              : `${userData?.tools_enabled ? 'Tools On' : 'Tools Off'} — ${userData?.tools_enabled ? 'AI can run commands, create files, and search the web.' : 'AI will not use any tools.'}`}
           </p>
         </div>
       </div>
