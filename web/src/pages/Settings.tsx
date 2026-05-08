@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Copy,
   CheckCircle2,
+  Brain,
 } from 'lucide-react'
 
 export default function Settings() {
@@ -94,6 +95,15 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to validate API key')
     } finally {
       setValidating(false)
+    }
+  }
+
+  const handleToggleMemory = async () => {
+    try {
+      await api.post('/me/memory')
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to toggle memory')
     }
   }
 
@@ -363,6 +373,69 @@ export default function Settings() {
               </motion.div>
             )}
           </AnimatePresence>
+        </motion.div>
+
+        {/* Memory Toggle */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.25 }}
+          className="rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-6 shadow-lg"
+        >
+          <div className="mb-5 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[#525252]">
+                <Brain className="h-4 w-4" />
+                Long-Term Memory
+              </h2>
+              <p className="mt-1 text-xs text-[#525252]">
+                Automatically summarize older conversations so the AI remembers context across long chats.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl bg-[#0f0f0f] border border-[#2a2a2a] px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${user?.memory_enabled ? 'bg-[#0f62fe]/10' : 'bg-[#525252]/10'}`}>
+                <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-[#0f62fe]' : 'text-[#525252]'}`} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">Conversation Summarization</p>
+                <p className="text-[11px] text-[#525252]">
+                  {user?.memory_enabled
+                    ? 'Enabled — AI will summarize older messages to maintain context'
+                    : 'Disabled — AI sees all messages (may hit token limits)'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleToggleMemory}
+              className={`relative h-6 w-11 rounded-full transition-colors ${
+                user?.memory_enabled ? 'bg-[#0f62fe]' : 'bg-[#2a2a2a]'
+              }`}
+            >
+              <motion.div
+                animate={{ x: user?.memory_enabled ? 20 : 2 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm"
+              />
+            </button>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+              <span>Triggers when a chat exceeds 26 messages</span>
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+              <span>Keeps the last 6 messages verbatim for recent context</span>
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+              <span>Summaries are stored per-chat and updated automatically</span>
+            </div>
+          </div>
         </motion.div>
 
         {/* Security Info */}

@@ -11,6 +11,7 @@ pub struct User {
     #[serde(skip_serializing)]
     pub encrypted_nim_key: Option<String>,
     pub role: String,
+    pub memory_enabled: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -25,6 +26,8 @@ pub struct Chat {
     pub tags: String,
     pub is_pinned: i32,
     pub is_archived: i32,
+    pub summary: Option<String>,
+    pub summary_updated_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
