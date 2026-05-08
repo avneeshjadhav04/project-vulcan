@@ -19,8 +19,6 @@ services:
         generateValue: true
       - key: NIM_BASE_URL
         value: https://integrate.api.nvidia.com/v1
-      - key: DISABLE_TOOLS
-        value: "1"
       - key: RUST_LOG
         value: info
     disk:

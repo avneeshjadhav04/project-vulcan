@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
+import AgentTimeline, { AgentState, createInitialAgentState } from './AgentTimeline'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -538,6 +539,7 @@ export default function ChatInterface({
   const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
   const [agentMode, setAgentMode] = useState(false)
+  const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState())
   const [isListening, setIsListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [modelValidation, setModelValidation] = useState<{valid: boolean; error?: string; model_id?: string} | null>(null)
@@ -573,6 +575,7 @@ export default function ChatInterface({
     setSendError('')
     setToolExecution(null)
     setAttachedFiles([])
+    setAgentState(createInitialAgentState())
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -693,6 +696,9 @@ export default function ChatInterface({
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
+    if (agentMode) {
+      setAgentState(createInitialAgentState())
+    }
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -755,6 +761,7 @@ export default function ChatInterface({
 
             // Check for markers first
             if (raw === '[DONE]') {
+              setAgentState((prev) => ({ ...prev, isComplete: true }))
               setStreamedContent('')
               setToolExecution(null)
               refetch()
@@ -776,6 +783,17 @@ export default function ChatInterface({
                   stderr: toolData.stderr || '',
                   status: toolData.status || 'error',
                 })
+                // Update agent state with tool result
+                setAgentState((prev) => {
+                  const steps = [...prev.steps]
+                  const lastStep = steps[steps.length - 1]
+                  if (lastStep) {
+                    lastStep.tool = toolData.tool || toolData.command || 'tool'
+                    lastStep.status = toolData.status === 'error' || toolData.error ? 'error' : 'success'
+                    lastStep.result = toolData.stdout || toolData.error || JSON.stringify(toolData.result || toolData)
+                  }
+                  return { ...prev, steps }
+                })
               } catch {
                 // Ignore malformed tool data
               }
@@ -784,6 +802,47 @@ export default function ChatInterface({
             if (raw.startsWith('[AGENT]') && raw.endsWith('[/AGENT]')) {
               const agentMsg = raw.slice(7, -8)
               setStreamedContent((prev) => prev + `\n[Agent: ${agentMsg}]\n`)
+              continue
+            }
+            if (raw.startsWith('[PLAN]')) {
+              const plan = raw.slice(6)
+              setAgentState((prev) => ({
+                ...prev,
+                plan,
+                isPlanning: false,
+                totalSteps: plan.split('\n').filter((l) => /^\d+\./.test(l.trim())).length || 0,
+              }))
+              continue
+            }
+            if (raw.startsWith('[STEP]')) {
+              const stepInfo = raw.slice(6)
+              const [current, total] = stepInfo.split('/').map((s) => parseInt(s.trim()))
+              setAgentState((prev) => ({
+                ...prev,
+                currentStep: current || prev.currentStep + 1,
+                totalSteps: total || prev.totalSteps,
+                steps: [
+                  ...prev.steps,
+                  {
+                    id: prev.steps.length + 1,
+                    status: 'running',
+                  },
+                ],
+              }))
+              continue
+            }
+            if (raw.startsWith('[RETRY]')) {
+              const retryInfo = raw.slice(7)
+              const [currentRetry] = retryInfo.split('/').map((s) => parseInt(s.trim()))
+              setAgentState((prev) => {
+                const steps = [...prev.steps]
+                const lastStep = steps[steps.length - 1]
+                if (lastStep) {
+                  lastStep.status = 'retry'
+                  lastStep.retryCount = currentRetry || (lastStep.retryCount || 0) + 1
+                }
+                return { ...prev, steps }
+              })
               continue
             }
             // Regular text chunk
@@ -1018,7 +1077,19 @@ export default function ChatInterface({
               ))}
 
               <AnimatePresence>
-                {toolExecution && streaming && (
+                {agentMode && streaming && agentState.plan && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                  >
+                    <AgentTimeline state={agentState} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {toolExecution && streaming && !agentMode && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1035,7 +1106,7 @@ export default function ChatInterface({
                 )}
               </AnimatePresence>
 
-              {streaming && !streamedContent && !toolExecution && <TypingIndicator />}
+              {streaming && !streamedContent && !toolExecution && !(agentMode && agentState.plan) && <TypingIndicator />}
             </>
           )}
           <div ref={messagesEndRef} />

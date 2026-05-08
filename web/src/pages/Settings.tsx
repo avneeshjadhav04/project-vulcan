@@ -21,6 +21,9 @@ import {
   Copy,
   CheckCircle2,
   Brain,
+  Wrench,
+  Terminal,
+  Workflow,
 } from 'lucide-react'
 
 export default function Settings() {
@@ -34,6 +37,8 @@ export default function Settings() {
   const [copied, setCopied] = useState(false)
   const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; status?: number} | null>(null)
   const [validating, setValidating] = useState(false)
+  const [maxSteps, setMaxSteps] = useState(user?.max_agent_steps || 10)
+  const [stepsSaved, setStepsSaved] = useState(false)
   const navigate = useNavigate()
 
   // Auto-hide saved state
@@ -104,6 +109,28 @@ export default function Settings() {
       await fetchMe()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to toggle memory')
+    }
+  }
+
+  const handleToggleTools = async () => {
+    try {
+      await api.post('/me/tools', { tools_enabled: !user?.tools_enabled })
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to toggle tools')
+    }
+  }
+
+  const handleUpdateMaxSteps = async () => {
+    setError('')
+    setStepsSaved(false)
+    try {
+      await api.post('/me/tools', { max_agent_steps: maxSteps })
+      await fetchMe()
+      setStepsSaved(true)
+      setTimeout(() => setStepsSaved(false), 2000)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update step limit')
     }
   }
 
@@ -434,6 +461,119 @@ export default function Settings() {
             <div className="flex items-start gap-2 text-[11px] text-[#525252]">
               <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
               <span>Summaries are stored per-chat and updated automatically</span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Tools Configuration */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.28 }}
+          className="rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-6 shadow-lg"
+        >
+          <div className="mb-5 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[#525252]">
+                <Wrench className="h-4 w-4" />
+                Tools & Agent
+              </h2>
+              <p className="mt-1 text-xs text-[#525252]">
+                Enable tool calling and configure agent behavior for multi-step tasks.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Tools Toggle */}
+            <div className="flex items-center justify-between rounded-xl bg-[#0f0f0f] border border-[#2a2a2a] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${user?.tools_enabled ? 'bg-[#0f62fe]/10' : 'bg-[#525252]/10'}`}>
+                  <Terminal className={`h-4 w-4 ${user?.tools_enabled ? 'text-[#0f62fe]' : 'text-[#525252]'}`} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">Tool Execution</p>
+                  <p className="text-[11px] text-[#525252]">
+                    {user?.tools_enabled
+                      ? 'Enabled — AI can run commands, create files, and search the web'
+                      : 'Disabled — AI will not use any tools'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleToggleTools}
+                className={`relative h-6 w-11 rounded-full transition-colors ${
+                  user?.tools_enabled ? 'bg-[#0f62fe]' : 'bg-[#2a2a2a]'
+                }`}
+              >
+                <motion.div
+                  animate={{ x: user?.tools_enabled ? 20 : 2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm"
+                />
+              </button>
+            </div>
+
+            {/* Agent Step Limit */}
+            <div className="rounded-xl bg-[#0f0f0f] border border-[#2a2a2a] px-4 py-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#8a3ffc]/10">
+                    <Workflow className="h-4 w-4 text-[#8a3ffc]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">Max Agent Steps</p>
+                    <p className="text-[11px] text-[#525252]">Limit how many tool calls the agent can make</p>
+                  </div>
+                </div>
+                <span className="rounded-lg bg-[#2a2a2a] px-2.5 py-1 font-mono text-xs font-semibold text-white">
+                  {maxSteps}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={maxSteps}
+                onChange={(e) => setMaxSteps(parseInt(e.target.value))}
+                className="w-full accent-[#0f62fe]"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[10px] text-[#525252]">1</span>
+                <span className="text-[10px] text-[#525252]">50</span>
+              </div>
+              <div className="mt-2 flex items-center justify-end gap-2">
+                {stepsSaved && (
+                  <span className="flex items-center gap-1 text-[11px] text-[#24a148]">
+                    <Check className="h-3 w-3" />
+                    Saved
+                  </span>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleUpdateMaxSteps}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#2a2a2a] px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-[#3a3a3a]"
+                >
+                  <Save className="h-3 w-3" />
+                  Save Limit
+                </motion.button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+                <span>Terminal commands run in a sandboxed environment</span>
+              </div>
+              <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+                <span>Files are stored in isolated workspace directories per chat</span>
+              </div>
+              <div className="flex items-start gap-2 text-[11px] text-[#525252]">
+                <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-[#24a148]" />
+                <span>Web search uses DuckDuckGo (no API key required)</span>
+              </div>
             </div>
           </div>
         </motion.div>

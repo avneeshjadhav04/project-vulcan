@@ -38,6 +38,7 @@ rand = "0.8"
 base64 = "0.22"
 sha2 = "0.10"
 regex = "1"
+urlencoding = "2"
 
 [dev-dependencies]
 tokio-test = "0.4"

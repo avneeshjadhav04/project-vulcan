@@ -9,3 +9,6 @@ node_modules/
 *.db
 *.db-shm
 *.db-wal
+*.log
+cookies.txt
+uploads/

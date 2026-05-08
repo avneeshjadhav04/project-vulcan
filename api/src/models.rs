@@ -12,6 +12,8 @@ pub struct User {
     pub encrypted_nim_key: Option<String>,
     pub role: String,
     pub memory_enabled: i32,
+    pub tools_enabled: i32,
+    pub max_agent_steps: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -28,6 +30,8 @@ pub struct Chat {
     pub is_archived: i32,
     pub summary: Option<String>,
     pub summary_updated_at: Option<DateTime<Utc>>,
+    pub agent_plan: Option<String>,
+    pub agent_step: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -126,4 +130,10 @@ pub struct UpdateChatOrganizationRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EditMessageRequest {
     pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateToolsConfigRequest {
+    pub tools_enabled: Option<bool>,
+    pub max_agent_steps: Option<i32>,
 }
