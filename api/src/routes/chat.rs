@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::{
     auth::decrypt_key,
     middleware::AppState,
-    models::{Chat, Claims, CreateChatRequest, Message, SendMessageRequest, UpdateChatOrganizationRequest, User},
+    models::{Chat, Claims, CreateChatRequest, Message, SendMessageRequest, UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User},
 };
 
 const MAX_MESSAGE_LENGTH: usize = 100_000;
@@ -23,6 +23,201 @@ const MAX_API_KEY_LENGTH: usize = 512;
 // Memory summarization settings
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
 const MEMORY_RECENT_WINDOW: usize = 6;        // Always keep last 6 messages
+
+/// Build the full tools definition array for LLM requests.
+fn build_tools_def() -> Vec<serde_json::Value> {
+    vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "execute_terminal_command",
+                "description": "Execute a shell command in a sandboxed terminal environment.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"command": {"type": "string", "description": "The shell command to execute"}},
+                    "required": ["command"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "create_file",
+                "description": "Create a new file in the workspace directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string", "description": "Name of the file to create"},
+                        "content": {"type": "string", "description": "Content to write into the file"}
+                    },
+                    "required": ["filename", "content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read the contents of a file in the workspace directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string", "description": "Name of the file to read"}
+                    },
+                    "required": ["filename"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "modify_file",
+                "description": "Modify a file in the workspace. Supports replace, append, or regex_replace operations.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filename": {"type": "string", "description": "Name of the file to modify"},
+                        "operation": {"type": "string", "enum": ["replace", "append", "regex_replace"], "description": "Type of modification"},
+                        "old_content": {"type": "string", "description": "Text to replace (for replace/regex_replace)"},
+                        "new_content": {"type": "string", "description": "New text to insert"}
+                    },
+                    "required": ["filename", "operation", "new_content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web for information using DuckDuckGo.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+    ]
+}
+
+/// Execute a single tool call and return the result JSON.
+async fn execute_tool(
+    name: &str,
+    args_str: &str,
+    chat_id: &str,
+    state: &AppState,
+) -> Result<serde_json::Value, String> {
+    let args: serde_json::Value = serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
+
+    match name {
+        "execute_terminal_command" => {
+            let cmd = args["command"].as_str().ok_or("Missing command")?;
+            let exec_res = crate::sandbox_engine::run_command_http(cmd, &state.sandbox).await;
+            match exec_res {
+                Ok(resp) => Ok(json!({"stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})),
+                Err(e) => Ok(json!({"error": format!("Execution failed: {}", e), "status": "error"})),
+            }
+        }
+        "create_file" => {
+            let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            let content = args["content"].as_str().ok_or("Missing content")?;
+            let workspace = format!("./workspace/{}", chat_id);
+            tokio::fs::create_dir_all(&workspace).await.map_err(|e| e.to_string())?;
+            let path = std::path::Path::new(&workspace).join(filename);
+            tokio::fs::write(&path, content).await.map_err(|e| e.to_string())?;
+            Ok(json!({"status": "created", "filename": filename, "size": content.len()}))
+        }
+        "read_file" => {
+            let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            let workspace = format!("./workspace/{}", chat_id);
+            let path = std::path::Path::new(&workspace).join(filename);
+            let content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+            Ok(json!({"status": "success", "filename": filename, "content": content}))
+        }
+        "modify_file" => {
+            let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            let operation = args["operation"].as_str().ok_or("Missing operation")?;
+            let new_content = args["new_content"].as_str().ok_or("Missing new_content")?;
+            let workspace = format!("./workspace/{}", chat_id);
+            let path = std::path::Path::new(&workspace).join(filename);
+            let mut content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+
+            match operation {
+                "replace" => {
+                    let old = args["old_content"].as_str().ok_or("Missing old_content")?;
+                    if !content.contains(old) {
+                        return Ok(json!({"status": "error", "message": "old_content not found in file"}));
+                    }
+                    content = content.replace(old, new_content);
+                }
+                "append" => {
+                    content.push_str(new_content);
+                }
+                "regex_replace" => {
+                    let old = args["old_content"].as_str().ok_or("Missing old_content")?;
+                    let re = regex::Regex::new(old).map_err(|e| format!("Invalid regex: {}", e))?;
+                    content = re.replace_all(&content, new_content).to_string();
+                }
+                _ => return Err(format!("Unknown operation: {}", operation)),
+            }
+
+            tokio::fs::write(&path, content).await.map_err(|e| e.to_string())?;
+            Ok(json!({"status": "modified", "filename": filename}))
+        }
+        "web_search" => {
+            let query = args["query"].as_str().ok_or("Missing query")?;
+            let url = format!("https://lite.duckduckgo.com/lite/?q={}", urlencoding::encode(query));
+            let res = state.http_client.get(&url).send().await.map_err(|e| e.to_string())?;
+            let html = res.text().await.map_err(|e| e.to_string())?;
+
+            // Simple HTML parsing to extract results
+            let mut results = Vec::new();
+            let link_re = regex::Regex::new(r#"<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap();
+            let snippet_re = regex::Regex::new(r#"<td[^>]*class="result-snippet"[^>]*>(.*?)</td>"#).unwrap();
+
+            let links: Vec<_> = link_re.captures_iter(&html).collect();
+            let snippets: Vec<_> = snippet_re.captures_iter(&html).collect();
+
+            let tag_re = regex::Regex::new(r"<[^>]+>").unwrap();
+            for (i, link_cap) in links.iter().enumerate().take(5) {
+                let href = link_cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                let title_raw = link_cap.get(2).map(|m| m.as_str()).unwrap_or("");
+                let title = tag_re.replace_all(title_raw, "").to_string();
+                let snippet = snippets.get(i).and_then(|s| s.get(1)).map(|m| {
+                    tag_re.replace_all(m.as_str(), "").to_string()
+                }).unwrap_or_default();
+
+                results.push(json!({
+                    "title": title.trim(),
+                    "url": href,
+                    "snippet": snippet.trim()
+                }));
+            }
+
+            Ok(json!({"status": "success", "query": query, "results": results}))
+        }
+        _ => Err(format!("Unknown tool: {}", name)),
+    }
+}
+
+/// Resolve a tool call from the LLM response and return the tool result.
+async fn resolve_tool_call(
+    call: &serde_json::Value,
+    chat_id: &str,
+    state: &AppState,
+) -> Option<(String, String, serde_json::Value)> {
+    let func = call["function"].as_object()?;
+    let name = func["name"].as_str()?;
+    let args_str = func["arguments"].as_str().unwrap_or("{}");
+    let tool_id = call["id"].as_str().unwrap_or("call_1");
+
+    match execute_tool(name, args_str, chat_id, state).await {
+        Ok(result) => Some((tool_id.to_string(), name.to_string(), result)),
+        Err(e) => Some((tool_id.to_string(), name.to_string(), json!({"error": e}))),
+    }
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -40,6 +235,7 @@ pub fn router() -> Router<AppState> {
         .route("/me/key", post(update_nim_key))
         .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
+        .route("/me/tools", post(update_tools_config))
 }
 
 async fn get_me(
@@ -58,6 +254,38 @@ async fn get_me(
         "role": user.role,
         "has_nim_key": user.encrypted_nim_key.is_some(),
         "memory_enabled": user.memory_enabled == 1,
+        "tools_enabled": user.tools_enabled == 1,
+        "max_agent_steps": user.max_agent_steps,
+    })))
+}
+
+async fn update_tools_config(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<UpdateToolsConfigRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let tools_enabled = req.tools_enabled.map(|v| if v { 1 } else { 0 });
+    let max_steps = req.max_agent_steps.map(|v| v.clamp(1, 50));
+
+    sqlx::query(
+        "UPDATE users SET tools_enabled = COALESCE(?1, tools_enabled), max_agent_steps = COALESCE(?2, max_agent_steps) WHERE id = ?3"
+    )
+    .bind(tools_enabled)
+    .bind(max_steps)
+    .bind(claims.sub.clone())
+    .execute(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "tools_enabled": tools_enabled.unwrap_or(user.tools_enabled) == 1,
+        "max_agent_steps": max_steps.unwrap_or(user.max_agent_steps),
     })))
 }
 
@@ -609,21 +837,10 @@ async fn send_message(
         payload
     };
 
-    let should_use_tools = std::env::var("DISABLE_TOOLS").is_err();
+    let should_use_tools = std::env::var("DISABLE_TOOLS").is_err() && user.tools_enabled == 1;
 
     if should_use_tools {
-        let tools = json!([{
-            "type": "function",
-            "function": {
-                "name": "execute_terminal_command",
-                "description": "Execute a shell command in a sandboxed terminal environment.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"command": {"type": "string", "description": "The shell command to execute"}},
-                    "required": ["command"]
-                }
-            }
-        }]);
+        let tools = build_tools_def();
 
         let tool_body = json!({
             "model": chat.model_id,
@@ -647,34 +864,18 @@ async fn send_message(
                         if let Some(calls) = tool_data["choices"][0]["message"]["tool_calls"].as_array() {
                             if !calls.is_empty() {
                                 if let Some(call) = calls.first() {
-                                    if let Some(func) = call["function"].as_object() {
-                                        let name = func["name"].as_str().unwrap_or("");
-                                        let args_str = func["arguments"].as_str().unwrap_or("{}");
-                                        if name == "execute_terminal_command" {
-                                            if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
-                                                if let Some(cmd) = args["command"].as_str() {
-                                                    tracing::info!("AI executing command: {}", cmd);
-                                                    let exec_res = crate::sandbox_engine::run_command_http(cmd, &state.sandbox).await;
-                                                    let tool_result = match exec_res {
-                                                        Ok(resp) => {
-                                                            json!({"stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})
-                                                        }
-                                                        Err(_e) => {
-                                                            let mut tool_messages = messages_payload.clone();
-                                                            tool_messages.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": call["id"].as_str().unwrap_or("call_1"), "type": "function", "function": {"name": "execute_terminal_command", "arguments": args_str}}]}));
-                                                            tool_messages.push(json!({"role": "tool", "tool_call_id": call["id"].as_str().unwrap_or("call_1"), "content": "Sandbox is currently unavailable. Please inform the user that terminal execution is not available at this time."}));
-                                                            let db = state.db.clone();
-                                                            return stream_final_response(state, nim_key, chat.model_id, tool_messages, id, db, Some(cmd.to_string()), json!({"status": "unavailable"})).await;
-                                                        }
-                                                    };
-                                                    let mut tool_messages = messages_payload.clone();
-                                                    tool_messages.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": call["id"].as_str().unwrap_or("call_1"), "type": "function", "function": {"name": "execute_terminal_command", "arguments": args_str}}]}));
-                                                    tool_messages.push(json!({"role": "tool", "tool_call_id": call["id"].as_str().unwrap_or("call_1"), "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                                    let db = state.db.clone();
-                                                    return stream_final_response(state, nim_key, chat.model_id, tool_messages, id, db, Some(cmd.to_string()), tool_result.clone()).await;
-                                                }
-                                            }
-                                        }
+                                    if let Some((tool_id, tool_name, tool_result)) = resolve_tool_call(call, &id, &state).await {
+                                        tracing::info!("AI executing tool: {} -> {}", tool_name, tool_result);
+                                        let mut tool_messages = messages_payload.clone();
+                                        tool_messages.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
+                                        tool_messages.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
+                                        let db = state.db.clone();
+                                        let cmd = if tool_name == "execute_terminal_command" {
+                                            serde_json::from_str::<serde_json::Value>(call["function"]["arguments"].as_str().unwrap_or("{}"))
+                                                .ok()
+                                                .and_then(|a| a["command"].as_str().map(|s| s.to_string()))
+                                        } else { None };
+                                        return stream_final_response(state, nim_key, chat.model_id, tool_messages, id, db, cmd, tool_result).await;
                                     }
                                 }
                             }
@@ -885,34 +1086,73 @@ async fn agent_workflow(
     let nim_key_clone = nim_key.clone();
     let chat_id = id.clone();
     let model_id = chat.model_id.clone();
+    let max_steps = user.max_agent_steps as usize;
 
     tokio::spawn(async move {
         let _ = tx.send("[AGENT]Starting agent workflow...[/AGENT]".to_string()).await;
+
+        // ─── Phase 1: Generate Plan ───
+        let plan = {
+            let plan_body = json!({
+                "model": model_id,
+                "messages": [
+                    json!({"role": "system", "content": "You are an autonomous agent planner. Given a task, create a numbered list of steps (1, 2, 3...) needed to accomplish it. Be specific about what commands or actions are needed. Output ONLY the numbered plan, no extra text."}),
+                    json!({"role": "user", "content": &content})
+                ],
+                "stream": false,
+                "max_tokens": 512,
+                "temperature": 0.3,
+            });
+
+            let plan_res = state_clone.http_client
+                .post(format!("{}/chat/completions", state_clone.config.nim_base_url))
+                .header("Authorization", format!("Bearer {}", nim_key_clone))
+                .header("Content-Type", "application/json")
+                .json(&plan_body)
+                .send()
+                .await;
+
+            match plan_res {
+                Ok(r) if r.status().is_success() => {
+                    if let Ok(data) = r.json::<serde_json::Value>().await {
+                        data["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string()
+                    } else { String::new() }
+                }
+                _ => String::new()
+            }
+        };
+
+        if !plan.is_empty() {
+            let _ = sqlx::query("UPDATE chats SET agent_plan = ?1, agent_step = 0 WHERE id = ?2")
+                .bind(&plan)
+                .bind(&chat_id)
+                .execute(&state_clone.db).await;
+            let _ = tx.send(format!("[PLAN]{}", plan)).await;
+        }
+
+        // ─── Phase 2: Execute Plan ───
         let mut messages_payload = vec![
-            json!({"role": "system", "content": "You are an autonomous agent. You can execute terminal commands to accomplish tasks. When given a task, break it down into steps. For each step, you may use the execute_terminal_command tool to run commands. After each command, analyze the output and decide the next step. Continue until the task is complete. Be concise."}),
+            json!({"role": "system", "content": "You are an autonomous agent. You have access to tools: execute_terminal_command, create_file, read_file, modify_file, web_search. Follow the plan step by step. If a command fails, try an alternative approach. Be concise."}),
             json!({"role": "user", "content": &content}),
+            json!({"role": "assistant", "content": format!("Plan:\n{}", plan)}),
         ];
 
-        let max_steps = 5;
         let mut full_response = String::new();
+        let mut step = 0;
+        let mut retry_count = 0;
+        const MAX_RETRIES: usize = 2;
 
-        for step in 0..max_steps {
-            let _ = tx.send(format!("[AGENT]Step {}: Planning...[/AGENT]", step + 1)).await;
+        while step < max_steps {
+            let _ = tx.send(format!("[STEP]{}/{}", step + 1, max_steps)).await;
 
-            let tools = json!([{
-                "type": "function",
-                "function": {
-                    "name": "execute_terminal_command",
-                    "description": "Execute a shell command in a sandboxed terminal environment.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"command": {"type": "string", "description": "The shell command to execute"}},
-                        "required": ["command"]
-                    }
-                }
-            }]);
-
-            let body = json!({"model": model_id, "messages": messages_payload.clone(), "tools": tools, "tool_choice": "auto", "max_tokens": 2048});
+            let tools = build_tools_def();
+            let body = json!({
+                "model": model_id,
+                "messages": messages_payload.clone(),
+                "tools": tools,
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+            });
 
             let res = state_clone.http_client
                 .post(format!("{}/chat/completions", state_clone.config.nim_base_url))
@@ -934,30 +1174,28 @@ async fn agent_workflow(
                             if let Some(calls) = msg["tool_calls"].as_array() {
                                 if !calls.is_empty() {
                                     if let Some(call) = calls.first() {
-                                        if let Some(func) = call["function"].as_object() {
-                                            let name = func["name"].as_str().unwrap_or("");
-                                            let args_str = func["arguments"].as_str().unwrap_or("{}");
-                                            if name == "execute_terminal_command" {
-                                                if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
-                                                    if let Some(cmd) = args["command"].as_str() {
-                                                        let _ = tx.send(format!("[AGENT]Executing: {}[/AGENT]", cmd)).await;
-                                                        let exec_res = crate::sandbox_engine::run_command_http(cmd, &state_clone.sandbox).await;
-                                                        let tool_result = match exec_res {
-                                                            Ok(resp) => {
-                                                                let _ = tx.send(format!("[TOOL]{}", serde_json::json!({"command": cmd, "stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status}).to_string())).await;
-                                                                serde_json::json!({"stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})
-                                                            }
-                            Err(e) => {
-                                                                let _ = tx.send(format!("[ERR]Command failed: {}[/ERR]", e)).await;
-                                                                break;
-                                                            }
-                                                        };
-                                                        messages_payload.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": call["id"].as_str().unwrap_or("call_1"), "type": "function", "function": {"name": name, "arguments": args_str}}]}));
-                                                        messages_payload.push(json!({"role": "tool", "tool_call_id": call["id"].as_str().unwrap_or("call_1"), "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                                        continue;
-                                                    }
-                                                }
+                                        if let Some((tool_id, tool_name, tool_result)) = resolve_tool_call(call, &chat_id, &state_clone).await {
+                                            let has_error = tool_result.get("error").is_some() || tool_result.get("status").and_then(|s| s.as_str()) == Some("error");
+
+                                            if has_error && retry_count < MAX_RETRIES {
+                                                retry_count += 1;
+                                                let _ = tx.send(format!("[RETRY]{}/{}", retry_count, MAX_RETRIES)).await;
+                                                messages_payload.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
+                                                messages_payload.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
+                                                messages_payload.push(json!({"role": "system", "content": format!("The previous {} command failed. Try a different approach. Do not repeat the same command.", tool_name)}));
+                                                continue;
                                             }
+
+                                            retry_count = 0;
+                                            let _ = tx.send(format!("[TOOL]{}", serde_json::to_string(&json!({"tool": tool_name, "result": &tool_result})).unwrap_or_default())).await;
+                                            messages_payload.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
+                                            messages_payload.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
+                                            step += 1;
+                                            let _ = sqlx::query("UPDATE chats SET agent_step = ?1 WHERE id = ?2")
+                                                .bind(step as i32)
+                                                .bind(&chat_id)
+                                                .execute(&state_clone.db).await;
+                                            continue;
                                         }
                                     }
                                 }
