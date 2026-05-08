@@ -20,6 +20,10 @@ const MAX_MESSAGE_LENGTH: usize = 100_000;
 const MAX_TITLE_LENGTH: usize = 255;
 const MAX_API_KEY_LENGTH: usize = 512;
 
+// Memory summarization settings
+const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
+const MEMORY_RECENT_WINDOW: usize = 6;        // Always keep last 6 messages
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
@@ -35,6 +39,7 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(get_me))
         .route("/me/key", post(update_nim_key))
         .route("/me/key/validate", get(validate_nim_key))
+        .route("/me/memory", post(toggle_memory))
 }
 
 async fn get_me(
@@ -52,6 +57,31 @@ async fn get_me(
         "email": user.email,
         "role": user.role,
         "has_nim_key": user.encrypted_nim_key.is_some(),
+        "memory_enabled": user.memory_enabled == 1,
+    })))
+}
+
+async fn toggle_memory(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let new_value = if user.memory_enabled == 1 { 0 } else { 1 };
+
+    sqlx::query("UPDATE users SET memory_enabled = ?1 WHERE id = ?2")
+        .bind(new_value)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "memory_enabled": new_value == 1,
     })))
 }
 
@@ -386,6 +416,85 @@ async fn export_chat(
     Ok((headers, content))
 }
 
+/// Summarize older messages in a conversation using the LLM.
+/// Returns the summary text.
+async fn summarize_conversation(
+    state: &AppState,
+    nim_key: &str,
+    model_id: &str,
+    messages_to_summarize: &[Message],
+) -> Result<String, String> {
+    if messages_to_summarize.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut summary_messages = vec![json!({
+        "role": "system",
+        "content": "You are a conversation summarizer. Create a concise summary of the following conversation. Focus on key facts, decisions, code, and context that would help an AI assistant continue the conversation. Be brief but thorough. Output ONLY the summary text."
+    })];
+
+    for msg in messages_to_summarize {
+        summary_messages.push(json!({
+            "role": msg.role,
+            "content": msg.content,
+        }));
+    }
+
+    let body = json!({
+        "model": model_id,
+        "messages": summary_messages,
+        "stream": false,
+        "max_tokens": 512,
+        "temperature": 0.3,
+    });
+
+    let res = state.http_client
+        .post(format!("{}/chat/completions", state.config.nim_base_url))
+        .header("Authorization", format!("Bearer {}", nim_key))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Summary request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Summary request returned {}", res.status()));
+    }
+
+    let data: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse summary: {}", e))?;
+    let summary = data["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    Ok(summary)
+}
+
+/// Build the messages payload for an LLM request, using summarization if memory is enabled.
+fn build_messages_payload(
+    system_prompt: &str,
+    summary: Option<&str>,
+    recent_messages: &[Message],
+) -> Vec<serde_json::Value> {
+    let mut payload = vec![json!({"role": "system", "content": system_prompt})];
+
+    if let Some(s) = summary {
+        if !s.is_empty() {
+            payload.push(json!({
+                "role": "system",
+                "content": format!("[Previous conversation summary]: {}", s)
+            }));
+        }
+    }
+
+    for msg in recent_messages {
+        payload.push(json!({"role": msg.role, "content": msg.content}));
+    }
+
+    payload
+}
+
 async fn send_message(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
@@ -438,14 +547,67 @@ async fn send_message(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let mut messages_payload = vec![json!({
-        "role": "system",
-        "content": "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations."
-    })];
+    // ─── Memory / Summarization Logic ───
+    let memory_enabled = user.memory_enabled == 1;
+    let needs_summarization = memory_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
 
-    for msg in &history {
-        messages_payload.push(json!({"role": msg.role, "content": msg.content}));
-    }
+    let messages_payload = if needs_summarization {
+        // Split into older messages (to summarize) and recent messages (to keep verbatim)
+        let split_at = history.len() - MEMORY_RECENT_WINDOW;
+        let older = &history[..split_at];
+        let recent = &history[split_at..];
+
+        // Use existing summary if available and up-to-date
+        let use_existing_summary = chat.summary.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+
+        let summary_text = if use_existing_summary {
+            chat.summary.clone().unwrap()
+        } else {
+            // Generate summary in background (don't block response)
+            let state_clone = state.clone();
+            let nim_key_clone = nim_key.clone();
+            let model_id_clone = chat.model_id.clone();
+            let chat_id_clone = id.clone();
+            let older_msgs: Vec<Message> = older.to_vec();
+
+            tokio::spawn(async move {
+                match summarize_conversation(&state_clone, &nim_key_clone, &model_id_clone, &older_msgs).await {
+                    Ok(summary) => {
+                        let _ = sqlx::query(
+                            "UPDATE chats SET summary = ?1, summary_updated_at = datetime('now') WHERE id = ?2"
+                        )
+                        .bind(&summary)
+                        .bind(&chat_id_clone)
+                        .execute(&state_clone.db)
+                        .await;
+                        tracing::info!("Generated summary for chat {} ({} chars)", chat_id_clone, summary.len());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to generate summary for chat {}: {}", chat_id_clone, e);
+                    }
+                }
+            });
+
+            // While summary generates, return a lightweight placeholder
+            "(Generating summary of earlier conversation...)".to_string()
+        };
+
+        build_messages_payload(
+            "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations.",
+            Some(&summary_text),
+            recent,
+        )
+    } else {
+        // Memory disabled or chat is short: send all messages
+        let mut payload = vec![json!({
+            "role": "system",
+            "content": "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations."
+        })];
+        for msg in &history {
+            payload.push(json!({"role": msg.role, "content": msg.content}));
+        }
+        payload
+    };
 
     let should_use_tools = std::env::var("DISABLE_TOOLS").is_err();
 

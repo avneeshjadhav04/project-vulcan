@@ -5,6 +5,7 @@ interface User {
   email: string
   role: string
   has_nim_key: boolean
+  memory_enabled: boolean
 }
 
 interface AuthState {
