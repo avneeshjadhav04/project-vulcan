@@ -3,14 +3,14 @@
 
 services:
   - type: web
-    name: carbon-ai
+    name: project-vulcan
     runtime: docker
     repo: https://github.com/avneeshjadhav04/ai-assistant
     plan: starter
     dockerfilePath: ./Dockerfile
     envVars:
       - key: DATABASE_URL
-        value: sqlite:/data/carbon_ai.db
+        value: sqlite:/data/vulcan.db
       - key: MASTER_KEY
         generateValue: true
       - key: ADMIN_DEFAULT_EMAIL
@@ -22,7 +22,7 @@ services:
       - key: RUST_LOG
         value: info
     disk:
-      name: carbon-ai-data
+      name: vulcan-data
       mountPath: /data
       sizeGB: 1
     healthCheckPath: /api/health

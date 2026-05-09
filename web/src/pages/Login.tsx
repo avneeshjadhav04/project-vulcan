@@ -254,7 +254,7 @@ export default function Login() {
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
-              <span className="text-lg font-bold tracking-tight">Carbon AI</span>
+              <span className="text-lg font-bold tracking-tight">Project Vulcan</span>
               <p className="text-[10px] text-[#525252]">Personal AI Assistant</p>
             </div>
           </button>
@@ -315,7 +315,7 @@ export default function Login() {
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Carbon AI</h1>
+              <h1 className="text-xl font-bold tracking-tight text-white">Project Vulcan</h1>
               <p className="text-xs text-[#525252]">Personal AI Assistant</p>
             </div>
           </div>
@@ -339,7 +339,7 @@ export default function Login() {
                     <p className="mt-1 text-sm text-[#525252]">
                       {isSignup
                         ? 'Get started with your AI assistant'
-                        : 'Sign in to continue to Carbon AI'}
+                        : 'Sign in to continue to Project Vulcan'}
                     </p>
                   </motion.div>
                 </AnimatePresence>
