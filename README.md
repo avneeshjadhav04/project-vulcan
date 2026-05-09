@@ -31,7 +31,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 
 1. Go to [Render Dashboard](https://dashboard.render.com)
 2. Click **New +** → **Web Service**
-3. Connect your GitHub repo (`avneeshjadhav04/ai-assistant`)
+3. Connect your GitHub repo (`avneeshjadhav04/project-vulcan`)
 4. Configure:
    - **Name**: `project-vulcan`
    - **Runtime**: Docker
