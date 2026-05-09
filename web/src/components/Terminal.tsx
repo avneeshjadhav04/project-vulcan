@@ -11,6 +11,10 @@ import {
   Wifi,
   Shield,
   AlertTriangle,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from 'lucide-react'
 
 export default function Terminal() {
@@ -255,6 +259,43 @@ export default function Terminal() {
         </div>
 
         <div className="flex items-center gap-1">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => xtermRef.current?.scrollToTop()}
+            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            title="Scroll to top"
+          >
+            <ArrowUpToLine className="h-3 w-3" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => xtermRef.current?.scrollLines(-5)}
+            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            title="Scroll up"
+          >
+            <ChevronUp className="h-3 w-3" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => xtermRef.current?.scrollLines(5)}
+            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            title="Scroll down"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </motion.button>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => xtermRef.current?.scrollToBottom()}
+            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            title="Scroll to bottom"
+          >
+            <ArrowDownToLine className="h-3 w-3" />
+          </motion.button>
+          <div className="mx-1 h-4 w-px bg-[#2a2a2a]" />
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
