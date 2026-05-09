@@ -5,7 +5,7 @@ services:
   - type: web
     name: project-vulcan
     runtime: docker
-    repo: https://github.com/avneeshjadhav04/ai-assistant
+    repo: https://github.com/avneeshjadhav04/project-vulcan
     plan: starter
     dockerfilePath: ./Dockerfile
     envVars:
