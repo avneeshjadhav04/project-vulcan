@@ -10,7 +10,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 - **AI Chat**: Real-time streaming chat with NVIDIA NIM models via Server-Sent Events (SSE)
 - **Model Selection**: Dynamic dropdown fetching the latest available models from NVIDIA NIM
 - **Bring Your Own Key (BYOK)**: Secure AES-256-GCM encrypted API key storage
-- **Sandboxed Terminal**: Isolated command execution via `nsjail` (Docker Compose only)
+- **Sandboxed Terminal**: Isolated command execution via `proot` + Ubuntu 24.04 LTS rootfs
 - **Admin Dashboard**: User management and terminal audit logs with role-based access
 - **Landing Page**: Animated marketing page with feature showcase and terminal demo
 - **Dark Mode Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
@@ -21,7 +21,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 |-------|-----------|
 | **Frontend** | React 18, Vite, TypeScript, Tailwind CSS, Framer Motion |
 | **Backend API** | Rust (Axum, Tokio, SQLx) |
-| **Sandbox** | Rust (Axum) + nsjail |
+| **Sandbox** | `proot` + Ubuntu 24.04 LTS rootfs |
 | **Database** | SQLite (embedded, zero-config) |
 | **AI Provider** | NVIDIA NIM (BYOK) |
 
@@ -75,7 +75,7 @@ Go to **Environment** tab:
 - Email: `admin@local.local`
 - Password: The `ADMIN_DEFAULT_PASSWORD` you set
 
-> **Note:** The sandboxed terminal requires privileged containers (Docker Compose only). All other features work fully on Render.
+> **Note:** The sandboxed terminal runs inside the API container via `proot`. No privileged mode required. Works on Render, VPS, and local Docker.
 
 ---
 
@@ -101,10 +101,7 @@ docker compose up --build
 # Terminal 1: API
 cd api && cargo run
 
-# Terminal 2: Sandbox (requires root/CAP_SYS_ADMIN)
-cd sandbox && cargo run
-
-# Terminal 3: Frontend
+# Terminal 2: Frontend
 cd web && npm install && npm run dev
 ```
 
@@ -121,7 +118,7 @@ cd web && npm install && npm run dev
               ▼            ▼            ▼
         ┌─────────┐ ┌──────────┐ ┌──────────┐
         │ Sandbox │ │ NVIDIA   │ │  Admin   │
-        │(nsjail) │ │   NIM    │ │ Dashboard│
+        │(proot)  │ │   NIM    │ │ Dashboard│
         └─────────┘ └──────────┘ └──────────┘
 ```
 
@@ -156,9 +153,8 @@ cd web && npm install && npm run dev
 │   │       └── admin.rs    # Admin endpoints
 │   ├── Cargo.toml
 │   └── Dockerfile
-├── sandbox/                # Rust Sandbox Executor
-│   ├── src/main.rs         # nsjail spawner
-│   ├── nsjail.cfg          # Jail config
+├── sandbox/                # Legacy sandbox (not used)
+│   ├── src/main.rs
 │   ├── Cargo.toml
 │   └── Dockerfile
 ├── web/                    # React Frontend
@@ -182,7 +178,7 @@ cd web && npm install && npm run dev
 - **Passwords**: Argon2id hashing
 - **API Keys**: AES-256-GCM encryption at rest
 - **Auth**: JWT via HttpOnly, SameSite=Strict cookies
-- **Terminal**: nsjail sandbox (no network, RO filesystem, resource limits)
+- **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
 - **JWT Fallback**: HS256 when RSA keys not available
 
 

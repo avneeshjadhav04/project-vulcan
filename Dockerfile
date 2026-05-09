@@ -19,12 +19,21 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Create data directory with open permissions for SQLite
 RUN mkdir -p /data && chmod 777 /data
+
+# Create workspace directory for sandbox bind-mount
+RUN mkdir -p /app/workspace && chmod 777 /app/workspace
+
+# Download and extract Ubuntu 24.04 LTS rootfs for proot sandbox
+RUN wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-amd64.tar.gz \
+    && mkdir -p /app/ubuntu-rootfs \
+    && tar -xzf /tmp/ubuntu-rootfs.tar.gz -C /app/ubuntu-rootfs \
+    && rm /tmp/ubuntu-rootfs.tar.gz
 
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
