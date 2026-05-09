@@ -23,12 +23,13 @@ export default function Terminal() {
   const [connecting, setConnecting] = useState(false)
   const [commandCount, setCommandCount] = useState(0)
   const xtermRef = useRef<XTerm | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [reconnectKey, setReconnectKey] = useState(0)
   const [lastError, setLastError] = useState('')
 
   const initTerminal = useCallback(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current) return () => {}
 
     containerRef.current.innerHTML = ''
     setConnecting(true)
@@ -72,6 +73,18 @@ export default function Terminal() {
     term.focus()
 
     xtermRef.current = term
+    fitAddonRef.current = fitAddon
+
+    // ResizeObserver ensures fitAddon re-runs when the container animates
+    const resizeObserver = new ResizeObserver(() => {
+      try {
+        fitAddon.fit()
+        term.focus()
+      } catch {
+        // ignore
+      }
+    })
+    resizeObserver.observe(containerRef.current)
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${protocol}://${window.location.host}/api/terminal`)
@@ -179,13 +192,22 @@ export default function Terminal() {
       }
     })
 
-    const handleResize = () => fitAddon.fit()
-    window.addEventListener('resize', handleResize)
+    const handleWindowResize = () => {
+      try {
+        fitAddon.fit()
+      } catch {
+        // ignore
+      }
+    }
+    window.addEventListener('resize', handleWindowResize)
 
     return () => {
-      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('resize', handleWindowResize)
+      resizeObserver.disconnect()
       ws.close()
       term.dispose()
+      xtermRef.current = null
+      fitAddonRef.current = null
     }
   }, [reconnectKey])
 
@@ -204,7 +226,7 @@ export default function Terminal() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#0f0f0f] rounded-xl overflow-hidden border border-[#2a2a2a]">
+    <div className="flex h-full flex-col bg-[#0f0f0f] rounded-xl border border-[#2a2a2a]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
         <div className="flex items-center gap-3">
@@ -353,7 +375,7 @@ export default function Terminal() {
       <div
         ref={containerRef}
         className="relative flex-1"
-        onClick={() => xtermRef.current?.focus()}
+        style={{ minHeight: 0 }}
       />
     </div>
   )
