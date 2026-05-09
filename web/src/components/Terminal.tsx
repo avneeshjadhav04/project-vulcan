@@ -349,7 +349,7 @@ export default function Terminal() {
       </div>
 
       {/* Terminal Area */}
-      <div ref={containerRef} className="flex-1 p-3" />
+      <div ref={containerRef} className="relative flex-1 overflow-hidden" />
     </div>
   )
 }

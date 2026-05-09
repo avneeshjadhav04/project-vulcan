@@ -227,7 +227,6 @@ pub fn router() -> Router<AppState> {
         .route("/chats/:id/messages/:msg_id", patch(edit_message))
         .route("/chats/:id/messages/:msg_id/after", delete(delete_messages_after))
         .route("/chats/:id/messages/:msg_id/react", post(add_reaction).delete(remove_reaction))
-        .route("/chats/:id/agent", post(agent_workflow))
         .route("/chats/:id/export", get(export_chat))
         .route("/search", get(search_chats))
         .route("/usage", get(get_usage))
@@ -255,7 +254,6 @@ async fn get_me(
         "has_nim_key": user.encrypted_nim_key.is_some(),
         "memory_enabled": user.memory_enabled == 1,
         "tools_enabled": user.tools_enabled == 1,
-        "max_agent_steps": user.max_agent_steps,
     })))
 }
 
@@ -271,13 +269,11 @@ async fn update_tools_config(
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let tools_enabled = req.tools_enabled.map(|v| if v { 1 } else { 0 });
-    let max_steps = req.max_agent_steps.map(|v| v.clamp(1, 50));
 
     sqlx::query(
-        "UPDATE users SET tools_enabled = COALESCE(?1, tools_enabled), max_agent_steps = COALESCE(?2, max_agent_steps) WHERE id = ?3"
+        "UPDATE users SET tools_enabled = COALESCE(?1, tools_enabled) WHERE id = ?2"
     )
     .bind(tools_enabled)
-    .bind(max_steps)
     .bind(claims.sub.clone())
     .execute(&state.db)
     .await
@@ -285,7 +281,6 @@ async fn update_tools_config(
 
     Ok(Json(json!({
         "tools_enabled": tools_enabled.unwrap_or(user.tools_enabled) == 1,
-        "max_agent_steps": max_steps.unwrap_or(user.max_agent_steps),
     })))
 }
 
@@ -1027,204 +1022,6 @@ async fn stream_final_response(
             }
         });
     }
-
-    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
-        Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
-    });
-
-    Ok(Sse::new(sse_stream))
-}
-
-// ─── Agent Workflow ───
-async fn agent_workflow(
-    State(state): State<AppState>,
-    claims: axum::Extension<Claims>,
-    Path(id): Path<String>,
-    Json(req): Json<SendMessageRequest>,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
-    let content = req.content.trim().to_string();
-    if content.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-    if content.len() > MAX_MESSAGE_LENGTH {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
-    }
-
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
-        .bind(claims.sub.clone())
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let nim_key = match user.encrypted_nim_key {
-        Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
-        None => return Err(StatusCode::PRECONDITION_FAILED),
-    };
-
-    let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
-        .bind(id.clone())
-        .bind(claims.sub.clone())
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
-        .bind(id.clone())
-        .bind(&content)
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let _ = sqlx::query("UPDATE chats SET updated_at = datetime('now') WHERE id = ?1")
-        .bind(id.clone())
-        .execute(&state.db)
-        .await;
-
-    let (tx, rx) = mpsc::channel::<String>(64);
-
-    let state_clone = state.clone();
-    let nim_key_clone = nim_key.clone();
-    let chat_id = id.clone();
-    let model_id = chat.model_id.clone();
-    let max_steps = user.max_agent_steps as usize;
-
-    tokio::spawn(async move {
-        let _ = tx.send("[AGENT]Starting agent workflow...[/AGENT]".to_string()).await;
-
-        // ─── Phase 1: Generate Plan ───
-        let plan = {
-            let plan_body = json!({
-                "model": model_id,
-                "messages": [
-                    json!({"role": "system", "content": "You are an autonomous agent planner. Given a task, create a numbered list of steps (1, 2, 3...) needed to accomplish it. Be specific about what commands or actions are needed. Output ONLY the numbered plan, no extra text."}),
-                    json!({"role": "user", "content": &content})
-                ],
-                "stream": false,
-                "max_tokens": 512,
-                "temperature": 0.3,
-            });
-
-            let plan_res = state_clone.http_client
-                .post(format!("{}/chat/completions", state_clone.config.nim_base_url))
-                .header("Authorization", format!("Bearer {}", nim_key_clone))
-                .header("Content-Type", "application/json")
-                .json(&plan_body)
-                .send()
-                .await;
-
-            match plan_res {
-                Ok(r) if r.status().is_success() => {
-                    if let Ok(data) = r.json::<serde_json::Value>().await {
-                        data["choices"][0]["message"]["content"].as_str().unwrap_or("").trim().to_string()
-                    } else { String::new() }
-                }
-                _ => String::new()
-            }
-        };
-
-        if !plan.is_empty() {
-            let _ = sqlx::query("UPDATE chats SET agent_plan = ?1, agent_step = 0 WHERE id = ?2")
-                .bind(&plan)
-                .bind(&chat_id)
-                .execute(&state_clone.db).await;
-            let _ = tx.send(format!("[PLAN]{}", plan)).await;
-        }
-
-        // ─── Phase 2: Execute Plan ───
-        let mut messages_payload = vec![
-            json!({"role": "system", "content": "You are an autonomous agent. You have access to tools: execute_terminal_command, create_file, read_file, modify_file, web_search. Follow the plan step by step. If a command fails, try an alternative approach. Be concise."}),
-            json!({"role": "user", "content": &content}),
-            json!({"role": "assistant", "content": format!("Plan:\n{}", plan)}),
-        ];
-
-        let mut full_response = String::new();
-        let mut step = 0;
-        let mut retry_count = 0;
-        const MAX_RETRIES: usize = 2;
-
-        while step < max_steps {
-            let _ = tx.send(format!("[STEP]{}/{}", step + 1, max_steps)).await;
-
-            let tools = build_tools_def();
-            let body = json!({
-                "model": model_id,
-                "messages": messages_payload.clone(),
-                "tools": tools,
-                "tool_choice": "auto",
-                "max_tokens": 2048,
-            });
-
-            let res = state_clone.http_client
-                .post(format!("{}/chat/completions", state_clone.config.nim_base_url))
-                .header("Authorization", format!("Bearer {}", nim_key_clone))
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .await;
-
-            match res {
-                Ok(r) => {
-                    if !r.status().is_success() {
-                        let _ = tx.send(format!("[ERR]AI provider error: {}[/ERR]", r.status())).await;
-                        break;
-                    }
-                    match r.json::<serde_json::Value>().await {
-                        Ok(data) => {
-                            let msg = &data["choices"][0]["message"];
-                            if let Some(calls) = msg["tool_calls"].as_array() {
-                                if !calls.is_empty() {
-                                    if let Some(call) = calls.first() {
-                                        if let Some((tool_id, tool_name, tool_result)) = resolve_tool_call(call, &chat_id, &state_clone).await {
-                                            let has_error = tool_result.get("error").is_some() || tool_result.get("status").and_then(|s| s.as_str()) == Some("error");
-
-                                            if has_error && retry_count < MAX_RETRIES {
-                                                retry_count += 1;
-                                                let _ = tx.send(format!("[RETRY]{}/{}", retry_count, MAX_RETRIES)).await;
-                                                messages_payload.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
-                                                messages_payload.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                                messages_payload.push(json!({"role": "system", "content": format!("The previous {} command failed. Try a different approach. Do not repeat the same command.", tool_name)}));
-                                                continue;
-                                            }
-
-                                            retry_count = 0;
-                                            let _ = tx.send(format!("[TOOL]{}", serde_json::to_string(&json!({"tool": tool_name, "result": &tool_result})).unwrap_or_default())).await;
-                                            messages_payload.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
-                                            messages_payload.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                            step += 1;
-                                            let _ = sqlx::query("UPDATE chats SET agent_step = ?1 WHERE id = ?2")
-                                                .bind(step as i32)
-                                                .bind(&chat_id)
-                                                .execute(&state_clone.db).await;
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
-                            let resp_content = msg["content"].as_str().unwrap_or("").to_string();
-                            full_response.push_str(&resp_content);
-                            let _ = tx.send(resp_content).await;
-                            break;
-                        }
-                        Err(e) => {
-                            let _ = tx.send(format!("[ERR]Failed to parse response: {}[/ERR]", e)).await;
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(format!("[ERR]Request failed: {}[/ERR]", e)).await;
-                    break;
-                }
-            }
-        }
-
-        let _ = tx.send("[DONE]".to_string()).await;
-        if !full_response.is_empty() {
-            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'assistant', ?2)")
-                .bind(&chat_id).bind(&full_response)
-                .execute(&state_clone.db).await;
-        }
-    });
 
     let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
         Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
