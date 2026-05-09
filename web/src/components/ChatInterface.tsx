@@ -666,37 +666,56 @@ export default function ChatInterface({
   }
 
   const voiceRef = useRef<any>(null)
+  const voiceTimerRef = useRef<any>(null)
 
   const toggleVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) return
 
+    // Stop if already listening
     if (isListening && voiceRef.current) {
-      voiceRef.current.stop()
+      try { voiceRef.current.stop() } catch {}
       voiceRef.current = null
+      if (voiceTimerRef.current) {
+        clearTimeout(voiceTimerRef.current)
+        voiceTimerRef.current = null
+      }
       setIsListening(false)
       return
     }
 
     const recognition = new SpeechRecognition()
     voiceRef.current = recognition
-    recognition.continuous = true
+    recognition.continuous = false
     recognition.interimResults = true
     recognition.lang = 'en-US'
+
     let finalTranscript = ''
 
-    recognition.onstart = () => setIsListening(true)
+    recognition.onstart = () => {
+      setIsListening(true)
+      setSendError('')
+    }
+
     recognition.onend = () => {
       setIsListening(false)
       voiceRef.current = null
+      // Auto-send after voice ends if we have text
+      if (finalTranscript.trim()) {
+        voiceTimerRef.current = setTimeout(() => {
+          handleSend(finalTranscript.trim())
+        }, 600)
+      }
     }
+
     recognition.onerror = (e: any) => {
-      if (e.error !== 'aborted') {
-        setSendError(`Voice input error: ${e.error}`)
+      if (e.error !== 'aborted' && e.error !== 'no-speech') {
+        setSendError(`Voice error: ${e.error}`)
       }
       setIsListening(false)
       voiceRef.current = null
     }
+
     recognition.onresult = (event: any) => {
       let interim = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -710,7 +729,12 @@ export default function ChatInterface({
       setInput(finalTranscript + interim)
     }
 
-    recognition.start()
+    try {
+      recognition.start()
+    } catch (e) {
+      setSendError('Could not start voice input')
+      setIsListening(false)
+    }
   }
 
   const handleSend = async (textOverride?: string) => {
@@ -1194,9 +1218,18 @@ export default function ChatInterface({
             )}
           </div>
 
-          <p className="mt-2 text-center text-[10px] text-[#525252]">
-            {userData?.tools_enabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
-          </p>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            {isListening ? (
+              <>
+                <span className="flex h-1.5 w-1.5 rounded-full bg-[#da1e28] animate-pulse" />
+                <span className="text-[10px] text-[#da1e28]">Listening... speak now</span>
+              </>
+            ) : (
+              <span className="text-[10px] text-[#525252]">
+                {userData?.tools_enabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
