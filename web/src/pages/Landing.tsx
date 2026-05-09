@@ -11,45 +11,35 @@ import {
   Globe,
   Cpu,
   ArrowRight,
+  ChevronDown,
 } from 'lucide-react'
-
-function SkipToContent() {
-  return (
-    <a
-      href="#main-content"
-      className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-lg focus:bg-[#0f62fe] focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:outline-none"
-    >
-      Skip to content
-    </a>
-  )
-}
 
 function Nav() {
   const navigate = useNavigate()
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[#2a2a2a] bg-[#0f0f0f]/95 backdrop-blur-md">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0f62fe]">
+        <button onClick={() => navigate('/')} className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9]">
             <Sparkles className="h-5 w-5 text-white" />
           </div>
           <span className="text-lg font-bold tracking-tight text-white">Carbon AI</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <a href="#features" className="hidden text-sm text-[#c6c6c6] transition-colors hover:text-white md:block">
+        </button>
+        <div className="flex items-center gap-5">
+          <a href="#features" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
             Features
           </a>
-          <a href="#terminal" className="hidden text-sm text-[#c6c6c6] transition-colors hover:text-white md:block">
+          <a href="#terminal" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
             Terminal
           </a>
           <button
             onClick={() => navigate('/login')}
-            className="text-sm font-medium text-[#c6c6c6] transition-colors hover:text-white"
+            className="text-sm font-medium text-[#8d8d8d] transition-colors hover:text-white"
           >
             Sign in
           </button>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/login?signup=1')}
             className="rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
           >
             Get Started
@@ -63,12 +53,22 @@ function Nav() {
 function Hero() {
   const navigate = useNavigate()
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-24">
-      {/* Background gradient */}
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-20">
+      {/* Animated background */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-[#0f62fe]/10 blur-[120px]" />
-        <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-[#78a9ff]/5 blur-[120px]" />
+        <div className="absolute top-1/4 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-[#0f62fe]/8 blur-[150px]" />
+        <div className="absolute bottom-0 right-1/4 h-[400px] w-[400px] rounded-full bg-[#8a3ffc]/5 blur-[120px]" />
+        <div className="absolute top-0 left-1/4 h-[300px] w-[300px] rounded-full bg-[#33b1ff]/5 blur-[100px]" />
       </div>
+
+      {/* Grid pattern */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
+          backgroundSize: '60px 60px',
+        }}
+      />
 
       <div className="relative mx-auto max-w-5xl text-center">
         <motion.div
@@ -76,7 +76,7 @@ function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: 'easeOut' }}
         >
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/30 bg-[#0f62fe]/10 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/20 bg-[#0f62fe]/5 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
             <Sparkles className="h-3.5 w-3.5" />
             Powered by NVIDIA NIM
           </div>
@@ -88,14 +88,14 @@ function Hero() {
             </span>
           </h1>
 
-          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-[#c6c6c6] md:text-xl">
+          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-[#a8a8a8] md:text-xl">
             A sleek, secure, and sandboxed AI platform. Chat with the latest models,
             execute terminal commands safely, and bring your own NVIDIA NIM key.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login?signup=1')}
               className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
             >
               Start Chatting
@@ -103,9 +103,10 @@ function Hero() {
             </button>
             <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="flex items-center gap-2 rounded-xl border border-[#393939] bg-[#1a1a1a] px-8 py-4 text-base font-semibold text-white transition-all hover:border-[#525252] hover:bg-[#222222]"
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 py-4 text-base font-semibold text-white transition-all hover:border-white/20 hover:bg-white/10"
             >
               Learn More
+              <ChevronDown className="h-4 w-4" />
             </button>
           </div>
         </motion.div>
@@ -117,8 +118,8 @@ function Hero() {
           transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }}
           className="mt-16"
         >
-          <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] shadow-2xl shadow-black/50">
-            <div className="flex items-center gap-2 border-b border-[#2a2a2a] px-5 py-3">
+          <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black/50">
+            <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
               <div className="h-3 w-3 rounded-full bg-[#da1e28]" />
               <div className="h-3 w-3 rounded-full bg-[#f1c21b]" />
               <div className="h-3 w-3 rounded-full bg-[#24a148]" />
@@ -159,13 +160,13 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
       initial={{ opacity: 0, y: 30 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.6, delay }}
-      className="group rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-8 transition-all duration-300 hover:border-[#0f62fe]/50 hover:bg-[#1e1e1e] hover:shadow-xl hover:shadow-[#0f62fe]/5"
+      className="group rounded-2xl border border-white/5 bg-white/[0.02] p-8 transition-all duration-300 hover:border-[#0f62fe]/30 hover:bg-white/[0.04]"
     >
-      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-[#0f62fe]/10 text-[#0f62fe] transition-colors group-hover:bg-[#0f62fe]/20">
+      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe]/15 to-[#78a9ff]/5 text-[#0f62fe] transition-colors group-hover:from-[#0f62fe]/25 group-hover:to-[#78a9ff]/10">
         <Icon className="h-7 w-7" />
       </div>
       <h3 className="mb-3 text-xl font-bold text-white">{title}</h3>
-      <p className="leading-relaxed text-[#c6c6c6]">{description}</p>
+      <p className="leading-relaxed text-[#a8a8a8]">{description}</p>
     </motion.div>
   )
 }
@@ -180,7 +181,7 @@ function Features() {
     {
       icon: Terminal,
       title: 'Sandboxed Terminal',
-      description: 'Execute commands safely inside nsjail with resource limits. No network, read-only filesystem, 512MB RAM cap.',
+      description: 'Execute commands safely inside a sandboxed environment with resource limits and filesystem isolation.',
     },
     {
       icon: Lock,
@@ -190,7 +191,7 @@ function Features() {
     {
       icon: Cpu,
       title: 'Model Selection',
-      description: 'Dynamic dropdown with the latest available models fetched directly from NVIDIA NIM. Cached for performance.',
+      description: 'Dynamic dropdown with the latest available models fetched directly from NVIDIA NIM.',
     },
     {
       icon: Shield,
@@ -200,7 +201,7 @@ function Features() {
     {
       icon: Globe,
       title: 'Carbon Aesthetic',
-      description: 'Inspired by IBM Carbon Design System. Strict dark mode, IBM Plex typography, and zero visual clutter.',
+      description: 'Inspired by IBM Carbon Design System. Strict dark mode, clean typography, and zero visual clutter.',
     },
   ]
 
@@ -217,7 +218,7 @@ function Features() {
           <h2 className="mb-4 text-4xl font-bold tracking-tight text-white md:text-5xl">
             Everything You Need
           </h2>
-          <p className="mx-auto max-w-xl text-lg text-[#c6c6c6]">
+          <p className="mx-auto max-w-xl text-lg text-[#a8a8a8]">
             A complete AI assistant platform built for security, speed, and simplicity.
           </p>
         </motion.div>
@@ -243,31 +244,30 @@ function TerminalDemo() {
           initial={{ opacity: 0, y: 30 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.8 }}
-          className="overflow-hidden rounded-3xl border border-[#2a2a2a] bg-[#0f0f0f]"
+          className="overflow-hidden rounded-3xl border border-white/5 bg-[#0a0a0a]"
         >
           <div className="grid items-center lg:grid-cols-2">
             <div className="p-12">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/30 bg-[#0f62fe]/10 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/20 bg-[#0f62fe]/5 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
                 <Terminal className="h-3.5 w-3.5" />
                 Sandboxed Environment
               </div>
               <h2 className="mb-6 text-3xl font-bold tracking-tight text-white md:text-4xl">
                 Execute Commands Safely
               </h2>
-              <p className="mb-8 text-lg leading-relaxed text-[#c6c6c6]">
+              <p className="mb-8 text-lg leading-relaxed text-[#a8a8a8]">
                 Run terminal commands in a fully isolated sandbox. Every command is executed
-                inside nsjail with strict resource limits — no network access, read-only filesystem,
-                and automatic termination after 30 seconds.
+                with strict resource limits — filesystem isolation and automatic termination after 30 seconds.
               </p>
               <ul className="space-y-4">
                 {[
-                  'No network access for commands',
+                  'Filesystem isolation for commands',
                   'Read-only root filesystem',
                   '512MB RAM limit per session',
                   '30 second CPU timeout',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-[#c6c6c6]">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#24a148]/20">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#24a148]/10">
                       <Shield className="h-3.5 w-3.5 text-[#24a148]" />
                     </div>
                     {item}
@@ -275,14 +275,12 @@ function TerminalDemo() {
                 ))}
               </ul>
             </div>
-            <div className="border-t border-[#2a2a2a] bg-[#0a0a0a] p-8 lg:border-t-0 lg:border-l">
+            <div className="border-t border-white/5 bg-[#050505] p-8 lg:border-t-0 lg:border-l">
               <div className="font-mono text-sm">
                 <div className="mb-2 text-[#525252]">$ uname -a</div>
                 <div className="mb-4 text-[#c6c6c6]">Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux</div>
                 <div className="mb-2 text-[#525252]">$ python3 -c "print('Hello from sandbox')"</div>
                 <div className="mb-4 text-[#c6c6c6]">Hello from sandbox</div>
-                <div className="mb-2 text-[#525252]">$ curl https://example.com</div>
-                <div className="mb-4 text-[#da1e28]">curl: (6) Could not resolve host</div>
                 <div className="mb-2 text-[#525252]">$ ls -la /</div>
                 <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .</div>
                 <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..</div>
@@ -307,21 +305,21 @@ function CTASection() {
           whileInView={{ opacity: 1, scale: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
-          className="relative overflow-hidden rounded-3xl border border-[#2a2a2a] bg-[#1a1a1a] p-12 text-center md:p-16"
+          className="relative overflow-hidden rounded-3xl border border-white/5 bg-white/[0.02] p-12 text-center md:p-16"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-[#0f62fe]/10 via-transparent to-transparent" />
           <div className="relative">
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0f62fe]/10">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
               <Zap className="h-8 w-8 text-[#0f62fe]" />
             </div>
             <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl">
               Ready to Get Started?
             </h2>
-            <p className="mx-auto mb-8 max-w-lg text-lg text-[#c6c6c6]">
+            <p className="mx-auto mb-8 max-w-lg text-lg text-[#a8a8a8]">
               Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.
             </p>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login?signup=1')}
               className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
             >
               Launch Carbon AI
@@ -336,7 +334,7 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="border-t border-[#2a2a2a] px-6 py-12">
+    <footer className="border-t border-white/5 px-6 py-12">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-[#0f62fe]" />
@@ -352,10 +350,9 @@ function Footer() {
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white">
-      <SkipToContent />
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
       <Nav />
-      <main id="main-content">
+      <main>
         <Hero />
         <Features />
         <TerminalDemo />

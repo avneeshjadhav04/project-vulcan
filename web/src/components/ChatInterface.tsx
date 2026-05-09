@@ -529,7 +529,7 @@ export default function ChatInterface({
   chatId,
   selectedModel,
 }: {
-  chatId: string
+  chatId?: string
   selectedModel: string
 }) {
   const [input, setInput] = useState('')
@@ -546,6 +546,8 @@ export default function ChatInterface({
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [modelValidation, setModelValidation] = useState<{valid: boolean; error?: string; model_id?: string} | null>(null)
   const [validatingModel, setValidatingModel] = useState(false)
+  const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
+  const [creatingChat, setCreatingChat] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -553,12 +555,17 @@ export default function ChatInterface({
 
   const navigate = useNavigate()
 
+  useEffect(() => {
+    setEffectiveChatId(chatId)
+  }, [chatId])
+
   const { data: chatData, refetch, isError } = useQuery({
-    queryKey: ['chat', chatId],
+    queryKey: ['chat', effectiveChatId],
     queryFn: async () => {
-      const res = await api.get(`/chats/${chatId}`)
+      const res = await api.get(`/chats/${effectiveChatId}`)
       return res.data as { chat: { title: string; model_id: string }; messages: MessageItem[] }
     },
+    enabled: !!effectiveChatId,
   })
 
   const { data: userData, refetch: refetchUser } = useQuery({
@@ -586,11 +593,11 @@ export default function ChatInterface({
 
   // Load attached files for chat
   useEffect(() => {
-    if (!chatId) return
-    api.get(`/chats/${chatId}/files`)
+    if (!effectiveChatId) return
+    api.get(`/chats/${effectiveChatId}/files`)
       .then(res => setAttachedFiles(res.data || []))
       .catch(() => setAttachedFiles([]))
-  }, [chatId])
+  }, [effectiveChatId])
 
   // Check voice support
   useEffect(() => {
@@ -707,6 +714,17 @@ export default function ChatInterface({
     const timeoutId = setTimeout(() => controller.abort(), 120000)
 
     try {
+      // Auto-create chat on first message
+      let currentChatId = effectiveChatId
+      if (!currentChatId) {
+        setCreatingChat(true)
+        const createRes = await api.post('/chats', { title: text.slice(0, 50), model_id: selectedModel })
+        currentChatId = createRes.data.id
+        setEffectiveChatId(currentChatId)
+        window.history.replaceState({}, '', `/chat/${currentChatId}`)
+        setCreatingChat(false)
+      }
+
       // Build content with file context if files are attached
       let messageContent = text
       if (attachedFiles.length > 0) {
@@ -714,7 +732,7 @@ export default function ChatInterface({
         messageContent = `${fileContext}\n\n${text}`
       }
 
-      const endpoint = agentMode ? `/api/chats/${chatId}/agent` : `/api/chats/${chatId}/message`
+      const endpoint = agentMode ? `/api/chats/${currentChatId}/agent` : `/api/chats/${currentChatId}/message`
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -886,7 +904,7 @@ export default function ChatInterface({
     try {
       const csrfToken = getCsrfToken()
       // Update the message
-      const patchRes = await fetch(`/api/chats/${chatId}/messages/${msgId}`, {
+      const patchRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -898,7 +916,7 @@ export default function ChatInterface({
       if (!patchRes.ok) throw new Error('Failed to edit message')
 
       // Delete subsequent messages
-      const deleteRes = await fetch(`/api/chats/${chatId}/messages/${msgId}/after`, {
+      const deleteRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}/after`, {
         method: 'DELETE',
         headers: {
           'X-CSRF-Token': csrfToken || '',
@@ -945,17 +963,19 @@ export default function ChatInterface({
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              const format = confirm('Export as JSON? (Cancel for Markdown)') ? 'json' : 'markdown'
-              window.open(`/api/chats/${chatId}/export?format=${format}`, '_blank')
-            }}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
-            title="Export chat"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </button>
+          {effectiveChatId && (
+            <button
+              onClick={() => {
+                const format = confirm('Export as JSON? (Cancel for Markdown)') ? 'json' : 'markdown'
+                window.open(`/api/chats/${effectiveChatId}/export?format=${format}`, '_blank')
+              }}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+              title="Export chat"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </button>
+          )}
           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0f62fe]/10">
             <Zap className="h-3 w-3 text-[#0f62fe]" />
           </div>
@@ -1042,7 +1062,7 @@ export default function ChatInterface({
                 onClick={() => {
                   // Update chat to use a default working model
                   const csrf = getCsrfToken()
-                  fetch(`/api/chats/${chatId}`, {
+                  fetch(`/api/chats/${effectiveChatId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf || '' },
                     credentials: 'include',
@@ -1065,7 +1085,12 @@ export default function ChatInterface({
         className="relative flex-1 overflow-y-auto"
       >
         <div className="mx-auto max-w-3xl px-4 pb-4">
-          {messages.length === 0 && !streaming ? (
+          {creatingChat ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-20">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#0f62fe] border-t-transparent" />
+              <p className="mt-3 text-sm text-[#525252]">Creating chat...</p>
+            </div>
+          ) : messages.length === 0 && !streaming ? (
             <EmptyState onSuggestion={handleSend} />
           ) : (
             <>
@@ -1148,7 +1173,7 @@ export default function ChatInterface({
             onDragOver={(e) => e.preventDefault()}
             className="relative flex items-end gap-2 rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-2 shadow-lg transition-all focus-within:border-[#0f62fe]/50 focus-within:shadow-[#0f62fe]/5"
           >
-            <FileUpload chatId={chatId} files={attachedFiles} onFilesChange={setAttachedFiles} />
+            {effectiveChatId && <FileUpload chatId={effectiveChatId} files={attachedFiles} onFilesChange={setAttachedFiles} />}
             <textarea
               ref={textareaRef}
               value={input}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
@@ -11,18 +11,22 @@ import {
   Shield,
   LogOut,
   Terminal as TerminalIcon,
-  MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Sparkles,
-  ChevronRight,
 } from 'lucide-react'
+
+const MIN_SIDEBAR_WIDTH = 240
+const MAX_SIDEBAR_WIDTH = 480
+const DEFAULT_SIDEBAR_WIDTH = 300
 
 export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
   const navigate = useNavigate()
   const [showTerminal, setShowTerminal] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [isResizing, setIsResizing] = useState(false)
   const [selectedModel, setSelectedModel] = useState('meta/llama-3.1-8b-instruct')
   const isAdmin = useAuthStore((s) => s.isAdmin)
   const logout = useAuthStore((s) => s.logout)
@@ -34,16 +38,50 @@ export default function Chat() {
 
   const activeChatId = chatId || null
 
+  // Resize handlers
+  const startResize = useCallback(() => setIsResizing(true), [])
+  const stopResize = useCallback(() => setIsResizing(false), [])
+
+  const resize = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return
+      const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, e.clientX))
+      setSidebarWidth(newWidth)
+    },
+    [isResizing]
+  )
+
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', resize)
+      document.addEventListener('mouseup', stopResize)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    } else {
+      document.removeEventListener('mousemove', resize)
+      document.removeEventListener('mouseup', stopResize)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    return () => {
+      document.removeEventListener('mousemove', resize)
+      document.removeEventListener('mouseup', stopResize)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing, resize, stopResize])
+
   return (
     <div className="flex h-screen bg-[#0f0f0f]">
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 300, opacity: 1 }}
+            animate={{ width: sidebarWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="flex shrink-0 flex-col overflow-hidden border-r border-[#2a2a2a] bg-[#0f0f0f]"
+            style={{ width: sidebarWidth }}
           >
             {/* Logo */}
             <div className="flex items-center justify-between border-b border-[#2a2a2a] px-4 py-4">
@@ -71,7 +109,6 @@ export default function Chat() {
 
             {/* Footer */}
             <div className="border-t border-[#2a2a2a] p-4">
-              {/* Model Selector */}
               <div className="mb-3">
                 <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#525252]">
                   Model
@@ -79,7 +116,6 @@ export default function Chat() {
                 <ModelSelector selected={selectedModel} onSelect={setSelectedModel} />
               </div>
 
-              {/* User + Actions */}
               <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
                   <span className="text-xs font-bold text-[#0f62fe]">
@@ -123,6 +159,17 @@ export default function Chat() {
         )}
       </AnimatePresence>
 
+      {/* Resize handle */}
+      {sidebarOpen && (
+        <div
+          onMouseDown={startResize}
+          className={`relative z-20 w-1 shrink-0 cursor-col-resize transition-colors ${
+            isResizing ? 'bg-[#0f62fe]' : 'bg-transparent hover:bg-[#0f62fe]/30'
+          }`}
+          style={{ marginLeft: -1 }}
+        />
+      )}
+
       {/* Collapsed sidebar toggle */}
       {!sidebarOpen && (
         <motion.button
@@ -137,33 +184,10 @@ export default function Chat() {
 
       {/* Main Content */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        {chatId ? (
-          <ChatInterface chatId={chatId} selectedModel={selectedModel} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center text-[#525252]">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5 }}
-              className="text-center"
-            >
-              <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10 shadow-2xl shadow-[#0f62fe]/10">
-                <MessageSquare className="h-12 w-12 text-[#0f62fe]" />
-              </div>
-              <h2 className="mb-3 text-3xl font-bold text-white">Start a Conversation</h2>
-              <p className="mb-8 max-w-sm text-sm text-[#525252]">
-                Select an existing chat from the sidebar or create a new one to begin chatting with AI.
-              </p>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] px-6 py-3 text-sm font-medium text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30"
-              >
-                Open Sidebar
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </motion.div>
-          </div>
-        )}
+        <ChatInterface
+          chatId={chatId}
+          selectedModel={selectedModel}
+        />
 
         <AnimatePresence>
           {showTerminal && (
