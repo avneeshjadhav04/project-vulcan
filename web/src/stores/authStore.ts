@@ -7,7 +7,6 @@ interface User {
   has_nim_key: boolean
   memory_enabled: boolean
   tools_enabled: boolean
-  max_agent_steps: number
 }
 
 interface AuthState {

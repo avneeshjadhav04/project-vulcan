@@ -135,5 +135,4 @@ pub struct EditMessageRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateToolsConfigRequest {
     pub tools_enabled: Option<bool>,
-    pub max_agent_steps: Option<i32>,
 }

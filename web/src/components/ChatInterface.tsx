@@ -20,7 +20,6 @@ import {
   CheckCircle2,
   XCircle,
   Pencil,
-  Workflow,
   Download,
   Mic,
   MicOff,
@@ -32,7 +31,6 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
-import AgentTimeline, { AgentState, createInitialAgentState } from './AgentTimeline'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -539,9 +537,6 @@ export default function ChatInterface({
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
-  const [agentMode, setAgentMode] = useState(false)
-  const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState())
-  const [showStepsDropdown, setShowStepsDropdown] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [modelValidation, setModelValidation] = useState<{valid: boolean; error?: string; model_id?: string} | null>(null)
@@ -572,7 +567,7 @@ export default function ChatInterface({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean; tools_enabled: boolean; max_agent_steps: number }
+      return res.data as { has_nim_key: boolean; tools_enabled: boolean }
     },
   })
 
@@ -584,7 +579,6 @@ export default function ChatInterface({
     setSendError('')
     setToolExecution(null)
     setAttachedFiles([])
-    setAgentState(createInitialAgentState())
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -705,9 +699,6 @@ export default function ChatInterface({
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
-    if (agentMode) {
-      setAgentState(createInitialAgentState())
-    }
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -732,7 +723,7 @@ export default function ChatInterface({
         messageContent = `${fileContext}\n\n${text}`
       }
 
-      const endpoint = agentMode ? `/api/chats/${currentChatId}/agent` : `/api/chats/${currentChatId}/message`
+      const endpoint = `/api/chats/${currentChatId}/message`
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -781,7 +772,6 @@ export default function ChatInterface({
 
             // Check for markers first
             if (raw === '[DONE]') {
-              setAgentState((prev) => ({ ...prev, isComplete: true }))
               setStreamedContent('')
               setToolExecution(null)
               refetch()
@@ -803,66 +793,9 @@ export default function ChatInterface({
                   stderr: toolData.stderr || '',
                   status: toolData.status || 'error',
                 })
-                // Update agent state with tool result
-                setAgentState((prev) => {
-                  const steps = [...prev.steps]
-                  const lastStep = steps[steps.length - 1]
-                  if (lastStep) {
-                    lastStep.tool = toolData.tool || toolData.command || 'tool'
-                    lastStep.status = toolData.status === 'error' || toolData.error ? 'error' : 'success'
-                    lastStep.result = toolData.stdout || toolData.error || JSON.stringify(toolData.result || toolData)
-                  }
-                  return { ...prev, steps }
-                })
               } catch {
                 // Ignore malformed tool data
               }
-              continue
-            }
-            if (raw.startsWith('[AGENT]') && raw.endsWith('[/AGENT]')) {
-              const agentMsg = raw.slice(7, -8)
-              setStreamedContent((prev) => prev + `\n[Agent: ${agentMsg}]\n`)
-              continue
-            }
-            if (raw.startsWith('[PLAN]')) {
-              const plan = raw.slice(6)
-              setAgentState((prev) => ({
-                ...prev,
-                plan,
-                isPlanning: false,
-                totalSteps: plan.split('\n').filter((l) => /^\d+\./.test(l.trim())).length || 0,
-              }))
-              continue
-            }
-            if (raw.startsWith('[STEP]')) {
-              const stepInfo = raw.slice(6)
-              const [current, total] = stepInfo.split('/').map((s) => parseInt(s.trim()))
-              setAgentState((prev) => ({
-                ...prev,
-                currentStep: current || prev.currentStep + 1,
-                totalSteps: total || prev.totalSteps,
-                steps: [
-                  ...prev.steps,
-                  {
-                    id: prev.steps.length + 1,
-                    status: 'running',
-                  },
-                ],
-              }))
-              continue
-            }
-            if (raw.startsWith('[RETRY]')) {
-              const retryInfo = raw.slice(7)
-              const [currentRetry] = retryInfo.split('/').map((s) => parseInt(s.trim()))
-              setAgentState((prev) => {
-                const steps = [...prev.steps]
-                const lastStep = steps[steps.length - 1]
-                if (lastStep) {
-                  lastStep.status = 'retry'
-                  lastStep.retryCount = currentRetry || (lastStep.retryCount || 0) + 1
-                }
-                return { ...prev, steps }
-              })
               continue
             }
             // Regular text chunk
@@ -1104,19 +1037,7 @@ export default function ChatInterface({
               ))}
 
               <AnimatePresence>
-                {agentMode && streaming && agentState.plan && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                  >
-                    <AgentTimeline state={agentState} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {toolExecution && streaming && !agentMode && (
+                {toolExecution && streaming && (
                   <motion.div
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1133,7 +1054,7 @@ export default function ChatInterface({
                 )}
               </AnimatePresence>
 
-              {streaming && !streamedContent && !toolExecution && !(agentMode && agentState.plan) && <TypingIndicator />}
+              {streaming && !streamedContent && !toolExecution && <TypingIndicator />}
             </>
           )}
           <div ref={messagesEndRef} />
@@ -1191,85 +1112,23 @@ export default function ChatInterface({
             />
 
             <button
-              onClick={() => setAgentMode(!agentMode)}
+              onClick={async () => {
+                try {
+                  await api.post('/me/tools', { tools_enabled: !userData?.tools_enabled })
+                  await refetchUser()
+                } catch (err: any) {
+                  setSendError(err.response?.data?.error || 'Failed to toggle tools')
+                }
+              }}
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
-                agentMode
-                  ? 'bg-[#0f62fe]/20 text-[#0f62fe]'
+                userData?.tools_enabled
+                  ? 'bg-[#24a148]/20 text-[#24a148]'
                   : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
               }`}
-              title={agentMode ? 'Agent Mode On' : 'Agent Mode Off'}
+              title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
             >
-              <Workflow className="h-4 w-4" />
+              <Wrench className="h-4 w-4" />
             </button>
-
-            <div className="relative flex items-center">
-              <button
-                onClick={async () => {
-                  try {
-                    await api.post('/me/tools', { tools_enabled: !userData?.tools_enabled })
-                    await refetchUser()
-                  } catch (err: any) {
-                    setSendError(err.response?.data?.error || 'Failed to toggle tools')
-                  }
-                }}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-l-lg rounded-r-none border-r border-[#2a2a2a] transition-all ${
-                  userData?.tools_enabled
-                    ? 'bg-[#24a148]/20 text-[#24a148]'
-                    : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
-                }`}
-                title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
-              >
-                <Wrench className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setShowStepsDropdown(!showStepsDropdown)}
-                className={`flex h-8 items-center gap-0.5 rounded-r-lg rounded-l-none px-1.5 text-[10px] font-bold transition-all ${
-                  userData?.tools_enabled
-                    ? 'bg-[#24a148]/20 text-[#24a148] hover:bg-[#24a148]/30'
-                    : 'bg-[#2a2a2a] text-[#525252] hover:bg-[#3a3a3a] hover:text-white'
-                }`}
-                title="Max agent steps"
-              >
-                {userData?.max_agent_steps || 10}
-                <ChevronDown className="h-3 w-3" />
-              </button>
-
-              <AnimatePresence>
-                {showStepsDropdown && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                    className="absolute bottom-full right-0 mb-1.5 overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] shadow-xl"
-                  >
-                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#525252] border-b border-[#2a2a2a]">
-                      Max Steps
-                    </div>
-                    {[5, 10, 15, 20, 30, 50].map((n) => (
-                      <button
-                        key={n}
-                        onClick={async () => {
-                          try {
-                            await api.post('/me/tools', { max_agent_steps: n })
-                            await refetchUser()
-                            setShowStepsDropdown(false)
-                          } catch (err: any) {
-                            setSendError(err.response?.data?.error || 'Failed to update steps')
-                          }
-                        }}
-                        className={`block w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                          (userData?.max_agent_steps || 10) === n
-                            ? 'bg-[#0f62fe]/20 text-[#0f62fe] font-semibold'
-                            : 'text-[#c6c6c6] hover:bg-[#2a2a2a]'
-                        }`}
-                      >
-                        {n} steps
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
 
             {voiceSupported && (
               <button
@@ -1307,9 +1166,7 @@ export default function ChatInterface({
           </div>
 
           <p className="mt-2 text-center text-[10px] text-[#525252]">
-            {agentMode
-              ? `Agent Mode · ${userData?.tools_enabled ? 'Tools On' : 'Tools Off'} — AI will plan and execute multiple steps automatically.`
-              : `${userData?.tools_enabled ? 'Tools On' : 'Tools Off'} — ${userData?.tools_enabled ? 'AI can run commands, create files, and search the web.' : 'AI will not use any tools.'}`}
+            {userData?.tools_enabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
           </p>
         </div>
       </div>
