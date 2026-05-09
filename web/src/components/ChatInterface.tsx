@@ -1153,7 +1153,7 @@ export default function ChatInterface({
               className="max-h-[240px] min-h-[56px] flex-1 resize-none bg-transparent px-3 py-3 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
             />
 
-            <div className="w-32 shrink-0">
+            <div className="w-56 shrink-0">
               <ModelSelector selected={selectedModel} onSelect={(id) => onModelChange?.(id)} />
             </div>
 
