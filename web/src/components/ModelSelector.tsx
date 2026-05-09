@@ -91,7 +91,7 @@ export default function ModelSelector({
       >
         <div className="flex items-center gap-2 min-w-0">
           <Cpu className="h-3.5 w-3.5 shrink-0 text-[#0f62fe]" />
-          <span className="truncate font-mono">{selectedModel?.id || selected}</span>
+          <span className="font-mono">{selectedModel?.id || selected}</span>
         </div>
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-[#525252] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
