@@ -69,6 +69,7 @@ export default function Terminal() {
     term.loadAddon(fitAddon)
     term.open(containerRef.current)
     fitAddon.fit()
+    term.focus()
 
     xtermRef.current = term
 
@@ -349,7 +350,11 @@ export default function Terminal() {
       </div>
 
       {/* Terminal Area */}
-      <div ref={containerRef} className="relative flex-1 overflow-hidden" />
+      <div
+        ref={containerRef}
+        className="relative flex-1"
+        onClick={() => xtermRef.current?.focus()}
+      />
     </div>
   )
 }

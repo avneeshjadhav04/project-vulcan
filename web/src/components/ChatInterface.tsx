@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
+import ModelSelector from './ModelSelector'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -526,9 +527,11 @@ function ScrollToBottom({ onClick, visible }: { onClick: () => void; visible: bo
 export default function ChatInterface({
   chatId,
   selectedModel,
+  onModelChange,
 }: {
   chatId?: string
   selectedModel: string
+  onModelChange?: (model: string) => void
 }) {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -662,28 +665,49 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const voiceRef = useRef<any>(null)
+
   const toggleVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) return
 
-    if (isListening) {
+    if (isListening && voiceRef.current) {
+      voiceRef.current.stop()
+      voiceRef.current = null
       setIsListening(false)
       return
     }
 
     const recognition = new SpeechRecognition()
-    recognition.continuous = false
+    voiceRef.current = recognition
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
+    let finalTranscript = ''
 
     recognition.onstart = () => setIsListening(true)
-    recognition.onend = () => setIsListening(false)
-    recognition.onerror = () => setIsListening(false)
+    recognition.onend = () => {
+      setIsListening(false)
+      voiceRef.current = null
+    }
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'aborted') {
+        setSendError(`Voice input error: ${e.error}`)
+      }
+      setIsListening(false)
+      voiceRef.current = null
+    }
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
-        .join('')
-      setInput(transcript)
+      let interim = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      setInput(finalTranscript + interim)
     }
 
     recognition.start()
@@ -909,12 +933,6 @@ export default function ChatInterface({
               Export
             </button>
           )}
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0f62fe]/10">
-            <Zap className="h-3 w-3 text-[#0f62fe]" />
-          </div>
-          <span className="max-w-[200px] truncate rounded-full border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1 font-mono text-[11px] text-[#525252]">
-            {chatData?.chat.model_id || selectedModel}
-          </span>
         </div>
       </header>
 
@@ -1106,10 +1124,14 @@ export default function ChatInterface({
                 }
               }}
               placeholder="Message Carbon AI..."
-              rows={1}
+              rows={2}
               disabled={streaming}
-              className="max-h-[200px] min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
+              className="max-h-[240px] min-h-[56px] flex-1 resize-none bg-transparent px-3 py-3 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
             />
+
+            <div className="w-32 shrink-0">
+              <ModelSelector selected={selectedModel} onSelect={(id) => onModelChange?.(id)} />
+            </div>
 
             <button
               onClick={async () => {
@@ -1133,14 +1155,21 @@ export default function ChatInterface({
             {voiceSupported && (
               <button
                 onClick={toggleVoiceInput}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
                   isListening
-                    ? 'bg-[#da1e28]/20 text-[#da1e28] animate-pulse'
+                    ? 'bg-[#da1e28]/20 text-[#da1e28]'
                     : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
                 }`}
                 title={isListening ? 'Stop listening' : 'Voice input'}
               >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                {isListening ? (
+                  <span className="relative flex h-4 w-4 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#da1e28]/40" />
+                    <MicOff className="relative h-4 w-4" />
+                  </span>
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
               </button>
             )}
 

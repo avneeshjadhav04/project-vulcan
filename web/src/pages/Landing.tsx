@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView } from 'framer-motion'
+import { useAuthStore } from '../stores/authStore'
 import {
   MessageSquare,
   Terminal,
@@ -12,10 +13,12 @@ import {
   Cpu,
   ArrowRight,
   ChevronDown,
+  MessageCircle,
 } from 'lucide-react'
 
 function Nav() {
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
@@ -32,18 +35,30 @@ function Nav() {
           <a href="#terminal" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
             Terminal
           </a>
-          <button
-            onClick={() => navigate('/login')}
-            className="text-sm font-medium text-[#8d8d8d] transition-colors hover:text-white"
-          >
-            Sign in
-          </button>
-          <button
-            onClick={() => navigate('/login?signup=1')}
-            className="rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
-          >
-            Get Started
-          </button>
+          {isAuthenticated ? (
+            <button
+              onClick={() => navigate('/chat')}
+              className="flex items-center gap-2 rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Go to Chat
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => navigate('/login')}
+                className="text-sm font-medium text-[#8d8d8d] transition-colors hover:text-white"
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => navigate('/login?signup=1')}
+                className="rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
+              >
+                Get Started
+              </button>
+            </>
+          )}
         </div>
       </div>
     </nav>
@@ -52,6 +67,7 @@ function Nav() {
 
 function Hero() {
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-20">
       {/* Animated background */}
@@ -94,13 +110,24 @@ function Hero() {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <button
-              onClick={() => navigate('/login?signup=1')}
-              className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
-            >
-              Start Chatting
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </button>
+            {isAuthenticated ? (
+              <button
+                onClick={() => navigate('/chat')}
+                className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+              >
+                <MessageCircle className="h-5 w-5" />
+                Go to Chat
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/login?signup=1')}
+                className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+              >
+                Start Chatting
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </button>
+            )}
             <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 py-4 text-base font-semibold text-white transition-all hover:border-white/20 hover:bg-white/10"
@@ -297,6 +324,7 @@ function TerminalDemo() {
 
 function CTASection() {
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
     <section className="relative px-6 py-32">
       <div className="mx-auto max-w-4xl">
@@ -313,18 +341,31 @@ function CTASection() {
               <Zap className="h-8 w-8 text-[#0f62fe]" />
             </div>
             <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl">
-              Ready to Get Started?
+              {isAuthenticated ? 'Welcome Back' : 'Ready to Get Started?'}
             </h2>
             <p className="mx-auto mb-8 max-w-lg text-lg text-[#a8a8a8]">
-              Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.
+              {isAuthenticated
+                ? 'Jump back into your conversations and continue where you left off.'
+                : 'Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.'}
             </p>
-            <button
-              onClick={() => navigate('/login?signup=1')}
-              className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
-            >
-              Launch Carbon AI
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </button>
+            {isAuthenticated ? (
+              <button
+                onClick={() => navigate('/chat')}
+                className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+              >
+                <MessageCircle className="h-5 w-5" />
+                Go to Chat
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/login?signup=1')}
+                className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+              >
+                Launch Carbon AI
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

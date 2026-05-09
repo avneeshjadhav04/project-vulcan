@@ -5,7 +5,6 @@ import { useAuthStore } from '../stores/authStore'
 import Sidebar from '../components/Sidebar'
 import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
-import ModelSelector from '../components/ModelSelector'
 import {
   Settings,
   Shield,
@@ -109,13 +108,6 @@ export default function Chat() {
 
             {/* Footer */}
             <div className="border-t border-[#2a2a2a] p-4">
-              <div className="mb-3">
-                <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[#525252]">
-                  Model
-                </label>
-                <ModelSelector selected={selectedModel} onSelect={setSelectedModel} />
-              </div>
-
               <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
                   <span className="text-xs font-bold text-[#0f62fe]">
@@ -187,6 +179,7 @@ export default function Chat() {
         <ChatInterface
           chatId={chatId}
           selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
         />
 
         <AnimatePresence>
