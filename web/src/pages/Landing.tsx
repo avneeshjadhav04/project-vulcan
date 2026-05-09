@@ -26,7 +26,7 @@ function Nav() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9]">
             <Sparkles className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-bold tracking-tight text-white">Carbon AI</span>
+          <span className="text-lg font-bold tracking-tight text-white">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-5">
           <a href="#features" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
@@ -150,10 +150,10 @@ function Hero() {
               <div className="h-3 w-3 rounded-full bg-[#da1e28]" />
               <div className="h-3 w-3 rounded-full bg-[#f1c21b]" />
               <div className="h-3 w-3 rounded-full bg-[#24a148]" />
-              <span className="ml-3 text-xs text-[#525252]">Carbon AI Terminal</span>
+              <span className="ml-3 text-xs text-[#525252]">Project Vulcan Terminal</span>
             </div>
             <div className="p-6 font-mono text-sm text-left">
-              <div className="mb-1 text-[#525252]">$ carbon-ai --start</div>
+              <div className="mb-1 text-[#525252]">$ vulcan --start</div>
               <div className="mb-1 text-[#24a148]">
                 <span className="mr-2">✓</span>Connected to NVIDIA NIM API
               </div>
@@ -227,7 +227,7 @@ function Features() {
     },
     {
       icon: Globe,
-      title: 'Carbon Aesthetic',
+      title: 'Dark Mode Aesthetic',
       description: 'Inspired by IBM Carbon Design System. Strict dark mode, clean typography, and zero visual clutter.',
     },
   ]
@@ -362,7 +362,7 @@ function CTASection() {
                 onClick={() => navigate('/login?signup=1')}
                 className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
               >
-                Launch Carbon AI
+                Launch Project Vulcan
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
             )}
@@ -379,7 +379,7 @@ function Footer() {
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-[#0f62fe]" />
-          <span className="text-sm font-semibold text-white">Carbon AI</span>
+          <span className="text-sm font-semibold text-white">Project Vulcan</span>
         </div>
         <p className="text-sm text-[#525252]">
           Built with Rust, React, and NVIDIA NIM.

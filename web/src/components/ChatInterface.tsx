@@ -183,7 +183,7 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
       <div className={`min-w-0 max-w-[85%] flex-1 ${isUser ? 'text-right' : ''}`}>
         <div className={`mb-1.5 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
           <span className="text-xs font-semibold text-white">
-            {isAssistant ? 'Carbon AI' : 'You'}
+            {isAssistant ? 'Project Vulcan' : 'You'}
           </span>
           <span className="text-[10px] text-[#525252]">{timeAgo(msg.created_at)}</span>
           {msg.tokens_used && (
@@ -355,7 +355,7 @@ function StreamingMessage({ content }: { content: string }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-xs font-semibold text-white">Carbon AI</span>
+          <span className="text-xs font-semibold text-white">Project Vulcan</span>
           <span className="flex items-center gap-1 text-[10px] text-[#0f62fe]">
             <Zap className="h-3 w-3 animate-pulse" />
             Generating...
@@ -980,7 +980,7 @@ export default function ChatInterface({
               </div>
               <h2 className="mb-2 text-xl font-bold text-white">NVIDIA NIM API Key Required</h2>
               <p className="mb-6 text-sm text-[#525252]">
-                To use Carbon AI, you need to add a valid NVIDIA NIM API key. 
+                To use Project Vulcan, you need to add a valid NVIDIA NIM API key. 
                 You can get one for free from NVIDIA's website.
               </p>
               <div className="flex flex-col gap-3">
@@ -1147,7 +1147,7 @@ export default function ChatInterface({
                   handleSend()
                 }
               }}
-              placeholder="Message Carbon AI..."
+              placeholder="Message Project Vulcan..."
               rows={2}
               disabled={streaming}
               className="max-h-[240px] min-h-[56px] flex-1 resize-none bg-transparent px-3 py-3 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"

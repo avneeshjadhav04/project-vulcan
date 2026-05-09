@@ -95,7 +95,7 @@ export default function Terminal() {
       setConnecting(false)
       setLastError('')
       term.writeln('')
-      term.writeln('\x1b[1;34m  Carbon AI Sandbox Terminal\x1b[0m')
+      term.writeln('\x1b[1;34m  Project Vulcan Sandbox Terminal\x1b[0m')
       term.writeln('\x1b[90m  ───────────────────────────\x1b[0m')
       term.writeln('\x1b[32m  Connected to sandboxed environment.\x1b[0m')
       term.writeln('\x1b[90m  Type commands and press Enter to execute.\x1b[0m')

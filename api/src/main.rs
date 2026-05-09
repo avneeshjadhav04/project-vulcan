@@ -26,7 +26,7 @@ use middleware::{admin_middleware, auth_middleware, csrf_middleware, AppState};
 #[tokio::main]
 async fn main() {
     println!("========================================");
-    println!("  Carbon AI Assistant - API Starting");
+    println!("  Project Vulcan - API Starting");
     println!("========================================");
 
     if let Err(e) = run().await {

@@ -89,7 +89,7 @@ export default function Chat() {
                   <Sparkles className="h-4 w-4 text-white" />
                 </div>
                 <div>
-                  <span className="text-sm font-bold tracking-tight text-white">Carbon AI</span>
+                  <span className="text-sm font-bold tracking-tight text-white">Project Vulcan</span>
                   <p className="text-[10px] text-[#525252]">Personal AI Assistant</p>
                 </div>
               </div>

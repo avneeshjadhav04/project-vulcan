@@ -46,11 +46,11 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
     }
 
     // Fallback: Try in current working directory (ephemeral, lost on redeploy)
-    let fallback = "sqlite:carbon_ai.db".to_string();
+    let fallback = "sqlite:vulcan.db".to_string();
     println!("[DB] Trying fallback location: {}", fallback);
     match try_connect(&fallback).await {
         Ok(pool) => {
-            println!("[DB] Connected successfully at fallback location (./carbon_ai.db)");
+            println!("[DB] Connected successfully at fallback location (./vulcan.db)");
             println!("[DB] WARNING: Data will be lost on redeploy. Add a Render Disk at /data for persistence.");
             run_migrations(&pool).await?;
             seed_admin(&pool, config).await?;

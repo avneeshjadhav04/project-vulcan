@@ -1,4 +1,4 @@
-# Carbon AI Assistant
+# Project Vulcan
 
 A production-ready, full-stack SaaS personal AI assistant platform built with Rust, React, and NVIDIA NIM. Features a sleek dark-mode UI inspired by IBM Carbon Design System.
 
@@ -13,7 +13,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 - **Sandboxed Terminal**: Isolated command execution via `nsjail` (Docker Compose only)
 - **Admin Dashboard**: User management and terminal audit logs with role-based access
 - **Landing Page**: Animated marketing page with feature showcase and terminal demo
-- **Carbon Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
+- **Dark Mode Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
 
 ## Tech Stack
 
@@ -33,7 +33,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 2. Click **New +** → **Web Service**
 3. Connect your GitHub repo (`avneeshjadhav04/ai-assistant`)
 4. Configure:
-   - **Name**: `carbon-ai`
+   - **Name**: `project-vulcan`
    - **Runtime**: Docker
    - **Plan**: Starter (for disk support)
 5. Click **Create Web Service**
@@ -43,7 +43,7 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 SQLite needs persistent storage:
 
 1. Service dashboard → **Disks** tab → **Add Disk**
-2. **Name**: `carbon-ai-data`
+2. **Name**: `vulcan-data`
 3. **Mount Path**: `/data`
 4. **Size**: 1 GB
 5. Click **Create**
@@ -61,7 +61,7 @@ Go to **Environment** tab:
 | `ADMIN_DEFAULT_PASSWORD` | `your-secure-password` | Change after first login |
 | `NIM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
 
-`DATABASE_URL` defaults to `sqlite:/data/carbon_ai.db` (uses the mounted disk).
+`DATABASE_URL` defaults to `sqlite:/data/vulcan.db` (uses the mounted disk).
 
 ### Step 4: Deploy
 
@@ -129,7 +129,7 @@ cd web && npm install && npm run dev
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | No | `sqlite:./carbon_ai.db` | SQLite database path |
+| `DATABASE_URL` | No | `sqlite:./vulcan.db` | SQLite database path |
 | `MASTER_KEY` | Yes | - | 32+ byte key for AES-256-GCM |
 | `ADMIN_DEFAULT_EMAIL` | No | `admin@local.local` | Admin login |
 | `ADMIN_DEFAULT_PASSWORD` | Yes | - | Admin password |

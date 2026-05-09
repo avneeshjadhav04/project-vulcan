@@ -5,7 +5,7 @@ services:
       dockerfile: ./Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: sqlite:/data/carbon_ai.db
+      DATABASE_URL: sqlite:/data/vulcan.db
       MASTER_KEY: ${MASTER_KEY:?MASTER_KEY is required}
       ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-admin@local.local}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?ADMIN_DEFAULT_PASSWORD is required}

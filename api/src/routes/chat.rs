@@ -618,7 +618,7 @@ async fn export_chat(
             md.push_str(&format!("Created: {}\n\n", chat.created_at));
             md.push_str("---\n\n");
             for msg in messages {
-                let role_label = if msg.role == "assistant" { "Carbon AI" } else { "User" };
+                let role_label = if msg.role == "assistant" { "Project Vulcan" } else { "User" };
                 md.push_str(&format!("## {}\n\n{}", role_label, msg.content));
                 if msg.tokens_used.is_some() {
                     md.push_str(&format!("\n\n*Tokens: {}*", msg.tokens_used.unwrap()));

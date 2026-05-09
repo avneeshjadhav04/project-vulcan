@@ -32,7 +32,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
     // Send initial connection messages
     let init_msgs = [
         r#"{"type":"stdout","data":""}"#,
-        r#"{"type":"stdout","data":"  Carbon AI Sandbox Terminal"}"#,
+        r#"{"type":"stdout","data":"  Project Vulcan Sandbox Terminal"}"#,
         r#"{"type":"stdout","data":"  ───────────────────────────"}"#,
         r#"{"type":"stdout","data":"  Connected to sandboxed environment."}"#,
         r#"{"type":"stdout","data":"  Type commands and press Enter to execute."}"#,

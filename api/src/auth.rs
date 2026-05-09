@@ -15,8 +15,8 @@ use crate::models::Claims;
 
 pub const MAX_PASSWORD_LENGTH: usize = 256;
 pub const MAX_EMAIL_LENGTH: usize = 254;
-pub const JWT_ISSUER: &str = "carbon-ai";
-pub const JWT_AUDIENCE: &str = "carbon-ai";
+pub const JWT_ISSUER: &str = "vulcan";
+pub const JWT_AUDIENCE: &str = "vulcan";
 
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
