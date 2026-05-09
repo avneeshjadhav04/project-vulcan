@@ -541,6 +541,7 @@ export default function ChatInterface({
   const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
   const [agentMode, setAgentMode] = useState(false)
   const [agentState, setAgentState] = useState<AgentState>(createInitialAgentState())
+  const [showStepsDropdown, setShowStepsDropdown] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
   const [modelValidation, setModelValidation] = useState<{valid: boolean; error?: string; model_id?: string} | null>(null)
@@ -564,7 +565,7 @@ export default function ChatInterface({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean; tools_enabled: boolean }
+      return res.data as { has_nim_key: boolean; tools_enabled: boolean; max_agent_steps: number }
     },
   })
 
@@ -1176,24 +1177,74 @@ export default function ChatInterface({
               <Workflow className="h-4 w-4" />
             </button>
 
-            <button
-              onClick={async () => {
-                try {
-                  await api.post('/me/tools', { tools_enabled: !userData?.tools_enabled })
-                  await refetchUser()
-                } catch (err: any) {
-                  setSendError(err.response?.data?.error || 'Failed to toggle tools')
-                }
-              }}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
-                userData?.tools_enabled
-                  ? 'bg-[#24a148]/20 text-[#24a148]'
-                  : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
-              }`}
-              title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
-            >
-              <Wrench className="h-4 w-4" />
-            </button>
+            <div className="relative flex items-center">
+              <button
+                onClick={async () => {
+                  try {
+                    await api.post('/me/tools', { tools_enabled: !userData?.tools_enabled })
+                    await refetchUser()
+                  } catch (err: any) {
+                    setSendError(err.response?.data?.error || 'Failed to toggle tools')
+                  }
+                }}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-l-lg rounded-r-none border-r border-[#2a2a2a] transition-all ${
+                  userData?.tools_enabled
+                    ? 'bg-[#24a148]/20 text-[#24a148]'
+                    : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+                }`}
+                title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
+              >
+                <Wrench className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setShowStepsDropdown(!showStepsDropdown)}
+                className={`flex h-8 items-center gap-0.5 rounded-r-lg rounded-l-none px-1.5 text-[10px] font-bold transition-all ${
+                  userData?.tools_enabled
+                    ? 'bg-[#24a148]/20 text-[#24a148] hover:bg-[#24a148]/30'
+                    : 'bg-[#2a2a2a] text-[#525252] hover:bg-[#3a3a3a] hover:text-white'
+                }`}
+                title="Max agent steps"
+              >
+                {userData?.max_agent_steps || 10}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+
+              <AnimatePresence>
+                {showStepsDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
+                    className="absolute bottom-full right-0 mb-1.5 overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] shadow-xl"
+                  >
+                    <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#525252] border-b border-[#2a2a2a]">
+                      Max Steps
+                    </div>
+                    {[5, 10, 15, 20, 30, 50].map((n) => (
+                      <button
+                        key={n}
+                        onClick={async () => {
+                          try {
+                            await api.post('/me/tools', { max_agent_steps: n })
+                            await refetchUser()
+                            setShowStepsDropdown(false)
+                          } catch (err: any) {
+                            setSendError(err.response?.data?.error || 'Failed to update steps')
+                          }
+                        }}
+                        className={`block w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                          (userData?.max_agent_steps || 10) === n
+                            ? 'bg-[#0f62fe]/20 text-[#0f62fe] font-semibold'
+                            : 'text-[#c6c6c6] hover:bg-[#2a2a2a]'
+                        }`}
+                      >
+                        {n} steps
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {voiceSupported && (
               <button
