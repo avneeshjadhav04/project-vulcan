@@ -20,25 +20,23 @@ function Nav() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9]">
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-lg font-bold tracking-tight text-white">Project Vulcan</span>
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border-subtle bg-background">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+        <button onClick={() => navigate('/')} className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-interactive" />
+          <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
-        <div className="flex items-center gap-5">
-          <a href="#features" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
+        <div className="flex items-center gap-1">
+          <a href="#features" className="hidden px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary md:block">
             Features
           </a>
-          <a href="#terminal" className="hidden text-sm text-[#8d8d8d] transition-colors hover:text-white md:block">
+          <a href="#terminal" className="hidden px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary md:block">
             Terminal
           </a>
           {isAuthenticated ? (
             <button
               onClick={() => navigate('/chat')}
-              className="flex items-center gap-2 rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
+              className="ml-2 carbon-btn-primary"
             >
               <MessageCircle className="h-4 w-4" />
               Go to Chat
@@ -47,13 +45,13 @@ function Nav() {
             <>
               <button
                 onClick={() => navigate('/login')}
-                className="text-sm font-medium text-[#8d8d8d] transition-colors hover:text-white"
+                className="px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
               >
                 Sign in
               </button>
               <button
                 onClick={() => navigate('/login?signup=1')}
-                className="rounded-lg bg-[#0f62fe] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
+                className="ml-2 carbon-btn-primary"
               >
                 Get Started
               </button>
@@ -69,68 +67,50 @@ function Hero() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-20">
-      {/* Animated background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute top-1/4 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-[#0f62fe]/8 blur-[150px]" />
-        <div className="absolute bottom-0 right-1/4 h-[400px] w-[400px] rounded-full bg-[#8a3ffc]/5 blur-[120px]" />
-        <div className="absolute top-0 left-1/4 h-[300px] w-[300px] rounded-full bg-[#33b1ff]/5 blur-[100px]" />
-      </div>
-
-      {/* Grid pattern */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-          backgroundSize: '60px 60px',
-        }}
-      />
-
-      <div className="relative mx-auto max-w-5xl text-center">
+    <section className="flex min-h-screen items-center justify-center px-6 pt-16">
+      <div className="relative mx-auto max-w-4xl text-center">
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          transition={{ duration: 0.4 }}
         >
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/20 bg-[#0f62fe]/5 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
-            <Sparkles className="h-3.5 w-3.5" />
+          <div className="mb-6 inline-flex items-center gap-2 border border-border-subtle bg-layer px-3 py-1.5 text-xs font-medium text-text-secondary">
+            <Sparkles className="h-3 w-3" />
             Powered by NVIDIA NIM
           </div>
 
-          <h1 className="mb-6 text-5xl font-extrabold leading-[1.1] tracking-tight text-white md:text-7xl lg:text-8xl">
+          <h1 className="mb-5 text-5xl font-light leading-tight tracking-tight text-text-primary md:text-7xl">
             Your Personal{' '}
-            <span className="bg-gradient-to-r from-[#0f62fe] via-[#78a9ff] to-[#33b1ff] bg-clip-text text-transparent">
-              AI Assistant
-            </span>
+            <span className="font-semibold text-interactive">AI Assistant</span>
           </h1>
 
-          <p className="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-[#a8a8a8] md:text-xl">
-            A sleek, secure, and sandboxed AI platform. Chat with the latest models,
+          <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-text-secondary">
+            A secure, self-hosted AI platform. Chat with the latest models,
             execute terminal commands safely, and bring your own NVIDIA NIM key.
           </p>
 
-          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
             {isAuthenticated ? (
               <button
                 onClick={() => navigate('/chat')}
-                className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+                className="carbon-btn-primary"
               >
-                <MessageCircle className="h-5 w-5" />
+                <MessageCircle className="h-4 w-4" />
                 Go to Chat
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="h-4 w-4" />
               </button>
             ) : (
               <button
                 onClick={() => navigate('/login?signup=1')}
-                className="group flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
+                className="carbon-btn-primary"
               >
                 Start Chatting
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="h-4 w-4" />
               </button>
             )}
             <button
               onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 py-4 text-base font-semibold text-white transition-all hover:border-white/20 hover:bg-white/10"
+              className="carbon-btn-secondary"
             >
               Learn More
               <ChevronDown className="h-4 w-4" />
@@ -140,35 +120,25 @@ function Hero() {
 
         {/* Terminal Demo */}
         <motion.div
-          initial={{ opacity: 0, y: 60 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1, delay: 0.3, ease: 'easeOut' }}
-          className="mt-16"
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="mt-14"
         >
-          <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl shadow-black/50">
-            <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3">
-              <div className="h-3 w-3 rounded-full bg-[#da1e28]" />
-              <div className="h-3 w-3 rounded-full bg-[#f1c21b]" />
-              <div className="h-3 w-3 rounded-full bg-[#24a148]" />
-              <span className="ml-3 text-xs text-[#525252]">Project Vulcan Terminal</span>
+          <div className="mx-auto max-w-xl overflow-hidden border border-border-subtle bg-background">
+            <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2">
+              <div className="h-2.5 w-2.5 rounded-full bg-support-error" />
+              <div className="h-2.5 w-2.5 rounded-full bg-support-warning" />
+              <div className="h-2.5 w-2.5 rounded-full bg-support-success" />
+              <span className="ml-3 text-xs text-text-disabled">Project Vulcan Terminal</span>
             </div>
-            <div className="p-6 font-mono text-sm text-left">
-              <div className="mb-1 text-[#525252]">$ vulcan --start</div>
-              <div className="mb-1 text-[#24a148]">
-                <span className="mr-2">✓</span>Connected to NVIDIA NIM API
-              </div>
-              <div className="mb-1 text-[#24a148]">
-                <span className="mr-2">✓</span>Sandboxed terminal initialized
-              </div>
-              <div className="mb-1 text-[#24a148]">
-                <span className="mr-2">✓</span>AES-256-GCM encryption active
-              </div>
-              <div className="mb-1 text-[#0f62fe]">
-                <span className="mr-2">→</span>Loading latest models...
-              </div>
-              <div className="mt-2 text-[#525252]">
-                <span className="inline-block h-4 w-2 animate-pulse bg-[#0f62fe]" />
-              </div>
+            <div className="p-5 font-mono text-left text-sm">
+              <div className="mb-1 text-text-disabled">$ vulcan --start</div>
+              <div className="mb-1 text-support-success">Connected to NVIDIA NIM API</div>
+              <div className="mb-1 text-support-success">Sandboxed terminal initialized</div>
+              <div className="mb-1 text-support-success">AES-256-GCM encryption active</div>
+              <div className="mb-1 text-interactive">Loading latest models...</div>
+              <div className="mt-2 inline-block h-4 w-2 bg-interactive" />
             </div>
           </div>
         </motion.div>
@@ -184,16 +154,16 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, y: 30 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.6, delay }}
-      className="group rounded-2xl border border-white/5 bg-white/[0.02] p-8 transition-all duration-300 hover:border-[#0f62fe]/30 hover:bg-white/[0.04]"
+      transition={{ duration: 0.3, delay }}
+      className="border border-border-subtle bg-layer p-6 transition-colors hover:border-border-strong"
     >
-      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe]/15 to-[#78a9ff]/5 text-[#0f62fe] transition-colors group-hover:from-[#0f62fe]/25 group-hover:to-[#78a9ff]/10">
-        <Icon className="h-7 w-7" />
+      <div className="mb-4 flex h-10 w-10 items-center justify-center border border-border-subtle bg-background text-interactive">
+        <Icon className="h-5 w-5" />
       </div>
-      <h3 className="mb-3 text-xl font-bold text-white">{title}</h3>
-      <p className="leading-relaxed text-[#a8a8a8]">{description}</p>
+      <h3 className="mb-2 text-sm font-semibold text-text-primary">{title}</h3>
+      <p className="text-sm leading-relaxed text-text-secondary">{description}</p>
     </motion.div>
   )
 }
@@ -203,12 +173,12 @@ function Features() {
     {
       icon: MessageSquare,
       title: 'AI Chat',
-      description: 'Real-time streaming chat with NVIDIA NIM models. Choose from the latest LLMs with a sleek, minimal interface.',
+      description: 'Real-time streaming chat with NVIDIA NIM models. Choose from the latest LLMs with a minimal interface.',
     },
     {
       icon: Terminal,
       title: 'Sandboxed Terminal',
-      description: 'Execute commands safely inside a sandboxed environment with resource limits and filesystem isolation.',
+      description: 'Execute commands safely inside an Ubuntu environment with proot filesystem isolation.',
     },
     {
       icon: Lock,
@@ -233,25 +203,25 @@ function Features() {
   ]
 
   return (
-    <section id="features" className="relative px-6 py-32">
+    <section id="features" className="px-6 py-24">
       <div className="mx-auto max-w-7xl">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="mb-20 text-center"
+          transition={{ duration: 0.4 }}
+          className="mb-16 text-center"
         >
-          <h2 className="mb-4 text-4xl font-bold tracking-tight text-white md:text-5xl">
+          <h2 className="mb-3 text-3xl font-light tracking-tight text-text-primary md:text-4xl">
             Everything You Need
           </h2>
-          <p className="mx-auto max-w-xl text-lg text-[#a8a8a8]">
+          <p className="mx-auto max-w-lg text-base text-text-secondary">
             A complete AI assistant platform built for security, speed, and simplicity.
           </p>
         </motion.div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {features.map((f, i) => (
-            <FeatureCard key={f.title} {...f} delay={i * 0.1} />
+            <FeatureCard key={f.title} {...f} delay={i * 0.05} />
           ))}
         </div>
       </div>
@@ -264,55 +234,55 @@ function TerminalDemo() {
   const isInView = useInView(ref, { once: true, margin: '-100px' })
 
   return (
-    <section id="terminal" className="relative px-6 py-32">
+    <section id="terminal" className="px-6 py-24">
       <div className="mx-auto max-w-6xl">
         <motion.div
           ref={ref}
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.8 }}
-          className="overflow-hidden rounded-3xl border border-white/5 bg-[#0a0a0a]"
+          transition={{ duration: 0.4 }}
+          className="overflow-hidden border border-border-subtle bg-background"
         >
           <div className="grid items-center lg:grid-cols-2">
-            <div className="p-12">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#0f62fe]/20 bg-[#0f62fe]/5 px-4 py-2 text-xs font-semibold text-[#78a9ff]">
+            <div className="p-10">
+              <div className="mb-4 inline-flex items-center gap-2 border border-border-subtle bg-layer px-3 py-1.5 text-xs font-medium text-text-secondary">
                 <Terminal className="h-3.5 w-3.5" />
                 Sandboxed Environment
               </div>
-              <h2 className="mb-6 text-3xl font-bold tracking-tight text-white md:text-4xl">
+              <h2 className="mb-4 text-2xl font-light tracking-tight text-text-primary md:text-3xl">
                 Execute Commands Safely
               </h2>
-              <p className="mb-8 text-lg leading-relaxed text-[#a8a8a8]">
-                Run terminal commands in a fully isolated sandbox. Every command is executed
-                with strict resource limits — filesystem isolation and automatic termination after 30 seconds.
+              <p className="mb-6 text-base leading-relaxed text-text-secondary">
+                Run terminal commands in an isolated Ubuntu environment. Every command is executed
+                within a proot filesystem — no privileges required.
               </p>
-              <ul className="space-y-4">
+              <ul className="space-y-3">
                 {[
-                  'Filesystem isolation for commands',
-                  'Read-only root filesystem',
-                  '512MB RAM limit per session',
-                  '30 second CPU timeout',
+                  'Filesystem isolation via proot',
+                  'Ubuntu 24.04 LTS base environment',
+                  '60-second timeout per command',
+                  '4 concurrent command limit',
                 ].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-[#c6c6c6]">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#24a148]/10">
-                      <Shield className="h-3.5 w-3.5 text-[#24a148]" />
+                  <li key={item} className="flex items-center gap-3 text-sm text-text-secondary">
+                    <div className="flex h-5 w-5 shrink-0 items-center justify-center border border-border-subtle bg-layer">
+                      <Shield className="h-3 w-3 text-support-success" />
                     </div>
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="border-t border-white/5 bg-[#050505] p-8 lg:border-t-0 lg:border-l">
+            <div className="border-t border-border-subtle bg-layer p-8 lg:border-t-0 lg:border-l">
               <div className="font-mono text-sm">
-                <div className="mb-2 text-[#525252]">$ uname -a</div>
-                <div className="mb-4 text-[#c6c6c6]">Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux</div>
-                <div className="mb-2 text-[#525252]">$ python3 -c "print('Hello from sandbox')"</div>
-                <div className="mb-4 text-[#c6c6c6]">Hello from sandbox</div>
-                <div className="mb-2 text-[#525252]">$ ls -la /</div>
-                <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .</div>
-                <div className="text-[#c6c6c6]">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..</div>
-                <div className="text-[#c6c6c6]">drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin</div>
-                <div className="mt-4 text-[#0f62fe]">$ <span className="inline-block h-4 w-2 animate-pulse bg-[#0f62fe]" /></div>
+                <div className="mb-2 text-text-disabled">$ uname -a</div>
+                <div className="mb-4 text-text-secondary">Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux</div>
+                <div className="mb-2 text-text-disabled">$ python3 -c "print('Hello from sandbox')"</div>
+                <div className="mb-4 text-text-secondary">Hello from sandbox</div>
+                <div className="mb-2 text-text-disabled">$ ls -la /</div>
+                <div className="text-text-secondary">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .</div>
+                <div className="text-text-secondary">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..</div>
+                <div className="text-text-secondary">drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin</div>
+                <div className="mt-4 text-interactive">$ <span className="inline-block h-4 w-2 bg-interactive" /></div>
               </div>
             </div>
           </div>
@@ -326,47 +296,44 @@ function CTASection() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <section className="relative px-6 py-32">
-      <div className="mx-auto max-w-4xl">
+    <section className="px-6 py-24">
+      <div className="mx-auto max-w-3xl">
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="relative overflow-hidden rounded-3xl border border-white/5 bg-white/[0.02] p-12 text-center md:p-16"
+          transition={{ duration: 0.4 }}
+          className="border border-border-subtle bg-layer p-10 text-center md:p-14"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0f62fe]/10 via-transparent to-transparent" />
-          <div className="relative">
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
-              <Zap className="h-8 w-8 text-[#0f62fe]" />
-            </div>
-            <h2 className="mb-4 text-3xl font-bold tracking-tight text-white md:text-4xl">
-              {isAuthenticated ? 'Welcome Back' : 'Ready to Get Started?'}
-            </h2>
-            <p className="mx-auto mb-8 max-w-lg text-lg text-[#a8a8a8]">
-              {isAuthenticated
-                ? 'Jump back into your conversations and continue where you left off.'
-                : 'Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.'}
-            </p>
-            {isAuthenticated ? (
-              <button
-                onClick={() => navigate('/chat')}
-                className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
-              >
-                <MessageCircle className="h-5 w-5" />
-                Go to Chat
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </button>
-            ) : (
-              <button
-                onClick={() => navigate('/login?signup=1')}
-                className="group inline-flex items-center gap-2 rounded-xl bg-[#0f62fe] px-8 py-4 text-base font-semibold text-white transition-all hover:bg-[#0353e9] hover:shadow-xl hover:shadow-[#0f62fe]/30"
-              >
-                Launch Project Vulcan
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </button>
-            )}
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
+            <Zap className="h-6 w-6 text-interactive" />
           </div>
+          <h2 className="mb-3 text-2xl font-light tracking-tight text-text-primary md:text-3xl">
+            {isAuthenticated ? 'Welcome Back' : 'Ready to Get Started?'}
+          </h2>
+          <p className="mx-auto mb-6 max-w-md text-base text-text-secondary">
+            {isAuthenticated
+              ? 'Jump back into your conversations and continue where you left off.'
+              : 'Deploy your own personal AI assistant in minutes. No complex setup, no hidden fees.'}
+          </p>
+          {isAuthenticated ? (
+            <button
+              onClick={() => navigate('/chat')}
+              className="carbon-btn-primary"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Go to Chat
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate('/login?signup=1')}
+              className="carbon-btn-primary"
+            >
+              Launch Project Vulcan
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
         </motion.div>
       </div>
     </section>
@@ -375,13 +342,13 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="border-t border-white/5 px-6 py-12">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
+    <footer className="border-t border-border-subtle px-6 py-8">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 md:flex-row">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-[#0f62fe]" />
-          <span className="text-sm font-semibold text-white">Project Vulcan</span>
+          <Sparkles className="h-4 w-4 text-interactive" />
+          <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
         </div>
-        <p className="text-sm text-[#525252]">
+        <p className="text-xs text-text-disabled">
           Built with Rust, React, and NVIDIA NIM.
         </p>
       </div>
@@ -391,7 +358,7 @@ function Footer() {
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
+    <div className="min-h-screen bg-background text-text-primary">
       <Nav />
       <main>
         <Hero />

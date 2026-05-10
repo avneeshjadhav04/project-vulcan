@@ -49,56 +49,56 @@ export default function Admin() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0f0f0f]">
-      <header className="flex items-center gap-4 border-b border-[#2a2a2a] px-6 py-4">
+    <div className="flex min-h-screen flex-col bg-background">
+      <header className="flex items-center gap-4 border-b border-border-subtle bg-background px-5 py-3">
         <button
           onClick={() => navigate('/chat')}
-          className="flex items-center gap-2 text-sm text-[#c6c6c6] transition-colors hover:text-white"
+          className="flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <h1 className="text-lg font-medium text-white">Admin Dashboard</h1>
+        <h1 className="text-sm font-semibold text-text-primary">Admin Dashboard</h1>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-8 p-6">
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 p-5">
         <section>
-          <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-white">
-            <Users className="h-5 w-5 text-[#0f62fe]" />
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
+            <Users className="h-4 w-4 text-interactive" />
             Users
           </h2>
-          <div className="overflow-x-auto rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]">
+          <div className="overflow-x-auto border border-border-subtle bg-layer">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-[#2a2a2a] bg-[#0f0f0f]">
+              <thead className="border-b border-border-subtle bg-background">
                 <tr>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Email</th>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Role</th>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Created</th>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Actions</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Email</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Role</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Created</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {usersLoading && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-[#525252]">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    <td colSpan={4} className="px-3 py-6 text-center text-text-helper">
+                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                     </td>
                   </tr>
                 )}
                 {!usersLoading && usersData?.map((u) => (
-                  <tr key={u.id} className="border-b border-[#2a2a2a] last:border-0 hover:bg-[#1a1a1a]/80">
-                    <td className="px-4 py-3 text-white">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs uppercase text-[#0f62fe]">{u.role}</span>
+                  <tr key={u.id} className="border-b border-border-subtle last:border-0 hover:bg-layer-hover">
+                    <td className="px-3 py-2.5 text-text-primary">{u.email}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="font-mono text-[11px] uppercase text-interactive">{u.role}</span>
                     </td>
-                    <td className="px-4 py-3 text-[#525252]">
+                    <td className="px-3 py-2.5 text-[11px] text-text-helper">
                       {new Date(u.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-2.5">
                       <button
                         onClick={() => handleDelete(u.id)}
                         aria-label="Delete user"
-                        className="text-[#da1e28] transition-colors hover:text-[#da1e28]/80"
+                        className="text-support-error transition-colors hover:text-support-error/80"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -107,7 +107,7 @@ export default function Admin() {
                 ))}
                 {!usersLoading && (!usersData || usersData.length === 0) && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-[#525252]">
+                    <td colSpan={4} className="px-3 py-6 text-center text-text-helper">
                       No users found
                     </td>
                   </tr>
@@ -118,51 +118,51 @@ export default function Admin() {
         </section>
 
         <section>
-          <h2 className="mb-4 flex items-center gap-2 text-base font-medium text-white">
-            <Activity className="h-5 w-5 text-[#0f62fe]" />
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
+            <Activity className="h-4 w-4 text-interactive" />
             Terminal Logs
           </h2>
-          <div className="overflow-x-auto rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]">
+          <div className="overflow-x-auto border border-border-subtle bg-layer">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-[#2a2a2a] bg-[#0f0f0f]">
+              <thead className="border-b border-border-subtle bg-background">
                 <tr>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Command</th>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Status</th>
-                  <th className="px-4 py-3 font-medium text-[#525252]">Started</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Command</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Status</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-text-helper">Started</th>
                 </tr>
               </thead>
               <tbody>
                 {logsLoading && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-[#525252]">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    <td colSpan={3} className="px-3 py-6 text-center text-text-helper">
+                      <Loader2 className="mx-auto h-4 w-4 animate-spin" />
                     </td>
                   </tr>
                 )}
                 {!logsLoading && logsData?.map((log) => (
-                  <tr key={log.id} className="border-b border-[#2a2a2a] last:border-0 hover:bg-[#1a1a1a]/80">
-                    <td className="px-4 py-3 font-mono text-white">{log.command}</td>
-                    <td className="px-4 py-3">
+                  <tr key={log.id} className="border-b border-border-subtle last:border-0 hover:bg-layer-hover">
+                    <td className="px-3 py-2.5 font-mono text-text-primary">{log.command}</td>
+                    <td className="px-3 py-2.5">
                       <span
-                        className={`font-mono text-xs uppercase ${
+                        className={`font-mono text-[11px] uppercase ${
                           log.status === 'success'
-                            ? 'text-[#24a148]'
+                            ? 'text-support-success'
                             : log.status === 'error'
-                            ? 'text-[#da1e28]'
-                            : 'text-[#525252]'
+                            ? 'text-support-error'
+                            : 'text-text-helper'
                         }`}
                       >
                         {log.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-[#525252]">
+                    <td className="px-3 py-2.5 text-[11px] text-text-helper">
                       {new Date(log.started_at).toLocaleString()}
                     </td>
                   </tr>
                 ))}
                 {!logsLoading && (!logsData || logsData.length === 0) && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-[#525252]">
+                    <td colSpan={3} className="px-3 py-6 text-center text-text-helper">
                       No terminal sessions found
                     </td>
                   </tr>

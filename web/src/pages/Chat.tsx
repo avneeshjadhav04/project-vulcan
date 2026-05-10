@@ -17,7 +17,7 @@ import {
 
 const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
-const DEFAULT_SIDEBAR_WIDTH = 300
+const DEFAULT_SIDEBAR_WIDTH = 280
 
 export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
@@ -37,7 +37,6 @@ export default function Chat() {
 
   const activeChatId = chatId || null
 
-  // Resize handlers
   const startResize = useCallback(() => setIsResizing(true), [])
   const stopResize = useCallback(() => setIsResizing(false), [])
 
@@ -71,56 +70,54 @@ export default function Chat() {
   }, [isResizing, resize, stopResize])
 
   return (
-    <div className="flex h-screen bg-[#0f0f0f]">
+    <div className="flex h-screen bg-background">
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: sidebarWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="flex shrink-0 flex-col overflow-hidden border-r border-[#2a2a2a] bg-[#0f0f0f]"
+            transition={{ duration: 0.15 }}
+            className="flex shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background"
             style={{ width: sidebarWidth }}
           >
             {/* Logo */}
-            <div className="flex items-center justify-between border-b border-[#2a2a2a] px-4 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-lg shadow-[#0f62fe]/20">
-                  <Sparkles className="h-4 w-4 text-white" />
-                </div>
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-interactive" />
                 <div>
-                  <span className="text-sm font-bold tracking-tight text-white">Project Vulcan</span>
-                  <p className="text-[10px] text-[#525252]">Personal AI Assistant</p>
+                  <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
+                  <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
                 </div>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="rounded-lg p-1.5 text-[#525252] transition-colors hover:bg-[#2a2a2a] hover:text-white"
+                className="p-1.5 text-text-disabled transition-colors hover:text-text-primary"
               >
                 <PanelLeftClose className="h-4 w-4" />
               </button>
             </div>
 
             {/* Chat List */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-3">
               <Sidebar activeChatId={activeChatId} selectedModel={selectedModel} />
             </div>
 
             {/* Footer */}
-            <div className="border-t border-[#2a2a2a] p-4">
-              <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
-                  <span className="text-xs font-bold text-[#0f62fe]">
+            <div className="border-t border-border-subtle p-3">
+              <div className="mb-2 flex items-center gap-2 border border-border-subtle bg-layer px-3 py-2">
+                <div className="flex h-6 w-6 items-center justify-center bg-layer-active">
+                  <span className="text-[10px] font-semibold text-interactive">
                     {user?.email?.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-white">{user?.email || 'User'}</p>
-                  <p className="text-[10px] text-[#525252]">{user?.role || 'user'}</p>
+                  <p className="truncate text-[11px] text-text-primary">{user?.email || 'User'}</p>
+                  <p className="text-[10px] text-text-helper">{user?.role || 'user'}</p>
                 </div>
               </div>
 
-              <div className="space-y-0.5">
+              <div className="space-y-px">
                 <SidebarButton
                   icon={<TerminalIcon className="h-4 w-4" />}
                   label={showTerminal ? 'Hide Terminal' : 'Open Terminal'}
@@ -155,23 +152,20 @@ export default function Chat() {
       {sidebarOpen && (
         <div
           onMouseDown={startResize}
-          className={`relative z-20 w-1 shrink-0 cursor-col-resize transition-colors ${
-            isResizing ? 'bg-[#0f62fe]' : 'bg-transparent hover:bg-[#0f62fe]/30'
+          className={`relative z-20 w-px shrink-0 cursor-col-resize transition-colors ${
+            isResizing ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
           }`}
-          style={{ marginLeft: -1 }}
         />
       )}
 
       {/* Collapsed sidebar toggle */}
       {!sidebarOpen && (
-        <motion.button
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
+        <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2 text-[#525252] shadow-lg transition-colors hover:text-white"
+          className="absolute left-3 top-3 z-10 flex items-center gap-2 border border-border-subtle bg-layer px-3 py-2 text-text-disabled transition-colors hover:text-text-primary"
         >
           <PanelLeftOpen className="h-4 w-4" />
-        </motion.button>
+        </button>
       )}
 
       {/* Main Content */}
@@ -186,10 +180,10 @@ export default function Chat() {
           {showTerminal && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 320, opacity: 1 }}
+              animate={{ height: 300, opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="overflow-hidden border-t border-[#2a2a2a]"
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden border-t border-border-subtle"
             >
               <Terminal />
             </motion.div>
@@ -216,12 +210,12 @@ function SidebarButton({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs transition-all ${
+      className={`flex w-full items-center gap-3 px-3 py-2 text-xs transition-colors ${
         danger
-          ? 'text-[#da1e28] hover:bg-[#da1e28]/10'
+          ? 'text-support-error hover:bg-support-error/10'
           : active
-            ? 'bg-[#0f62fe]/10 text-[#0f62fe]'
-            : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+            ? 'bg-interactive/10 text-interactive'
+            : 'text-text-disabled hover:bg-layer-hover hover:text-text-primary'
       }`}
     >
       {icon}
