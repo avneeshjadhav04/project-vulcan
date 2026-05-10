@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
@@ -16,14 +16,107 @@ import {
   MessageCircle,
 } from 'lucide-react'
 
-/* ─── Typewriter helpers ─── */
+/* ─── Terminal primitives ─── */
 
 function BlinkingCursor({ className = '' }: { className?: string }) {
   return (
     <span
-      className={`inline-block h-4 w-2 bg-interactive align-middle ${className}`}
-      style={{ animation: 'cursor-blink 1s step-end infinite' }}
+      className={`inline-block h-[1.1em] w-[0.6em] translate-y-[0.05em] bg-interactive align-middle ${className}`}
+      style={{ animation: 'cursor-blink 1.1s step-end infinite' }}
     />
+  )
+}
+
+function StaticCursor({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-[1.1em] w-[0.6em] translate-y-[0.05em] bg-interactive align-middle ${className}`}
+    />
+  )
+}
+
+interface TypewriterProps {
+  text: string
+  speed?: number
+  jitter?: number
+  onDone?: () => void
+  className?: string
+  showCursor?: boolean
+}
+
+function Typewriter({ text, speed = 32, jitter = 12, onDone, className = '', showCursor = true }: TypewriterProps) {
+  const [displayed, setDisplayed] = useState('')
+  const [finished, setFinished] = useState(false)
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+
+    let i = 0
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const typeNext = () => {
+      if (i >= text.length) {
+        setFinished(true)
+        onDone?.()
+        return
+      }
+      i++
+      setDisplayed(text.slice(0, i))
+      const delay = speed + (Math.random() * jitter - jitter / 2)
+      timeoutId = setTimeout(typeNext, Math.max(8, delay))
+    }
+
+    timeoutId = setTimeout(typeNext, 80)
+
+    return () => clearTimeout(timeoutId)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <span className={className}>
+      {displayed}
+      {showCursor && !finished && <StaticCursor />}
+    </span>
+  )
+}
+
+function TerminalWindow({
+  title,
+  children,
+  className = '',
+}: {
+  title: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={`overflow-hidden border border-border-subtle bg-background shadow-2xl ${className}`}
+      style={{ boxShadow: '0 0 0 1px #262626, 0 25px 50px -12px rgba(0,0,0,0.5)' }}
+    >
+      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer px-4 py-2.5">
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded-full bg-[#ff5f56]" />
+          <div className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
+          <div className="h-3 w-3 rounded-full bg-[#27c93f]" />
+        </div>
+        <span className="ml-3 text-[11px] font-medium tracking-wide text-text-disabled uppercase">
+          {title}
+        </span>
+      </div>
+      <div className="relative">
+        {/* subtle scanline overlay */}
+        <div
+          className="pointer-events-none absolute inset-0 z-10 opacity-[0.03]"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+          }}
+        />
+        {children}
+      </div>
+    </div>
   )
 }
 
@@ -78,61 +171,67 @@ function Nav() {
 
 /* ─── Hero ─── */
 
-function HeroTerminal() {
-  const [phase, setPhase] = useState(0)
-  const lines = [
-    { text: '$ vulcan --start', color: 'text-text-disabled' },
-    { text: 'Connected to NVIDIA NIM API', color: 'text-support-success' },
-    { text: 'Sandboxed terminal initialized', color: 'text-support-success' },
-    { text: 'AES-256-GCM encryption active', color: 'text-support-success' },
-    { text: 'Loading latest models...', color: 'text-interactive' },
-  ]
-
-  useEffect(() => {
-    if (phase >= lines.length) return
-    const timer = setTimeout(() => setPhase((p) => p + 1), phase === 0 ? 600 : 900)
-    return () => clearTimeout(timer)
-  }, [phase])
-
-  return (
-    <div className="mx-auto max-w-xl overflow-hidden border border-border-subtle bg-background">
-      <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2">
-        <div className="h-2.5 w-2.5 rounded-full bg-support-error" />
-        <div className="h-2.5 w-2.5 rounded-full bg-support-warning" />
-        <div className="h-2.5 w-2.5 rounded-full bg-support-success" />
-        <span className="ml-3 text-xs text-text-disabled">Project Vulcan Terminal</span>
-      </div>
-      <div className="p-5 font-mono text-left text-sm">
-        {lines.slice(0, phase).map((line, i) => (
-          <div key={i} className={`mb-1 ${line.color}`}>
-            <TypewriterLine text={line.text} speed={25} />
-          </div>
-        ))}
-        {phase < lines.length && (
-          <div className={`mb-1 ${lines[phase].color}`}>
-            <TypewriterLine text={lines[phase].text} speed={25} />
-          </div>
-        )}
-        <div className="mt-2">
-          <BlinkingCursor />
-        </div>
-      </div>
-    </div>
-  )
+interface BootLine {
+  text: string
+  color: string
+  speed?: number
 }
 
-function TypewriterLine({ text, speed = 30 }: { text: string; speed?: number }) {
-  const [displayed, setDisplayed] = useState('')
-  useEffect(() => {
-    let i = 0
-    const interval = setInterval(() => {
-      i++
-      setDisplayed(text.slice(0, i))
-      if (i >= text.length) clearInterval(interval)
-    }, speed)
-    return () => clearInterval(interval)
-  }, [text, speed])
-  return <>{displayed}</>
+function HeroTerminal() {
+  const [visibleCount, setVisibleCount] = useState(0)
+  const [allDone, setAllDone] = useState(false)
+
+  const lines: BootLine[] = [
+    { text: '$ vulcan --start', color: 'text-text-disabled', speed: 28 },
+    { text: '[ OK ] Loading configuration...', color: 'text-text-secondary', speed: 22 },
+    { text: '[ OK ] Initializing SQLite database', color: 'text-text-secondary', speed: 22 },
+    { text: '[ OK ] Connected to NVIDIA NIM API', color: 'text-support-success', speed: 24 },
+    { text: '[ OK ] Sandboxed terminal initialized', color: 'text-support-success', speed: 24 },
+    { text: '[ OK ] AES-256-GCM encryption active', color: 'text-support-success', speed: 24 },
+    { text: 'Loading available models...', color: 'text-interactive', speed: 30 },
+    { text: '  meta/llama-3.1-8b-instruct        ready', color: 'text-text-secondary', speed: 18 },
+    { text: '  meta/llama-3.1-70b-instruct       ready', color: 'text-text-secondary', speed: 18 },
+    { text: '  nvidia/nemotron-4-340b-instruct   ready', color: 'text-text-secondary', speed: 18 },
+    { text: '', color: 'text-text-secondary', speed: 10 },
+    { text: 'Project Vulcan is ready.', color: 'text-support-success', speed: 26 },
+  ]
+
+  const handleLineDone = useCallback(() => {
+    setVisibleCount((c) => {
+      const next = c + 1
+      if (next >= lines.length) {
+        setTimeout(() => setAllDone(true), 400)
+      }
+      return next
+    })
+  }, [lines.length])
+
+  return (
+    <TerminalWindow title="vulcan — bash">
+      <div className="p-5 font-mono text-left text-[13px] leading-relaxed">
+        {lines.slice(0, visibleCount + 1).map((line, i) => (
+          <div key={i} className={`mb-0.5 ${line.color}`}>
+            {i === visibleCount ? (
+              <Typewriter
+                text={line.text}
+                speed={line.speed ?? 28}
+                jitter={10}
+                onDone={handleLineDone}
+                showCursor
+              />
+            ) : (
+              line.text
+            )}
+          </div>
+        ))}
+        {allDone && (
+          <div className="mt-1 text-interactive">
+            $<BlinkingCursor />
+          </div>
+        )}
+      </div>
+    </TerminalWindow>
+  )
 }
 
 function Hero() {
@@ -190,7 +289,6 @@ function Hero() {
           </div>
         </motion.div>
 
-        {/* Terminal Demo */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
@@ -293,47 +391,61 @@ function Features() {
 interface CommandStep {
   prompt: string
   output: string[]
-  color?: string
+  processing?: boolean
 }
 
 function TerminalDemo() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: '-100px' })
-  const [step, setStep] = useState(0)
-  const [showOutput, setShowOutput] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'typing' | 'processing' | 'output' | 'done'>('idle')
+  const [currentStep, setCurrentStep] = useState(0)
 
   const commands: CommandStep[] = [
     {
       prompt: '$ uname -a',
-      output: ['Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux'],
+      output: ['Linux sandbox 5.15.0-generic #1 SMP x86_64 GNU/Linux'],
     },
     {
       prompt: '$ python3 -c "print(\'Hello from sandbox\')"',
       output: ['Hello from sandbox'],
     },
     {
-      prompt: '$ ls -la /',
+      prompt: '$ ls -la /workspace',
       output: [
-        'dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .',
-        'dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..',
-        'drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin',
+        'total 24',
+        'drwxr-xr-x  4 vulcan vulcan 4096 May 10 14:32 .',
+        'drwxr-xr-x 18 root   root   4096 Jan  1 00:00 ..',
+        '-rw-r--r--  1 vulcan vulcan  220 May 10 14:30 .bashrc',
+        'drwxr-xr-x  2 vulcan vulcan 4096 May 10 14:31 .cache',
+        '-rw-r--r--  1 vulcan vulcan  12K May 10 14:32 data.json',
       ],
     },
   ]
 
   useEffect(() => {
-    if (!isInView) return
-    if (step >= commands.length) return
-    const typeTimer = setTimeout(() => setShowOutput(true), 1200)
-    const nextTimer = setTimeout(() => {
-      setStep((s) => s + 1)
-      setShowOutput(false)
-    }, 2800)
-    return () => {
-      clearTimeout(typeTimer)
-      clearTimeout(nextTimer)
+    if (!isInView || phase !== 'idle') return
+    setPhase('typing')
+  }, [isInView, phase])
+
+  const handleTypeDone = useCallback(() => {
+    setPhase('processing')
+    setTimeout(() => {
+      setPhase('output')
+    }, 500)
+  }, [])
+
+  const handleOutputDone = useCallback(() => {
+    if (currentStep + 1 < commands.length) {
+      setTimeout(() => {
+        setCurrentStep((s) => s + 1)
+        setPhase('typing')
+      }, 800)
+    } else {
+      setTimeout(() => {
+        setPhase('done')
+      }, 600)
     }
-  }, [isInView, step])
+  }, [currentStep, commands.length])
 
   return (
     <section id="terminal" className="px-6 py-24">
@@ -375,55 +487,75 @@ function TerminalDemo() {
               </ul>
             </div>
             <div className="border-t border-border-subtle bg-layer p-8 lg:border-t-0 lg:border-l">
-              <div className="font-mono text-sm">
-                {commands.slice(0, step).map((cmd, i) => (
-                  <div key={i} className="mb-4">
-                    <div className="mb-1 text-text-disabled">{cmd.prompt}</div>
-                    {cmd.output.map((line, j) => (
-                      <motion.div
-                        key={j}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.2, delay: j * 0.08 }}
-                        className="text-text-secondary"
-                      >
-                        {line}
-                      </motion.div>
-                    ))}
-                  </div>
-                ))}
-                {step < commands.length && (
-                  <div className="mb-2 text-text-disabled">
-                    <TypewriterLine text={commands[step].prompt} speed={30} />
-                  </div>
-                )}
-                <AnimatePresence>
-                  {showOutput && step < commands.length && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="overflow-hidden"
-                    >
-                      {commands[step].output.map((line, j) => (
+              <TerminalWindow title="sandbox — bash" className="border-0 shadow-none">
+                <div className="p-5 font-mono text-[13px] leading-relaxed">
+                  {commands.slice(0, currentStep).map((cmd, i) => (
+                    <div key={i} className="mb-3">
+                      <div className="mb-1 text-text-disabled">{cmd.prompt}</div>
+                      {cmd.output.map((line, j) => (
                         <motion.div
                           key={j}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.2, delay: j * 0.1 }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.15, delay: j * 0.04 }}
                           className="text-text-secondary"
                         >
                           {line}
                         </motion.div>
                       ))}
-                    </motion.div>
+                    </div>
+                  ))}
+
+                  {phase === 'typing' && currentStep < commands.length && (
+                    <div className="mb-1 text-text-disabled">
+                      <Typewriter
+                        text={commands[currentStep].prompt}
+                        speed={28}
+                        jitter={12}
+                        onDone={handleTypeDone}
+                        showCursor
+                      />
+                    </div>
                   )}
-                </AnimatePresence>
-                <div className="mt-2 text-interactive">
-                  $<BlinkingCursor />
+
+                  {phase === 'processing' && currentStep < commands.length && (
+                    <div className="mb-1 text-text-disabled">
+                      {commands[currentStep].prompt}
+                      <span className="inline-block h-[1.1em] w-[0.6em] translate-y-[0.05em] bg-interactive align-middle" />
+                    </div>
+                  )}
+
+                  <AnimatePresence>
+                    {phase === 'output' && currentStep < commands.length && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        onAnimationComplete={handleOutputDone}
+                      >
+                        {commands[currentStep].output.map((line, j) => (
+                          <motion.div
+                            key={j}
+                            initial={{ opacity: 0, x: -6 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.15, delay: j * 0.05 }}
+                            className="text-text-secondary"
+                          >
+                            {line}
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {phase === 'done' && (
+                    <div className="mt-1 text-interactive">
+                      $<BlinkingCursor />
+                    </div>
+                  )}
                 </div>
-              </div>
+              </TerminalWindow>
             </div>
           </div>
         </motion.div>
