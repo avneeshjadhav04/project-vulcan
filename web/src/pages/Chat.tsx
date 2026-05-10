@@ -7,7 +7,6 @@ import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
 import {
   Settings,
-  Shield,
   LogOut,
   Terminal as TerminalIcon,
   PanelLeftClose,
@@ -26,7 +25,6 @@ export default function Chat() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const [selectedModel, setSelectedModel] = useState('meta/llama-3.1-8b-instruct')
-  const isAdmin = useAuthStore((s) => s.isAdmin)
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
@@ -128,13 +126,11 @@ export default function Chat() {
                   label="Settings"
                   onClick={() => navigate('/settings')}
                 />
-                {isAdmin && (
-                  <SidebarButton
-                    icon={<Shield className="h-4 w-4" />}
-                    label="Admin"
-                    onClick={() => navigate('/admin')}
-                  />
-                )}
+                <SidebarButton
+                  icon={<TerminalIcon className="h-4 w-4" />}
+                  label="System Logs"
+                  onClick={() => navigate('/admin')}
+                />
                 <SidebarButton
                   icon={<LogOut className="h-4 w-4" />}
                   label="Sign out"

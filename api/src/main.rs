@@ -21,7 +21,7 @@ mod models;
 mod routes;
 mod sandbox_engine;
 
-use middleware::{admin_middleware, auth_middleware, csrf_middleware, AppState};
+use middleware::{auth_middleware, csrf_middleware, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -145,7 +145,6 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::admin::router()
-                .layer(from_fn(admin_middleware))
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads

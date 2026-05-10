@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::env;
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -8,11 +9,67 @@ pub struct Config {
     pub jwt_fallback_secret: Vec<u8>,
     pub master_key: [u8; 32],
     pub nim_base_url: String,
-    pub admin_default_email: String,
-    pub admin_default_password: String,
     pub bind_addr: String,
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
+}
+
+fn load_or_generate_master_key() -> Result<[u8; 32]> {
+    use rand::Rng;
+
+    // Prefer explicit env var
+    if let Ok(key_str) = env::var("MASTER_KEY") {
+        if !key_str.trim().is_empty() {
+            println!("[CONFIG] MASTER_KEY loaded from environment");
+            return Ok(derive_key(&key_str));
+        }
+    }
+
+    // Derive key file path from DATABASE_URL directory, fallback to current dir
+    let key_path = env::var("DATABASE_URL")
+        .ok()
+        .and_then(|url| {
+            let path = url.strip_prefix("sqlite:///")
+                .or_else(|| url.strip_prefix("sqlite:"))?;
+            Path::new(path).parent().map(|p| p.join(".master_key"))
+        })
+        .unwrap_or_else(|| Path::new(".master_key").to_path_buf());
+
+    if key_path.exists() {
+        let contents = std::fs::read_to_string(&key_path)
+            .with_context(|| format!("Failed to read master key from {}", key_path.display()))?;
+        let key_str = contents.trim();
+        if !key_str.is_empty() {
+            println!("[CONFIG] MASTER_KEY loaded from {}", key_path.display());
+            return Ok(derive_key(key_str));
+        }
+    }
+
+    // Generate a new cryptographically secure random key
+    let new_key: String = rand::thread_rng()
+        .sample_iter(rand::distributions::Alphanumeric)
+        .take(64)
+        .map(char::from)
+        .collect();
+
+    if let Some(parent) = key_path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    std::fs::write(&key_path, &new_key)
+        .with_context(|| format!("Failed to write master key to {}", key_path.display()))?;
+
+    // Restrict permissions
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    println!("[CONFIG] MASTER_KEY auto-generated and saved to {}", key_path.display());
+    Ok(derive_key(&new_key))
 }
 
 impl Config {
@@ -21,9 +78,8 @@ impl Config {
 
         println!("[CONFIG] Loading environment variables...");
 
-        let master_key_str = env::var("MASTER_KEY").context("MASTER_KEY must be set")?;
-        let master_key = derive_key(&master_key_str);
-        println!("[CONFIG] MASTER_KEY loaded");
+        let master_key = load_or_generate_master_key()?;
+        println!("[CONFIG] MASTER_KEY ready");
 
         let database_url = match env::var("DATABASE_URL") {
             Ok(url) if !url.trim().is_empty() => {
@@ -77,10 +133,6 @@ impl Config {
             master_key,
             nim_base_url: env::var("NIM_BASE_URL")
                 .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string()),
-            admin_default_email: env::var("ADMIN_DEFAULT_EMAIL")
-                .unwrap_or_else(|_| "admin@local.local".to_string()),
-            admin_default_password: env::var("ADMIN_DEFAULT_PASSWORD")
-                .context("ADMIN_DEFAULT_PASSWORD must be set")?,
             bind_addr,
             cookie_secure,
             cors_origin,
