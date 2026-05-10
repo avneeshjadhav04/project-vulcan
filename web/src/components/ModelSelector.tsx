@@ -87,27 +87,27 @@ export default function ModelSelector({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-2.5 text-left text-xs text-[#c6c6c6] transition-all hover:border-[#0f62fe]/30 hover:bg-[#1a1a1a]/80"
+        className="flex w-full items-center justify-between gap-2 border border-border-subtle bg-background px-2.5 py-2 text-left text-xs text-text-secondary transition-colors hover:border-border-strong"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Cpu className="h-3.5 w-3.5 shrink-0 text-[#0f62fe]" />
-          <span className="font-mono">{selectedModel?.id || selected}</span>
+          <Cpu className="h-3.5 w-3.5 shrink-0 text-interactive" />
+          <span className="font-mono truncate">{selectedModel?.id || selected}</span>
         </div>
-        <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-[#525252] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] shadow-2xl shadow-black/50">
+        <div className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-80 overflow-hidden border border-border-subtle bg-layer shadow-lg">
           {/* Search */}
-          <div className="border-b border-[#2a2a2a] p-2">
-            <div className="flex items-center gap-2 rounded-lg bg-[#0f0f0f] px-3 py-2">
-              <Search className="h-3.5 w-3.5 text-[#525252]" />
+          <div className="border-b border-border-subtle p-2">
+            <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
+              <Search className="h-3.5 w-3.5 text-text-helper" />
               <input
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search models..."
-                className="flex-1 bg-transparent text-xs text-white outline-none placeholder:text-[#525252]"
+                className="flex-1 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-placeholder"
               />
             </div>
           </div>
@@ -115,19 +115,19 @@ export default function ModelSelector({
           {/* List */}
           <div className="max-h-60 overflow-y-auto">
             {isLoading && (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-5 w-5 animate-spin text-[#0f62fe]" />
+              <div className="flex items-center justify-center py-5">
+                <Loader2 className="h-4 w-4 animate-spin text-interactive" />
               </div>
             )}
 
             {error && (
-              <div className="px-3 py-4 text-center text-xs text-[#da1e28]">
+              <div className="px-3 py-3 text-center text-xs text-support-error">
                 Failed to load models
               </div>
             )}
 
             {!isLoading && !error && filtered.length === 0 && (
-              <div className="px-3 py-4 text-center text-xs text-[#525252]">
+              <div className="px-3 py-3 text-center text-xs text-text-helper">
                 No models found
               </div>
             )}
@@ -137,7 +137,7 @@ export default function ModelSelector({
               if (!models || models.length === 0) return null
               return (
                 <div key={cat}>
-                  <div className="sticky top-0 bg-[#1a1a1a] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#525252]">
+                  <div className="sticky top-0 bg-layer px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">
                     {CATEGORY_LABELS[cat] || cat}
                   </div>
                   {models.map((model) => (
@@ -148,12 +148,12 @@ export default function ModelSelector({
                         setOpen(false)
                         setSearch('')
                       }}
-                      className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-xs transition-colors hover:bg-[#2a2a2a] ${
-                        selected === model.id ? 'bg-[#0f62fe]/10 text-[#0f62fe]' : 'text-[#c6c6c6]'
+                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-layer-hover ${
+                        selected === model.id ? 'bg-interactive/10 text-interactive' : 'text-text-secondary'
                       }`}
                     >
                       <span className="truncate font-mono">{model.id}</span>
-                      {selected === model.id && <Check className="h-3.5 w-3.5 shrink-0 text-[#0f62fe]" />}
+                      {selected === model.id && <Check className="h-3.5 w-3.5 shrink-0 text-interactive" />}
                     </button>
                   ))}
                 </div>

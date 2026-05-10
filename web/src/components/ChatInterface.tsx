@@ -46,7 +46,7 @@ interface MessageItem {
   tokens_used?: number
 }
 
-/* ─── Code Block ─── */
+/* Code Block */
 function CodeBlock({ children, className }: { children: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   const language = className?.replace('language-', '') || 'text'
@@ -59,41 +59,34 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   }
 
   return (
-    <div className="my-4 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] shadow-lg">
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-[#da1e28]" />
-            <div className="h-2.5 w-2.5 rounded-full bg-[#f1c21b]" />
-            <div className="h-2.5 w-2.5 rounded-full bg-[#24a148]" />
-          </div>
-          <span className="ml-2 text-xs font-mono font-medium text-[#525252]">{language}</span>
-        </div>
+    <div className="my-3 overflow-hidden border border-border-subtle bg-background">
+      <div className="flex items-center justify-between border-b border-border-subtle bg-layer px-3 py-1.5">
+        <span className="text-[11px] font-mono text-text-helper">{language}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
         >
-          {copied ? <Check className="h-3 w-3 text-[#24a148]" /> : <Copy className="h-3 w-3" />}
+          {copied ? <Check className="h-3 w-3 text-support-success" /> : <Copy className="h-3 w-3" />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="overflow-x-auto p-4">
-        <code className="font-mono text-sm leading-relaxed text-[#c6c6c6]">{children}</code>
+      <pre className="overflow-x-auto p-3">
+        <code className="font-mono text-sm leading-relaxed text-text-secondary">{children}</code>
       </pre>
     </div>
   )
 }
 
-/* ─── Inline Code ─── */
+/* Inline Code */
 function InlineCode({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-md bg-[#1a1a1a] px-1.5 py-0.5 font-mono text-sm text-[#78a9ff] border border-[#2a2a2a]">
+    <code className="bg-layer px-1 py-0.5 font-mono text-sm text-text-secondary border border-border-subtle">
       {children}
     </code>
   )
 }
 
-/* ─── Message Actions ─── */
+/* Message Actions */
 function MessageActions({ content, onRegenerate }: { content: string; onRegenerate?: () => void }) {
   const [copied, setCopied] = useState(false)
 
@@ -105,19 +98,19 @@ function MessageActions({ content, onRegenerate }: { content: string; onRegenera
   }
 
   return (
-    <div className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
       <button
         onClick={handleCopy}
-        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+        className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
         title="Copy response"
       >
-        {copied ? <Check className="h-3 w-3 text-[#24a148]" /> : <Copy className="h-3 w-3" />}
+        {copied ? <Check className="h-3 w-3 text-support-success" /> : <Copy className="h-3 w-3" />}
         {copied ? 'Copied' : 'Copy'}
       </button>
       {onRegenerate && (
         <button
           onClick={onRegenerate}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+          className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
           title="Regenerate response"
         >
           <RotateCcw className="h-3 w-3" />
@@ -128,7 +121,7 @@ function MessageActions({ content, onRegenerate }: { content: string; onRegenera
   )
 }
 
-/* ─── Time Ago ─── */
+/* Time Ago */
 function timeAgo(date: string): string {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
   if (seconds < 60) return 'Just now'
@@ -140,7 +133,7 @@ function timeAgo(date: string): string {
   return `${days}d ago`
 }
 
-/* ─── Message Bubble ─── */
+/* Message Bubble */
 function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRegenerate?: () => void; onEdit?: (id: string, content: string) => void }) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -156,38 +149,37 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className={`group flex gap-4 py-5 ${isUser ? 'flex-row-reverse' : ''}`}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className={`group flex gap-3 py-4 ${isUser ? 'flex-row-reverse' : ''}`}
     >
       {/* Avatar */}
-      <div className="flex shrink-0 flex-col items-center pt-1">
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          className={`flex h-9 w-9 items-center justify-center rounded-xl shadow-lg ${
+      <div className="flex shrink-0 flex-col items-center pt-0.5">
+        <div
+          className={`flex h-7 w-7 items-center justify-center border ${
             isAssistant
-              ? 'bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-[#0f62fe]/20'
-              : 'bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] border border-[#2a2a2a]'
+              ? 'border-border-subtle bg-interactive'
+              : 'border-border-subtle bg-layer'
           }`}
         >
           {isAssistant ? (
-            <Sparkles className="h-4 w-4 text-white" />
+            <Sparkles className="h-3.5 w-3.5 text-white" />
           ) : (
-            <User className="h-4 w-4 text-[#c6c6c6]" />
+            <User className="h-3.5 w-3.5 text-text-secondary" />
           )}
-        </motion.div>
+        </div>
       </div>
 
       {/* Content */}
       <div className={`min-w-0 max-w-[85%] flex-1 ${isUser ? 'text-right' : ''}`}>
-        <div className={`mb-1.5 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
-          <span className="text-xs font-semibold text-white">
+        <div className={`mb-1 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
+          <span className="text-[11px] font-semibold text-text-primary">
             {isAssistant ? 'Project Vulcan' : 'You'}
           </span>
-          <span className="text-[10px] text-[#525252]">{timeAgo(msg.created_at)}</span>
+          <span className="text-[10px] text-text-helper">{timeAgo(msg.created_at)}</span>
           {msg.tokens_used && (
-            <span className="flex items-center gap-0.5 text-[10px] text-[#525252]">
+            <span className="flex items-center gap-0.5 text-[10px] text-text-helper">
               <Hash className="h-2.5 w-2.5" />
               {msg.tokens_used}
             </span>
@@ -195,10 +187,10 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
         </div>
 
         <div
-          className={`inline-block rounded-2xl px-5 py-3.5 text-left shadow-sm ${
+          className={`inline-block text-left ${
             isUser
-              ? 'bg-gradient-to-br from-[#0f62fe] to-[#0353e9] text-white'
-              : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#f4f4f4]'
+              ? 'bg-interactive px-4 py-2.5 text-white'
+              : 'border border-border-subtle bg-layer px-4 py-2.5 text-text-primary'
           }`}
         >
           {isEditing ? (
@@ -216,7 +208,7 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
                     setEditContent(msg.content)
                   }
                 }}
-                className="w-full resize-none rounded-lg bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-white/50"
+                className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none"
                 rows={3}
                 autoFocus
               />
@@ -226,13 +218,13 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
                     setIsEditing(false)
                     setEditContent(msg.content)
                   }}
-                  className="rounded-lg px-3 py-1 text-[11px] text-white/70 transition-colors hover:bg-white/10"
+                  className="px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="rounded-lg bg-white/20 px-3 py-1 text-[11px] text-white transition-colors hover:bg-white/30"
+                  className="bg-interactive px-3 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
                 >
                   Save & Regenerate
                 </button>
@@ -251,29 +243,29 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
                     return <CodeBlock className={className}>{String(children)}</CodeBlock>
                   },
                   p({ children }) {
-                    return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
+                    return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
                   },
                   ul({ children }) {
-                    return <ul className="mb-3 list-disc pl-5 space-y-1">{children}</ul>
+                    return <ul className="mb-2 list-disc pl-5 space-y-0.5">{children}</ul>
                   },
                   ol({ children }) {
-                    return <ol className="mb-3 list-decimal pl-5 space-y-1">{children}</ol>
+                    return <ol className="mb-2 list-decimal pl-5 space-y-0.5">{children}</ol>
                   },
                   li({ children }) {
                     return <li className="leading-relaxed">{children}</li>
                   },
                   h1({ children }) {
-                    return <h1 className="mb-3 text-lg font-bold text-white">{children}</h1>
+                    return <h1 className="mb-2 text-base font-semibold text-text-primary">{children}</h1>
                   },
                   h2({ children }) {
-                    return <h2 className="mb-2 text-base font-bold text-white">{children}</h2>
+                    return <h2 className="mb-2 text-sm font-semibold text-text-primary">{children}</h2>
                   },
                   h3({ children }) {
-                    return <h3 className="mb-2 text-sm font-bold text-white">{children}</h3>
+                    return <h3 className="mb-1 text-xs font-semibold text-text-primary">{children}</h3>
                   },
                   blockquote({ children }) {
                     return (
-                      <blockquote className="mb-3 border-l-2 border-[#0f62fe] pl-4 italic text-[#a8a8a8]">
+                      <blockquote className="mb-2 border-l-2 border-interactive pl-3 italic text-text-secondary">
                         {children}
                       </blockquote>
                     )
@@ -284,7 +276,7 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[#78a9ff] underline underline-offset-2 transition-colors hover:text-[#a8c8ff]"
+                        className="text-link-primary underline underline-offset-2 transition-colors hover:text-link-hover"
                       >
                         {children}
                       </a>
@@ -292,22 +284,22 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
                   },
                   table({ children }) {
                     return (
-                      <div className="mb-3 overflow-x-auto rounded-lg border border-[#2a2a2a]">
+                      <div className="mb-2 overflow-x-auto border border-border-subtle">
                         <table className="w-full text-sm">{children}</table>
                       </div>
                     )
                   },
                   thead({ children }) {
-                    return <thead className="bg-[#1a1a1a]">{children}</thead>
+                    return <thead className="bg-layer">{children}</thead>
                   },
                   th({ children }) {
-                    return <th className="border-b border-[#2a2a2a] px-3 py-2 text-left text-xs font-semibold text-[#c6c6c6]">{children}</th>
+                    return <th className="border-b border-border-subtle px-3 py-2 text-left text-[11px] font-semibold text-text-secondary">{children}</th>
                   },
                   td({ children }) {
-                    return <td className="border-b border-[#2a2a2a] px-3 py-2 text-[#c6c6c6]">{children}</td>
+                    return <td className="border-b border-border-subtle px-3 py-2 text-text-secondary">{children}</td>
                   },
                   hr() {
-                    return <hr className="my-4 border-[#2a2a2a]" />
+                    return <hr className="my-3 border-border-subtle" />
                   },
                 }}
               >
@@ -321,13 +313,13 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
 
         {isAssistant && <MessageActions content={msg.content} onRegenerate={onRegenerate} />}
         {isUser && onEdit && !isEditing && (
-          <div className="mt-2 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="mt-1.5 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               onClick={() => {
                 setEditContent(msg.content)
                 setIsEditing(true)
               }}
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
               title="Edit message"
             >
               <Pencil className="h-3 w-3" />
@@ -340,31 +332,31 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
   )
 }
 
-/* ─── Streaming Indicator ─── */
+/* Streaming Indicator */
 function StreamingMessage({ content }: { content: string }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-4 py-5"
+      className="flex gap-3 py-4"
     >
-      <div className="flex shrink-0 flex-col items-center pt-1">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-lg shadow-[#0f62fe]/20">
-          <Sparkles className="h-4 w-4 text-white" />
+      <div className="flex shrink-0 flex-col items-center pt-0.5">
+        <div className="flex h-7 w-7 items-center justify-center border border-border-subtle bg-interactive">
+          <Sparkles className="h-3.5 w-3.5 text-white" />
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-xs font-semibold text-white">Project Vulcan</span>
-          <span className="flex items-center gap-1 text-[10px] text-[#0f62fe]">
-            <Zap className="h-3 w-3 animate-pulse" />
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-text-primary">Project Vulcan</span>
+          <span className="flex items-center gap-1 text-[10px] text-interactive">
+            <Zap className="h-2.5 w-2.5" />
             Generating...
           </span>
         </div>
-        <div className="inline-block rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] px-5 py-3.5 shadow-sm">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#f4f4f4]">
+        <div className="inline-block border border-border-subtle bg-layer px-4 py-2.5">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-primary">
             {content}
-            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[#0f62fe] align-middle" />
+            <span className="ml-0.5 inline-block h-3.5 w-0.5 bg-interactive" />
           </p>
         </div>
       </div>
@@ -372,59 +364,59 @@ function StreamingMessage({ content }: { content: string }) {
   )
 }
 
-/* ─── Typing Indicator ─── */
+/* Typing Indicator */
 function TypingIndicator() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-4 py-5"
+      className="flex gap-3 py-4"
     >
-      <div className="flex shrink-0 flex-col items-center pt-1">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] shadow-lg shadow-[#0f62fe]/20">
-          <Sparkles className="h-4 w-4 text-white" />
+      <div className="flex shrink-0 flex-col items-center pt-0.5">
+        <div className="flex h-7 w-7 items-center justify-center border border-border-subtle bg-interactive">
+          <Sparkles className="h-3.5 w-3.5 text-white" />
         </div>
       </div>
       <div className="flex items-center">
-        <div className="flex items-center gap-1.5 rounded-2xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3">
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '0ms' }} />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '150ms' }} />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#0f62fe]" style={{ animationDelay: '300ms' }} />
+        <div className="flex items-center gap-1.5 border border-border-subtle bg-layer px-3 py-2">
+          <div className="h-1.5 w-1.5 bg-interactive" />
+          <div className="h-1.5 w-1.5 bg-interactive" />
+          <div className="h-1.5 w-1.5 bg-interactive" />
         </div>
       </div>
     </motion.div>
   )
 }
 
-/* ─── Tool Execution Card ─── */
+/* Tool Execution Card */
 function ToolExecutionCard({ tool }: { tool: { command: string; stdout: string; stderr: string; status: string } }) {
   const [expanded, setExpanded] = useState(true)
   const isSuccess = tool.status === 'success'
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="my-3 overflow-hidden rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]"
+      className="my-2 overflow-hidden border border-border-subtle bg-layer"
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between px-4 py-2.5"
+        className="flex w-full items-center justify-between px-3 py-2"
       >
-        <div className="flex items-center gap-2.5">
-          <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isSuccess ? 'bg-[#24a148]/10' : 'bg-[#da1e28]/10'}`}>
+        <div className="flex items-center gap-2">
+          <div className={`flex h-5 w-5 items-center justify-center ${isSuccess ? 'bg-support-success/10' : 'bg-support-error/10'}`}>
             {isSuccess ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-[#24a148]" />
+              <CheckCircle2 className="h-3 w-3 text-support-success" />
             ) : (
-              <XCircle className="h-3.5 w-3.5 text-[#da1e28]" />
+              <XCircle className="h-3 w-3 text-support-error" />
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Terminal className="h-3.5 w-3.5 text-[#525252]" />
-            <span className="truncate font-mono text-xs text-[#c6c6c6]">{tool.command}</span>
+          <div className="flex items-center gap-1.5">
+            <Terminal className="h-3 w-3 text-text-helper" />
+            <span className="truncate font-mono text-[11px] text-text-secondary">{tool.command}</span>
           </div>
         </div>
-        <span className={`text-[10px] font-semibold uppercase ${isSuccess ? 'text-[#24a148]' : 'text-[#da1e28]'}`}>
+        <span className={`text-[10px] font-semibold uppercase ${isSuccess ? 'text-support-success' : 'text-support-error'}`}>
           {tool.status}
         </span>
       </button>
@@ -437,19 +429,19 @@ function ToolExecutionCard({ tool }: { tool: { command: string; stdout: string; 
             exit={{ height: 0 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-[#2a2a2a]">
+            <div className="border-t border-border-subtle">
               {tool.stdout && (
-                <div className="px-4 py-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#525252]">Output</p>
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-[#0f0f0f] p-3 font-mono text-xs text-[#c6c6c6]">
+                <div className="px-3 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">Output</p>
+                  <pre className="max-h-32 overflow-auto bg-background p-2 font-mono text-[11px] text-text-secondary">
                     {tool.stdout}
                   </pre>
                 </div>
               )}
               {tool.stderr && (
-                <div className="px-4 py-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[#525252]">Stderr</p>
-                  <pre className="max-h-40 overflow-auto rounded-lg bg-[#0f0f0f] p-3 font-mono text-xs text-[#da1e28]">
+                <div className="px-3 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">Stderr</p>
+                  <pre className="max-h-32 overflow-auto bg-background p-2 font-mono text-[11px] text-support-error">
                     {tool.stderr}
                   </pre>
                 </div>
@@ -462,41 +454,41 @@ function ToolExecutionCard({ tool }: { tool: { command: string; stdout: string; 
   )
 }
 
-/* ─── Empty State ─── */
+/* Empty State */
 function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
   const suggestions = [
-    { icon: '🖥️', text: 'List all files in the current directory' },
-    { icon: '🐍', text: 'Write a Python script to fetch weather data' },
-    { icon: '⚡', text: 'Check what version of Node.js is installed' },
-    { icon: '🔍', text: 'Find all .log files and show their sizes' },
+    { icon: '>', text: 'List all files in the current directory' },
+    { icon: '>', text: 'Write a Python script to fetch weather data' },
+    { icon: '>', text: 'Check what version of Node.js is installed' },
+    { icon: '>', text: 'Find all .log files and show their sizes' },
   ]
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6 }}
+      transition={{ duration: 0.3 }}
       className="flex flex-1 flex-col items-center justify-center px-6"
     >
-      <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10 shadow-2xl shadow-[#0f62fe]/10">
-        <Bot className="h-10 w-10 text-[#0f62fe]" />
+      <div className="mb-6 flex h-14 w-14 items-center justify-center border border-border-subtle bg-layer">
+        <Bot className="h-7 w-7 text-interactive" />
       </div>
-      <h2 className="mb-2 text-2xl font-bold text-white">How can I help you today?</h2>
-      <p className="mb-8 max-w-md text-center text-sm text-[#525252]">
+      <h2 className="mb-2 text-lg font-light text-text-primary">How can I help you today?</h2>
+      <p className="mb-6 max-w-md text-center text-xs text-text-helper">
         I can write code, analyze data, answer questions, help with creative projects, and much more.
       </p>
-      <div className="grid w-full max-w-lg gap-3 sm:grid-cols-2">
+      <div className="grid w-full max-w-lg gap-2 sm:grid-cols-2">
         {suggestions.map((s, i) => (
           <motion.button
             key={i}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 + i * 0.1 }}
+            transition={{ delay: 0.05 + i * 0.05 }}
             onClick={() => onSuggestion(s.text)}
-            className="flex items-start gap-3 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a] p-4 text-left transition-all hover:border-[#0f62fe]/50 hover:bg-[#1a1a1a]/80 hover:shadow-lg hover:shadow-[#0f62fe]/5"
+            className="flex items-start gap-2 border border-border-subtle bg-layer p-3 text-left transition-colors hover:border-border-strong hover:bg-layer-hover"
           >
-            <span className="text-lg">{s.icon}</span>
-            <span className="text-sm text-[#c6c6c6]">{s.text}</span>
+            <span className="mt-0.5 text-xs text-interactive">{s.icon}</span>
+            <span className="text-xs text-text-secondary">{s.text}</span>
           </motion.button>
         ))}
       </div>
@@ -504,17 +496,17 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
   )
 }
 
-/* ─── Scroll to Bottom Button ─── */
+/* Scroll to Bottom Button */
 function ScrollToBottom({ onClick, visible }: { onClick: () => void; visible: boolean }) {
   return (
     <AnimatePresence>
       {visible && (
         <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           onClick={onClick}
-          className="absolute bottom-24 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full bg-[#1a1a1a] border border-[#2a2a2a] text-[#525252] shadow-lg transition-all hover:border-[#0f62fe]/50 hover:text-white"
+          className="absolute bottom-20 left-1/2 z-10 flex h-7 w-7 -translate-x-1/2 items-center justify-center border border-border-subtle bg-layer text-text-helper transition-colors hover:border-border-strong hover:text-text-primary"
         >
           <ChevronDown className="h-4 w-4" />
         </motion.button>
@@ -523,7 +515,7 @@ function ScrollToBottom({ onClick, visible }: { onClick: () => void; visible: bo
   )
 }
 
-/* ─── Main Component ─── */
+/* Main Component */
 export default function ChatInterface({
   chatId,
   selectedModel,
@@ -636,7 +628,7 @@ export default function ChatInterface({
     }
   }, [])
 
-  // Smart auto-scroll: only scroll if user is near bottom
+  // Smart auto-scroll
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
@@ -672,7 +664,6 @@ export default function ChatInterface({
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) return
 
-    // Stop if already listening
     if (isListening && voiceRef.current) {
       try { voiceRef.current.stop() } catch {}
       voiceRef.current = null
@@ -700,7 +691,6 @@ export default function ChatInterface({
     recognition.onend = () => {
       setIsListening(false)
       voiceRef.current = null
-      // Auto-send after voice ends if we have text
       if (finalTranscript.trim()) {
         voiceTimerRef.current = setTimeout(() => {
           handleSend(finalTranscript.trim())
@@ -753,7 +743,6 @@ export default function ChatInterface({
     const timeoutId = setTimeout(() => controller.abort(), 120000)
 
     try {
-      // Auto-create chat on first message
       let currentChatId = effectiveChatId
       if (!currentChatId) {
         setCreatingChat(true)
@@ -764,7 +753,6 @@ export default function ChatInterface({
         setCreatingChat(false)
       }
 
-      // Build content with file context if files are attached
       let messageContent = text
       if (attachedFiles.length > 0) {
         const fileContext = attachedFiles.map(f => `[File: ${f.filename}]`).join('\n')
@@ -808,9 +796,8 @@ export default function ChatInterface({
         if (controller.signal.aborted) break
         buffer += decoder.decode(value, { stream: true })
 
-        // Process complete SSE events from buffer
         const events = buffer.split('\n\n')
-        buffer = events.pop() || '' // Keep incomplete event in buffer
+        buffer = events.pop() || ''
 
         for (const event of events) {
           for (const line of event.split('\n')) {
@@ -818,7 +805,6 @@ export default function ChatInterface({
             const raw = line.slice(6)
             if (!raw.trim()) continue
 
-            // Check for markers first
             if (raw === '[DONE]') {
               setStreamedContent('')
               setToolExecution(null)
@@ -841,12 +827,9 @@ export default function ChatInterface({
                   stderr: toolData.stderr || '',
                   status: toolData.status || 'error',
                 })
-              } catch {
-                // Ignore malformed tool data
-              }
+              } catch {}
               continue
             }
-            // Regular text chunk
             setStreamedContent((prev) => prev + raw)
           }
         }
@@ -884,7 +867,6 @@ export default function ChatInterface({
   const handleEditMessage = async (msgId: string, newContent: string) => {
     try {
       const csrfToken = getCsrfToken()
-      // Update the message
       const patchRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}`, {
         method: 'PATCH',
         headers: {
@@ -896,7 +878,6 @@ export default function ChatInterface({
       })
       if (!patchRes.ok) throw new Error('Failed to edit message')
 
-      // Delete subsequent messages
       const deleteRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}/after`, {
         method: 'DELETE',
         headers: {
@@ -906,10 +887,7 @@ export default function ChatInterface({
       })
       if (!deleteRes.ok) throw new Error('Failed to clear subsequent messages')
 
-      // Refresh chat data
       await refetch()
-
-      // Re-send the edited message to get a new AI response
       handleSend(newContent)
     } catch (err: any) {
       setSendError(err.message || 'Failed to edit message')
@@ -920,13 +898,13 @@ export default function ChatInterface({
 
   if (isError) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center text-[#525252]">
-        <AlertCircle className="mb-4 h-12 w-12 text-[#da1e28]" />
-        <p className="mb-2 text-lg font-medium text-white">Chat not found</p>
-        <p className="mb-6 text-sm text-[#525252]">This chat may have been deleted or you don&apos;t have access.</p>
+      <div className="flex flex-1 flex-col items-center justify-center text-text-helper">
+        <AlertCircle className="mb-3 h-10 w-10 text-support-error" />
+        <p className="mb-1 text-base font-medium text-text-primary">Chat not found</p>
+        <p className="mb-4 text-xs text-text-helper">This chat may have been deleted or you don&apos;t have access.</p>
         <button
           onClick={() => window.location.reload()}
-          className="rounded-xl bg-[#0f62fe] px-5 py-2.5 text-sm font-medium text-white transition-all hover:bg-[#0353e9] hover:shadow-lg hover:shadow-[#0f62fe]/25"
+          className="carbon-btn-primary"
         >
           Refresh Page
         </button>
@@ -935,22 +913,22 @@ export default function ChatInterface({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-[#0f0f0f]">
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#0f0f0f]/80 px-6 py-3 backdrop-blur-xl">
+      <header className="flex items-center justify-between border-b border-border-subtle bg-background px-5 py-2.5">
         <div className="flex items-center gap-3">
-          <h2 className="max-w-[300px] truncate text-sm font-semibold text-white">
+          <h2 className="max-w-[300px] truncate text-xs font-semibold text-text-primary">
             {chatData?.chat.title || 'New Chat'}
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {effectiveChatId && (
             <button
               onClick={() => {
                 const format = confirm('Export as JSON? (Cancel for Markdown)') ? 'json' : 'markdown'
                 window.open(`/api/chats/${effectiveChatId}/export?format=${format}`, '_blank')
               }}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
               title="Export chat"
             >
               <Download className="h-3.5 w-3.5" />
@@ -967,26 +945,26 @@ export default function ChatInterface({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0f0f0f]/95 backdrop-blur-sm"
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/95"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="mx-4 max-w-md rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-8 text-center shadow-2xl"
+              className="mx-4 max-w-sm border border-border-subtle bg-layer p-8 text-center"
             >
-              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0f62fe]/20 to-[#78a9ff]/10">
-                <Key className="h-8 w-8 text-[#0f62fe]" />
+              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
+                <Key className="h-6 w-6 text-interactive" />
               </div>
-              <h2 className="mb-2 text-xl font-bold text-white">NVIDIA NIM API Key Required</h2>
-              <p className="mb-6 text-sm text-[#525252]">
+              <h2 className="mb-2 text-base font-semibold text-text-primary">NVIDIA NIM API Key Required</h2>
+              <p className="mb-5 text-xs text-text-helper">
                 To use Project Vulcan, you need to add a valid NVIDIA NIM API key. 
-                You can get one for free from NVIDIA's website.
+                You can get one for free from NVIDIA&apos;s website.
               </p>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2">
                 <button
                   onClick={() => navigate('/settings')}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] px-6 py-3 text-sm font-medium text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30"
+                  className="carbon-btn-primary"
                 >
                   <Settings className="h-4 w-4" />
                   Go to Settings
@@ -995,7 +973,7 @@ export default function ChatInterface({
                   href="https://build.nvidia.com/explore/discover"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 rounded-xl border border-[#2a2a2a] bg-[#0f0f0f] px-6 py-3 text-sm text-[#c6c6c6] transition-all hover:bg-[#2a2a2a] hover:text-white"
+                  className="carbon-btn-secondary"
                 >
                   <ExternalLink className="h-4 w-4" />
                   Get Free API Key
@@ -1013,10 +991,10 @@ export default function ChatInterface({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-[#2a2a2a] bg-[#1a1a1a] px-6 py-2"
+            className="overflow-hidden border-b border-border-subtle bg-layer px-5 py-1.5"
           >
-            <div className="mx-auto flex max-w-3xl items-center gap-2 text-[11px] text-[#525252]">
-              <div className="h-3 w-3 animate-spin rounded-full border-2 border-[#525252]/30 border-t-[#0f62fe]" />
+            <div className="mx-auto flex max-w-3xl items-center gap-2 text-[11px] text-text-helper">
+              <div className="h-3 w-3 animate-spin border-2 border-border-subtle border-t-interactive" />
               Checking model availability...
             </div>
           </motion.div>
@@ -1026,16 +1004,15 @@ export default function ChatInterface({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-b border-[#f1c21b]/30 bg-[#f1c21b]/10 px-6 py-3"
+            className="overflow-hidden border-b border-support-warning/30 bg-support-warning/10 px-5 py-2.5"
           >
             <div className="mx-auto flex max-w-3xl items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-[#f1c21b]">
+              <div className="flex items-center gap-2 text-xs text-support-warning">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{modelValidation.error || `Model '${modelValidation.model_id}' is not available`}</span>
               </div>
               <button
                 onClick={() => {
-                  // Update chat to use a default working model
                   const csrf = getCsrfToken()
                   fetch(`/api/chats/${effectiveChatId}`, {
                     method: 'PATCH',
@@ -1044,7 +1021,7 @@ export default function ChatInterface({
                     body: JSON.stringify({ title: chatData?.chat.title, model_id: 'meta/llama-3.1-8b-instruct' })
                   }).then(() => refetch())
                 }}
-                className="rounded-lg bg-[#f1c21b]/20 px-3 py-1.5 text-[11px] font-medium text-[#f1c21b] transition-colors hover:bg-[#f1c21b]/30"
+                className="border border-support-warning/30 px-3 py-1 text-[11px] text-support-warning transition-colors hover:bg-support-warning/20"
               >
                 Switch to meta/llama-3.1-8b-instruct
               </button>
@@ -1062,8 +1039,8 @@ export default function ChatInterface({
         <div className="mx-auto max-w-3xl px-4 pb-4">
           {creatingChat ? (
             <div className="flex flex-1 flex-col items-center justify-center py-20">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#0f62fe] border-t-transparent" />
-              <p className="mt-3 text-sm text-[#525252]">Creating chat...</p>
+              <div className="h-5 w-5 animate-spin border-2 border-interactive border-t-transparent" />
+              <p className="mt-3 text-xs text-text-helper">Creating chat...</p>
             </div>
           ) : messages.length === 0 && !streaming ? (
             <EmptyState onSuggestion={handleSend} />
@@ -1081,9 +1058,9 @@ export default function ChatInterface({
               <AnimatePresence>
                 {toolExecution && streaming && (
                   <motion.div
-                    initial={{ opacity: 0, y: 8 }}
+                    initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
+                    exit={{ opacity: 0, y: 6 }}
                   >
                     <ToolExecutionCard tool={toolExecution} />
                   </motion.div>
@@ -1106,13 +1083,13 @@ export default function ChatInterface({
       </div>
 
       {/* Input */}
-      <div className="border-t border-[#2a2a2a] bg-[#0f0f0f]/90 px-4 py-4 backdrop-blur-xl">
+      <div className="border-t border-border-subtle bg-background px-4 py-3">
         <div className="mx-auto max-w-3xl">
           {sendError && (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-3 flex items-center gap-2 rounded-xl border border-[#da1e28]/30 bg-[#da1e28]/10 px-4 py-2.5 text-xs text-[#da1e28]"
+              className="mb-2 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-[11px] text-support-error"
             >
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
               {sendError}
@@ -1134,7 +1111,7 @@ export default function ChatInterface({
               }
             }}
             onDragOver={(e) => e.preventDefault()}
-            className="relative flex items-end gap-2 rounded-2xl border border-[#2a2a2a] bg-[#1a1a1a] p-2 shadow-lg transition-all focus-within:border-[#0f62fe]/50 focus-within:shadow-[#0f62fe]/5"
+            className="relative flex items-end gap-2 border border-border-subtle bg-layer p-2 transition-colors focus-within:border-focus focus-within:ring-1 focus-within:ring-focus"
           >
             {effectiveChatId && <FileUpload chatId={effectiveChatId} files={attachedFiles} onFilesChange={setAttachedFiles} />}
             <textarea
@@ -1150,10 +1127,10 @@ export default function ChatInterface({
               placeholder="Message Project Vulcan..."
               rows={2}
               disabled={streaming}
-              className="max-h-[240px] min-h-[56px] flex-1 resize-none bg-transparent px-3 py-3 text-sm text-white outline-none placeholder:text-[#525252] disabled:opacity-50"
+              className="max-h-[200px] min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
             />
 
-            <div className="w-56 shrink-0">
+            <div className="w-52 shrink-0">
               <ModelSelector selected={selectedModel} onSelect={(id) => onModelChange?.(id)} />
             </div>
 
@@ -1166,10 +1143,10 @@ export default function ChatInterface({
                   setSendError(err.response?.data?.error || 'Failed to toggle tools')
                 }
               }}
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+              className={`flex h-7 w-7 shrink-0 items-center justify-center transition-colors ${
                 userData?.tools_enabled
-                  ? 'bg-[#24a148]/20 text-[#24a148]'
-                  : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+                  ? 'bg-support-success/20 text-support-success'
+                  : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
               }`}
               title={userData?.tools_enabled ? 'Tools Enabled — Click to Disable' : 'Tools Disabled — Click to Enable'}
             >
@@ -1179,16 +1156,16 @@ export default function ChatInterface({
             {voiceSupported && (
               <button
                 onClick={toggleVoiceInput}
-                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all ${
+                className={`relative flex h-7 w-7 shrink-0 items-center justify-center transition-colors ${
                   isListening
-                    ? 'bg-[#da1e28]/20 text-[#da1e28]'
-                    : 'text-[#525252] hover:bg-[#2a2a2a] hover:text-white'
+                    ? 'bg-support-error/20 text-support-error'
+                    : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
                 }`}
                 title={isListening ? 'Stop listening' : 'Voice input'}
               >
                 {isListening ? (
                   <span className="relative flex h-4 w-4 items-center justify-center">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#da1e28]/40" />
+                    <span className="absolute inline-flex h-full w-full animate-ping bg-support-error/40" />
                     <MicOff className="relative h-4 w-4" />
                   </span>
                 ) : (
@@ -1200,32 +1177,30 @@ export default function ChatInterface({
             {streaming ? (
               <button
                 onClick={handleStop}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#da1e28]/10 text-[#da1e28] transition-all hover:bg-[#da1e28]/20"
+                className="flex h-8 w-8 shrink-0 items-center justify-center bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
                 title="Stop generating"
               >
-                <StopCircle className="h-5 w-5" />
+                <StopCircle className="h-4 w-4" />
               </button>
             ) : (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+              <button
                 onClick={() => handleSend()}
                 disabled={!input.trim()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f62fe] to-[#0353e9] text-white shadow-lg shadow-[#0f62fe]/20 transition-all hover:shadow-xl hover:shadow-[#0f62fe]/30 disabled:opacity-30 disabled:shadow-none"
+                className="flex h-8 w-8 shrink-0 items-center justify-center bg-interactive text-white transition-colors hover:bg-interactive-hover disabled:opacity-30"
               >
                 <Send className="h-4 w-4" />
-              </motion.button>
+              </button>
             )}
           </div>
 
-          <div className="mt-2 flex items-center justify-center gap-2">
+          <div className="mt-1.5 flex items-center justify-center gap-2">
             {isListening ? (
               <>
-                <span className="flex h-1.5 w-1.5 rounded-full bg-[#da1e28] animate-pulse" />
-                <span className="text-[10px] text-[#da1e28]">Listening... speak now</span>
+                <span className="flex h-1.5 w-1.5 bg-support-error animate-pulse" />
+                <span className="text-[10px] text-support-error">Listening... speak now</span>
               </>
             ) : (
-              <span className="text-[10px] text-[#525252]">
+              <span className="text-[10px] text-text-helper">
                 {userData?.tools_enabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
               </span>
             )}

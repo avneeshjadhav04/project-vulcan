@@ -37,13 +37,13 @@ export default function Terminal() {
 
     const term = new XTerm({
       theme: {
-        background: '#0f0f0f',
+        background: '#161616',
         foreground: '#c6c6c6',
         cursor: '#0f62fe',
         selectionBackground: 'rgba(15, 98, 254, 0.3)',
         black: '#161616',
-        red: '#ff6b6b',
-        green: '#24a148',
+        red: '#fa4d56',
+        green: '#42be65',
         yellow: '#f1c21b',
         blue: '#78a9ff',
         magenta: '#be95ff',
@@ -51,7 +51,7 @@ export default function Terminal() {
         white: '#f4f4f4',
         brightBlack: '#525252',
         brightRed: '#ff8d8d',
-        brightGreen: '#42be65',
+        brightGreen: '#6fdc8c',
         brightYellow: '#f1c21b',
         brightBlue: '#a6c8ff',
         brightMagenta: '#d4bbff',
@@ -75,14 +75,11 @@ export default function Terminal() {
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // ResizeObserver ensures fitAddon re-runs when the container animates
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit()
         term.focus()
-      } catch {
-        // ignore
-      }
+      } catch {}
     })
     resizeObserver.observe(containerRef.current)
 
@@ -96,10 +93,10 @@ export default function Terminal() {
       setLastError('')
       term.writeln('')
       term.writeln('\x1b[1;34m  Project Vulcan Sandbox Terminal\x1b[0m')
-      term.writeln('\x1b[90m  ───────────────────────────\x1b[0m')
+      term.writeln('\x1b[90m  ──────────────────────────────\x1b[0m')
       term.writeln('\x1b[32m  Connected to sandboxed environment.\x1b[0m')
       term.writeln('\x1b[90m  Type commands and press Enter to execute.\x1b[0m')
-      term.writeln('\x1b[90m  Commands run in an isolated container with limited resources.\x1b[0m')
+      term.writeln('\x1b[90m  Commands run in an isolated Ubuntu container.\x1b[0m')
       term.writeln('')
       term.write('\x1b[36m\u276f \x1b[0m')
     }
@@ -195,9 +192,7 @@ export default function Terminal() {
     const handleWindowResize = () => {
       try {
         fitAddon.fit()
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     window.addEventListener('resize', handleWindowResize)
 
@@ -226,15 +221,15 @@ export default function Terminal() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#0f0f0f] rounded-xl border border-[#2a2a2a]">
+    <div className="flex h-full flex-col border border-border-subtle bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-border-subtle bg-layer px-4 py-2">
         <div className="flex items-center gap-3">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0f62fe]/10">
-            <TerminalIcon className="h-3.5 w-3.5 text-[#0f62fe]" />
+          <div className="flex h-6 w-6 items-center justify-center border border-border-subtle bg-background">
+            <TerminalIcon className="h-3.5 w-3.5 text-interactive" />
           </div>
           <div>
-            <span className="text-xs font-semibold text-white">Sandbox Terminal</span>
+            <span className="text-xs font-semibold text-text-primary">Sandbox Terminal</span>
             <div className="flex items-center gap-2">
               <AnimatePresence mode="wait">
                 {connected ? (
@@ -245,8 +240,8 @@ export default function Terminal() {
                     exit={{ opacity: 0 }}
                     className="flex items-center gap-1"
                   >
-                    <Wifi className="h-3 w-3 text-[#24a148]" />
-                    <span className="text-[10px] text-[#24a148]">Connected</span>
+                    <Wifi className="h-2.5 w-2.5 text-support-success" />
+                    <span className="text-[10px] text-support-success">Connected</span>
                   </motion.div>
                 ) : connecting ? (
                   <motion.div
@@ -256,8 +251,8 @@ export default function Terminal() {
                     exit={{ opacity: 0 }}
                     className="flex items-center gap-1"
                   >
-                    <RefreshCw className="h-3 w-3 animate-spin text-[#f1c21b]" />
-                    <span className="text-[10px] text-[#f1c21b]">Connecting...</span>
+                    <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
+                    <span className="text-[10px] text-support-warning">Connecting...</span>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -267,13 +262,13 @@ export default function Terminal() {
                     exit={{ opacity: 0 }}
                     className="flex items-center gap-1"
                   >
-                    <WifiOff className="h-3 w-3 text-[#da1e28]" />
-                    <span className="text-[10px] text-[#da1e28]">Offline</span>
+                    <WifiOff className="h-2.5 w-2.5 text-support-error" />
+                    <span className="text-[10px] text-support-error">Offline</span>
                   </motion.div>
                 )}
               </AnimatePresence>
               {commandCount > 0 && (
-                <span className="text-[10px] text-[#525252]">
+                <span className="text-[10px] text-text-helper">
                   {commandCount} command{commandCount !== 1 ? 's' : ''}
                 </span>
               )}
@@ -281,67 +276,55 @@ export default function Terminal() {
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+        <div className="flex items-center gap-0.5">
+          <button
             onClick={() => xtermRef.current?.scrollToTop()}
-            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll to top"
           >
             <ArrowUpToLine className="h-3 w-3" />
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          </button>
+          <button
             onClick={() => xtermRef.current?.scrollLines(-5)}
-            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll up"
           >
             <ChevronUp className="h-3 w-3" />
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          </button>
+          <button
             onClick={() => xtermRef.current?.scrollLines(5)}
-            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll down"
           >
             <ChevronDown className="h-3 w-3" />
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          </button>
+          <button
             onClick={() => xtermRef.current?.scrollToBottom()}
-            className="rounded-lg px-2 py-1.5 text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll to bottom"
           >
             <ArrowDownToLine className="h-3 w-3" />
-          </motion.button>
-          <div className="mx-1 h-4 w-px bg-[#2a2a2a]" />
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          </button>
+          <div className="mx-1 h-3 w-px bg-border-subtle" />
+          <button
             onClick={handleClear}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-[#525252] transition-all hover:bg-[#2a2a2a] hover:text-white"
+            className="flex items-center gap-1 p-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Clear terminal"
           >
             <Trash2 className="h-3 w-3" />
             Clear
-          </motion.button>
+          </button>
           {!connected && (
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={() => {
                 setReconnectKey((k) => k + 1)
                 setConnecting(true)
               }}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0f62fe]/10 px-2.5 py-1.5 text-[11px] text-[#0f62fe] transition-all hover:bg-[#0f62fe]/20"
+              className="ml-1 flex items-center gap-1 border border-interactive/30 bg-interactive/10 px-2 py-1 text-[11px] text-interactive transition-colors hover:bg-interactive/20"
             >
               <RefreshCw className="h-3 w-3" />
               Reconnect
-            </motion.button>
+            </button>
           )}
         </div>
       </div>
@@ -355,7 +338,7 @@ export default function Terminal() {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#da1e28]/10 px-4 py-2 text-[11px] text-[#da1e28]">
+            <div className="flex items-center gap-2 border-b border-border-subtle bg-support-error/10 px-4 py-1.5 text-[11px] text-support-error">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               {lastError}
             </div>
@@ -364,10 +347,10 @@ export default function Terminal() {
       </AnimatePresence>
 
       {/* Info banner */}
-      <div className="flex items-center gap-2 border-b border-[#2a2a2a] bg-[#1a1a1a]/50 px-4 py-1.5">
-        <Shield className="h-3 w-3 text-[#525252]" />
-        <span className="text-[10px] text-[#525252]">
-          Commands run in an isolated sandbox with CPU, memory, and network restrictions.
+      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer/50 px-4 py-1">
+        <Shield className="h-2.5 w-2.5 text-text-helper" />
+        <span className="text-[10px] text-text-helper">
+          Commands run in an isolated Ubuntu environment via proot.
         </span>
       </div>
 
