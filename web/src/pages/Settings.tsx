@@ -123,7 +123,7 @@ export default function Settings() {
           Back
         </button>
         <div className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-7 w-7" />
+          <img src="/VulcanLogo.png" alt="" className="h-14 w-14" />
           <h1 className="text-sm font-semibold text-text-primary">Settings</h1>
         </div>
       </header>

@@ -186,7 +186,7 @@ export default function Login() {
             onClick={() => navigate('/')}
             className="flex items-center gap-2 text-text-primary transition-opacity hover:opacity-80"
           >
-            <img src="/VulcanLogo.png" alt="" className="h-8 w-8" />
+            <img src="/VulcanLogo.png" alt="" className="h-16 w-16" />
             <div>
               <span className="text-sm font-semibold tracking-tight">Project Vulcan</span>
               <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
@@ -234,7 +234,7 @@ export default function Login() {
           </div>
 
           <div className="mb-6 flex items-center gap-2 lg:hidden">
-            <img src="/VulcanLogo.png" alt="" className="h-10 w-10" />
+            <img src="/VulcanLogo.png" alt="" className="h-20 w-20" />
             <div>
               <h1 className="text-lg font-semibold text-text-primary">Project Vulcan</h1>
               <p className="text-xs text-text-helper">Personal AI Assistant</p>
