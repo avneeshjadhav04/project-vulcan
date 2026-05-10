@@ -737,8 +737,24 @@ export default function ChatInterface({
     }
 
     recognition.onerror = (e: any) => {
+      const errorMessages: Record<string, string> = {
+        'network': 'Speech recognition network error. Please check your internet connection and try again.',
+        'not-allowed': 'Microphone access denied. Please allow microphone permissions in your browser.',
+        'audio-capture': 'No microphone found. Please connect a microphone and try again.',
+        'service-not-allowed': 'Speech recognition service is not allowed.',
+      }
+      if (e.error === 'network') {
+        // Retry once on network error
+        setSendError('Speech recognition network error. Retrying...')
+        setTimeout(() => {
+          if (!voiceRef.current) {
+            toggleVoiceInput()
+          }
+        }, 500)
+        return
+      }
       if (e.error !== 'aborted' && e.error !== 'no-speech') {
-        setSendError(`Voice error: ${e.error}`)
+        setSendError(errorMessages[e.error] || `Voice error: ${e.error}`)
       }
       setIsListening(false)
       voiceRef.current = null
@@ -796,8 +812,13 @@ export default function ChatInterface({
 
       let messageContent = text
       if (attachedFiles.length > 0) {
-        const fileContext = attachedFiles.map(f => `[File: ${f.filename}]`).join('\n')
-        messageContent = `${fileContext}\n\n${text}`
+        const fileContexts = attachedFiles.map(f => {
+          if (f.extracted_text) {
+            return `[File: ${f.filename}]\n\`\`\`\n${f.extracted_text}\n\`\`\``
+          }
+          return `[File: ${f.filename}]`
+        }).join('\n\n')
+        messageContent = `${fileContexts}\n\n${text}`
       }
 
       const endpoint = `/api/chats/${currentChatId}/message`
@@ -848,6 +869,7 @@ export default function ChatInterface({
 
             if (raw === '[DONE]') {
               setToolExecution(null)
+              setAttachedFiles([])
               // Wait for refetch to complete before clearing streaming state to avoid flicker
               refetch().then(() => {
                 const duration = Date.now() - startTimeRef.current
@@ -882,6 +904,7 @@ export default function ChatInterface({
 
       // Stream ended without [DONE] marker
       setToolExecution(null)
+      setAttachedFiles([])
       refetch().then(() => {
         const duration = Date.now() - startTimeRef.current
         setResponseMeta({ model: selectedModel, durationMs: duration })
