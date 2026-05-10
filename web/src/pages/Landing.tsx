@@ -23,7 +23,7 @@ function Nav() {
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border-subtle bg-background">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
         <button onClick={() => navigate('/')} className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-interactive" />
+          <img src="/VulcanLogo.png" alt="" className="h-5 w-5" />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-1">
@@ -345,7 +345,7 @@ function Footer() {
     <footer className="border-t border-border-subtle px-6 py-8">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 md:flex-row">
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-interactive" />
+          <img src="/VulcanLogo.png" alt="" className="h-4 w-4" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
         </div>
         <p className="text-xs text-text-disabled">

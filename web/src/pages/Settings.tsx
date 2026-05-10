@@ -123,7 +123,7 @@ export default function Settings() {
           Back
         </button>
         <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-interactive" />
+          <img src="/VulcanLogo.png" alt="" className="h-4 w-4" />
           <h1 className="text-sm font-semibold text-text-primary">Settings</h1>
         </div>
       </header>
