@@ -28,6 +28,10 @@ import {
   Settings,
   ExternalLink,
   Wrench,
+  Cpu,
+  Clock,
+  FileJson,
+  FileText,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
@@ -86,41 +90,6 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   )
 }
 
-/* Message Actions */
-function MessageActions({ content, onRegenerate }: { content: string; onRegenerate?: () => void }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-      <button
-        onClick={handleCopy}
-        className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
-        title="Copy response"
-      >
-        {copied ? <Check className="h-3 w-3 text-support-success" /> : <Copy className="h-3 w-3" />}
-        {copied ? 'Copied' : 'Copy'}
-      </button>
-      {onRegenerate && (
-        <button
-          onClick={onRegenerate}
-          className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
-          title="Regenerate response"
-        >
-          <RotateCcw className="h-3 w-3" />
-          Regenerate
-        </button>
-      )}
-    </div>
-  )
-}
-
 /* Time Ago */
 function timeAgo(date: string): string {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
@@ -134,11 +103,31 @@ function timeAgo(date: string): string {
 }
 
 /* Message Bubble */
-function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRegenerate?: () => void; onEdit?: (id: string, content: string) => void }) {
+function MessageBubble({
+  msg,
+  onRegenerate,
+  onEdit,
+  isLastAssistant,
+  responseMeta,
+}: {
+  msg: MessageItem
+  onRegenerate?: () => void
+  onEdit?: (id: string, content: string) => void
+  isLastAssistant?: boolean
+  responseMeta?: { model: string; durationMs: number }
+}) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(msg.content)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   const handleSave = () => {
     if (editContent.trim() && editContent !== msg.content && onEdit) {
@@ -149,10 +138,10 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className={`group flex gap-3 py-4 ${isUser ? 'flex-row-reverse' : ''}`}
+      transition={{ duration: 0.2 }}
+      className={`group flex gap-3 py-3 ${isUser ? 'flex-row-reverse' : ''}`}
     >
       {/* Avatar */}
       <div className="flex shrink-0 flex-col items-center pt-0.5">
@@ -175,7 +164,7 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
       <div className={`min-w-0 max-w-[85%] flex-1 ${isUser ? 'text-right' : ''}`}>
         <div className={`mb-1 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
           <span className="text-[11px] font-semibold text-text-primary">
-            {isAssistant ? 'Project Vulcan' : 'You'}
+            {isAssistant ? 'AI' : 'You'}
           </span>
           <span className="text-[10px] text-text-helper">{timeAgo(msg.created_at)}</span>
           {msg.tokens_used && (
@@ -311,22 +300,53 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
           )}
         </div>
 
-        {isAssistant && <MessageActions content={msg.content} onRegenerate={onRegenerate} />}
-        {isUser && onEdit && !isEditing && (
-          <div className="mt-1.5 flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button
-              onClick={() => {
-                setEditContent(msg.content)
-                setIsEditing(true)
-              }}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
-              title="Edit message"
-            >
-              <Pencil className="h-3 w-3" />
-              Edit
-            </button>
+        {/* Footer: model info (bottom-left) + actions (bottom-right) */}
+        <div className="mt-1 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isLastAssistant && responseMeta && (
+              <div className="flex items-center gap-1.5 text-[10px] text-text-helper">
+                <Cpu className="h-2.5 w-2.5" />
+                <span className="truncate max-w-[150px]" title={responseMeta.model}>{responseMeta.model}</span>
+                <span>·</span>
+                <Clock className="h-2.5 w-2.5" />
+                <span>{(responseMeta.durationMs / 1000).toFixed(1)}s</span>
+              </div>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
+              title="Copy message"
+            >
+              {copied ? <Check className="h-3 w-3 text-support-success" /> : <Copy className="h-3 w-3" />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            {isAssistant && onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
+                title="Regenerate response"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Regenerate
+              </button>
+            )}
+            {isUser && onEdit && !isEditing && (
+              <button
+                onClick={() => {
+                  setEditContent(msg.content)
+                  setIsEditing(true)
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary"
+                title="Edit message"
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </motion.div>
   )
@@ -336,9 +356,9 @@ function MessageBubble({ msg, onRegenerate, onEdit }: { msg: MessageItem; onRege
 function StreamingMessage({ content }: { content: string }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 py-4"
+      className="flex gap-3 py-3"
     >
       <div className="flex shrink-0 flex-col items-center pt-0.5">
         <div className="flex h-7 w-7 items-center justify-center border border-border-subtle bg-interactive">
@@ -347,7 +367,7 @@ function StreamingMessage({ content }: { content: string }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-[11px] font-semibold text-text-primary">Project Vulcan</span>
+          <span className="text-[11px] font-semibold text-text-primary">AI</span>
           <span className="flex items-center gap-1 text-[10px] text-interactive">
             <Zap className="h-2.5 w-2.5" />
             Generating...
@@ -368,9 +388,9 @@ function StreamingMessage({ content }: { content: string }) {
 function TypingIndicator() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 py-4"
+      className="flex gap-3 py-3"
     >
       <div className="flex shrink-0 flex-col items-center pt-0.5">
         <div className="flex h-7 w-7 items-center justify-center border border-border-subtle bg-interactive">
@@ -538,15 +558,21 @@ export default function ChatInterface({
   const [validatingModel, setValidatingModel] = useState(false)
   const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
   const [creatingChat, setCreatingChat] = useState(false)
+  const [optimisticTitle, setOptimisticTitle] = useState<string>()
+  const [responseMeta, setResponseMeta] = useState<{ model: string; durationMs: number } | null>(null)
+  const [showExportMenu, setShowExportMenu] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const startTimeRef = useRef<number>(0)
+  const exportRef = useRef<HTMLDivElement>(null)
 
   const navigate = useNavigate()
 
   useEffect(() => {
     setEffectiveChatId(chatId)
+    setOptimisticTitle(undefined)
   }, [chatId])
 
   const { data: chatData, refetch, isError } = useQuery({
@@ -574,6 +600,7 @@ export default function ChatInterface({
     setSendError('')
     setToolExecution(null)
     setAttachedFiles([])
+    setResponseMeta(null)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -626,6 +653,17 @@ export default function ChatInterface({
         abortControllerRef.current.abort()
       }
     }
+  }, [])
+
+  // Close export menu on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   // Smart auto-scroll
@@ -737,6 +775,8 @@ export default function ChatInterface({
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
+    setResponseMeta(null)
+    startTimeRef.current = Date.now()
 
     const controller = new AbortController()
     abortControllerRef.current = controller
@@ -749,6 +789,7 @@ export default function ChatInterface({
         const createRes = await api.post('/chats', { title: text.slice(0, 50), model_id: selectedModel })
         currentChatId = createRes.data.id
         setEffectiveChatId(currentChatId)
+        setOptimisticTitle(text.slice(0, 50))
         window.history.replaceState({}, '', `/chat/${currentChatId}`)
         setCreatingChat(false)
       }
@@ -806,10 +847,14 @@ export default function ChatInterface({
             if (!raw.trim()) continue
 
             if (raw === '[DONE]') {
-              setStreamedContent('')
               setToolExecution(null)
-              refetch()
-              setStreaming(false)
+              // Wait for refetch to complete before clearing streaming state to avoid flicker
+              refetch().then(() => {
+                const duration = Date.now() - startTimeRef.current
+                setResponseMeta({ model: selectedModel, durationMs: duration })
+                setStreamedContent('')
+                setStreaming(false)
+              })
               return
             }
             if (raw.startsWith('[ERR]') && raw.endsWith('[/ERR]')) {
@@ -835,15 +880,20 @@ export default function ChatInterface({
         }
       }
 
-      setStreamedContent('')
+      // Stream ended without [DONE] marker
       setToolExecution(null)
-      refetch()
+      refetch().then(() => {
+        const duration = Date.now() - startTimeRef.current
+        setResponseMeta({ model: selectedModel, durationMs: duration })
+        setStreamedContent('')
+        setStreaming(false)
+      })
     } catch (err: any) {
       clearTimeout(timeoutId)
       if (err.name === 'AbortError') return
       setSendError(err.message || 'Failed to send message')
-    } finally {
       setStreaming(false)
+    } finally {
       abortControllerRef.current = null
     }
   }
@@ -918,22 +968,52 @@ export default function ChatInterface({
       <header className="flex items-center justify-between border-b border-border-subtle bg-background px-5 py-2.5">
         <div className="flex items-center gap-3">
           <h2 className="max-w-[300px] truncate text-xs font-semibold text-text-primary">
-            {chatData?.chat.title || 'New Chat'}
+            {chatData?.chat.title || optimisticTitle || 'New Chat'}
           </h2>
         </div>
         <div className="flex items-center gap-1">
           {effectiveChatId && (
-            <button
-              onClick={() => {
-                const format = confirm('Export as JSON? (Cancel for Markdown)') ? 'json' : 'markdown'
-                window.open(`/api/chats/${effectiveChatId}/export?format=${format}`, '_blank')
-              }}
-              className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
-              title="Export chat"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export
-            </button>
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+                title="Export chat"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </button>
+              <AnimatePresence>
+                {showExportMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="absolute right-0 top-full z-50 mt-1 w-36 border border-border-subtle bg-layer shadow-lg"
+                  >
+                    <button
+                      onClick={() => {
+                        window.open(`/api/chats/${effectiveChatId}/export?format=markdown`, '_blank')
+                        setShowExportMenu(false)
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Markdown
+                    </button>
+                    <button
+                      onClick={() => {
+                        window.open(`/api/chats/${effectiveChatId}/export?format=json`, '_blank')
+                        setShowExportMenu(false)
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+                    >
+                      <FileJson className="h-3.5 w-3.5" />
+                      JSON
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
         </div>
       </header>
@@ -1052,6 +1132,8 @@ export default function ChatInterface({
                   msg={msg}
                   onRegenerate={index === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
                   onEdit={msg.role === 'user' ? handleEditMessage : undefined}
+                  isLastAssistant={msg.role === 'assistant' && index === messages.length - 1}
+                  responseMeta={responseMeta || undefined}
                 />
               ))}
 
@@ -1124,7 +1206,7 @@ export default function ChatInterface({
                   handleSend()
                 }
               }}
-              placeholder="Message Project Vulcan..."
+              placeholder="Message AI..."
               rows={2}
               disabled={streaming}
               className="max-h-[200px] min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
