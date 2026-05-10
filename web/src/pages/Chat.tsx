@@ -12,7 +12,6 @@ import {
   Terminal as TerminalIcon,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles,
 } from 'lucide-react'
 
 const MIN_SIDEBAR_WIDTH = 240
@@ -84,7 +83,7 @@ export default function Chat() {
             {/* Logo */}
             <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-interactive" />
+                <img src="/VulcanLogo.png" alt="" className="h-5 w-5" />
                 <div>
                   <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
                   <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
