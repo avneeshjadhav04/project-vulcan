@@ -208,7 +208,7 @@ function HeroTerminal() {
 
   return (
     <TerminalWindow title="vulcan — bash">
-      <div className="h-[280px] overflow-y-auto p-5 font-mono text-left text-[13px] leading-relaxed">
+      <div className="h-[240px] overflow-y-auto p-5 font-mono text-left text-[13px] leading-relaxed">
         {lines.slice(0, visibleCount + 1).map((line, i) => (
           <div key={i} className={`mb-0.5 ${line.color}`}>
             {i === visibleCount ? (
