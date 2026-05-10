@@ -1,6 +1,6 @@
-import { useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, useInView } from 'framer-motion'
+import { motion, useInView, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
 import {
   MessageSquare,
@@ -15,6 +15,19 @@ import {
   ChevronDown,
   MessageCircle,
 } from 'lucide-react'
+
+/* ─── Typewriter helpers ─── */
+
+function BlinkingCursor({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block h-4 w-2 bg-interactive align-middle ${className}`}
+      style={{ animation: 'cursor-blink 1s step-end infinite' }}
+    />
+  )
+}
+
+/* ─── Nav ─── */
 
 function Nav() {
   const navigate = useNavigate()
@@ -61,6 +74,65 @@ function Nav() {
       </div>
     </nav>
   )
+}
+
+/* ─── Hero ─── */
+
+function HeroTerminal() {
+  const [phase, setPhase] = useState(0)
+  const lines = [
+    { text: '$ vulcan --start', color: 'text-text-disabled' },
+    { text: 'Connected to NVIDIA NIM API', color: 'text-support-success' },
+    { text: 'Sandboxed terminal initialized', color: 'text-support-success' },
+    { text: 'AES-256-GCM encryption active', color: 'text-support-success' },
+    { text: 'Loading latest models...', color: 'text-interactive' },
+  ]
+
+  useEffect(() => {
+    if (phase >= lines.length) return
+    const timer = setTimeout(() => setPhase((p) => p + 1), phase === 0 ? 600 : 900)
+    return () => clearTimeout(timer)
+  }, [phase])
+
+  return (
+    <div className="mx-auto max-w-xl overflow-hidden border border-border-subtle bg-background">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2">
+        <div className="h-2.5 w-2.5 rounded-full bg-support-error" />
+        <div className="h-2.5 w-2.5 rounded-full bg-support-warning" />
+        <div className="h-2.5 w-2.5 rounded-full bg-support-success" />
+        <span className="ml-3 text-xs text-text-disabled">Project Vulcan Terminal</span>
+      </div>
+      <div className="p-5 font-mono text-left text-sm">
+        {lines.slice(0, phase).map((line, i) => (
+          <div key={i} className={`mb-1 ${line.color}`}>
+            <TypewriterLine text={line.text} speed={25} />
+          </div>
+        ))}
+        {phase < lines.length && (
+          <div className={`mb-1 ${lines[phase].color}`}>
+            <TypewriterLine text={lines[phase].text} speed={25} />
+          </div>
+        )}
+        <div className="mt-2">
+          <BlinkingCursor />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TypewriterLine({ text, speed = 30 }: { text: string; speed?: number }) {
+  const [displayed, setDisplayed] = useState('')
+  useEffect(() => {
+    let i = 0
+    const interval = setInterval(() => {
+      i++
+      setDisplayed(text.slice(0, i))
+      if (i >= text.length) clearInterval(interval)
+    }, speed)
+    return () => clearInterval(interval)
+  }, [text, speed])
+  return <>{displayed}</>
 }
 
 function Hero() {
@@ -125,27 +197,14 @@ function Hero() {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="mt-14"
         >
-          <div className="mx-auto max-w-xl overflow-hidden border border-border-subtle bg-background">
-            <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2">
-              <div className="h-2.5 w-2.5 rounded-full bg-support-error" />
-              <div className="h-2.5 w-2.5 rounded-full bg-support-warning" />
-              <div className="h-2.5 w-2.5 rounded-full bg-support-success" />
-              <span className="ml-3 text-xs text-text-disabled">Project Vulcan Terminal</span>
-            </div>
-            <div className="p-5 font-mono text-left text-sm">
-              <div className="mb-1 text-text-disabled">$ vulcan --start</div>
-              <div className="mb-1 text-support-success">Connected to NVIDIA NIM API</div>
-              <div className="mb-1 text-support-success">Sandboxed terminal initialized</div>
-              <div className="mb-1 text-support-success">AES-256-GCM encryption active</div>
-              <div className="mb-1 text-interactive">Loading latest models...</div>
-              <div className="mt-2 inline-block h-4 w-2 bg-interactive" />
-            </div>
-          </div>
+          <HeroTerminal />
         </motion.div>
       </div>
     </section>
   )
 }
+
+/* ─── Features ─── */
 
 function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; title: string; description: string; delay: number }) {
   const ref = useRef(null)
@@ -192,8 +251,8 @@ function Features() {
     },
     {
       icon: Shield,
-      title: 'Admin Dashboard',
-      description: 'Role-based access control with user management, terminal audit logs, and system monitoring.',
+      title: 'Secure by Default',
+      description: 'Self-hosted with SQLite, WAL mode, CSRF protection, and JWT-based authentication.',
     },
     {
       icon: Globe,
@@ -229,9 +288,52 @@ function Features() {
   )
 }
 
+/* ─── Terminal Demo ─── */
+
+interface CommandStep {
+  prompt: string
+  output: string[]
+  color?: string
+}
+
 function TerminalDemo() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: '-100px' })
+  const [step, setStep] = useState(0)
+  const [showOutput, setShowOutput] = useState(false)
+
+  const commands: CommandStep[] = [
+    {
+      prompt: '$ uname -a',
+      output: ['Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux'],
+    },
+    {
+      prompt: '$ python3 -c "print(\'Hello from sandbox\')"',
+      output: ['Hello from sandbox'],
+    },
+    {
+      prompt: '$ ls -la /',
+      output: [
+        'dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .',
+        'dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..',
+        'drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin',
+      ],
+    },
+  ]
+
+  useEffect(() => {
+    if (!isInView) return
+    if (step >= commands.length) return
+    const typeTimer = setTimeout(() => setShowOutput(true), 1200)
+    const nextTimer = setTimeout(() => {
+      setStep((s) => s + 1)
+      setShowOutput(false)
+    }, 2800)
+    return () => {
+      clearTimeout(typeTimer)
+      clearTimeout(nextTimer)
+    }
+  }, [isInView, step])
 
   return (
     <section id="terminal" className="px-6 py-24">
@@ -274,15 +376,53 @@ function TerminalDemo() {
             </div>
             <div className="border-t border-border-subtle bg-layer p-8 lg:border-t-0 lg:border-l">
               <div className="font-mono text-sm">
-                <div className="mb-2 text-text-disabled">$ uname -a</div>
-                <div className="mb-4 text-text-secondary">Linux sandbox 5.15.0 #1 SMP x86_64 GNU/Linux</div>
-                <div className="mb-2 text-text-disabled">$ python3 -c "print('Hello from sandbox')"</div>
-                <div className="mb-4 text-text-secondary">Hello from sandbox</div>
-                <div className="mb-2 text-text-disabled">$ ls -la /</div>
-                <div className="text-text-secondary">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 .</div>
-                <div className="text-text-secondary">dr-xr-xr-x  18 root root 4096 Jan  1 00:00 ..</div>
-                <div className="text-text-secondary">drwxr-xr-x   2 root root 4096 Jan  1 00:00 bin</div>
-                <div className="mt-4 text-interactive">$ <span className="inline-block h-4 w-2 bg-interactive" /></div>
+                {commands.slice(0, step).map((cmd, i) => (
+                  <div key={i} className="mb-4">
+                    <div className="mb-1 text-text-disabled">{cmd.prompt}</div>
+                    {cmd.output.map((line, j) => (
+                      <motion.div
+                        key={j}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.2, delay: j * 0.08 }}
+                        className="text-text-secondary"
+                      >
+                        {line}
+                      </motion.div>
+                    ))}
+                  </div>
+                ))}
+                {step < commands.length && (
+                  <div className="mb-2 text-text-disabled">
+                    <TypewriterLine text={commands[step].prompt} speed={30} />
+                  </div>
+                )}
+                <AnimatePresence>
+                  {showOutput && step < commands.length && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="overflow-hidden"
+                    >
+                      {commands[step].output.map((line, j) => (
+                        <motion.div
+                          key={j}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.2, delay: j * 0.1 }}
+                          className="text-text-secondary"
+                        >
+                          {line}
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <div className="mt-2 text-interactive">
+                  $<BlinkingCursor />
+                </div>
               </div>
             </div>
           </div>
@@ -291,6 +431,8 @@ function TerminalDemo() {
     </section>
   )
 }
+
+/* ─── CTA ─── */
 
 function CTASection() {
   const navigate = useNavigate()
@@ -340,6 +482,8 @@ function CTASection() {
   )
 }
 
+/* ─── Footer ─── */
+
 function Footer() {
   return (
     <footer className="border-t border-border-subtle px-6 py-8">
@@ -355,6 +499,8 @@ function Footer() {
     </footer>
   )
 }
+
+/* ─── Main ─── */
 
 export default function Landing() {
   return (
