@@ -208,7 +208,7 @@ function HeroTerminal() {
 
   return (
     <TerminalWindow title="vulcan — bash">
-      <div className="p-5 font-mono text-left text-[13px] leading-relaxed">
+      <div className="h-[280px] overflow-y-auto p-5 font-mono text-left text-[13px] leading-relaxed">
         {lines.slice(0, visibleCount + 1).map((line, i) => (
           <div key={i} className={`mb-0.5 ${line.color}`}>
             {i === visibleCount ? (
@@ -488,7 +488,7 @@ function TerminalDemo() {
             </div>
             <div className="border-t border-border-subtle bg-layer p-8 lg:border-t-0 lg:border-l">
               <TerminalWindow title="sandbox — bash" className="border-0 shadow-none">
-                <div className="p-5 font-mono text-[13px] leading-relaxed">
+                <div className="h-[320px] overflow-y-auto p-5 font-mono text-[13px] leading-relaxed">
                   {commands.slice(0, currentStep).map((cmd, i) => (
                     <div key={i} className="mb-3">
                       <div className="mb-1 text-text-disabled">{cmd.prompt}</div>
