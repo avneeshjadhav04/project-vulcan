@@ -19,18 +19,6 @@ function ProtectedRoute() {
   return isAuthenticated ? <Outlet /> : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
 }
 
-function AdminRoute() {
-  const { isAdmin, isLoading } = useAuthStore()
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#0f0f0f]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#0f62fe] border-t-transparent" />
-      </div>
-    )
-  }
-  return isAdmin ? <Outlet /> : <Navigate to="/" replace />
-}
-
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -55,11 +43,6 @@ export const router = createBrowserRouter([
         path: '/settings',
         element: <Settings />,
       },
-    ],
-  },
-  {
-    element: <AdminRoute />,
-    children: [
       {
         path: '/admin',
         element: <Admin />,

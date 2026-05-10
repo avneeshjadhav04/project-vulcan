@@ -6,7 +6,6 @@ use std::path::Path;
 use std::str::FromStr;
 
 use crate::config::Config;
-use crate::models::User;
 
 fn normalize_sqlite_url(url: &str) -> String {
     // sqlx expects sqlite:///absolute/path or sqlite:relative/path
@@ -37,7 +36,6 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
         Ok(pool) => {
             println!("[DB] Connected successfully at configured location");
             run_migrations(&pool).await?;
-            seed_admin(&pool, config).await?;
             return Ok(pool);
         }
         Err(e) => {
@@ -53,7 +51,6 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
             println!("[DB] Connected successfully at fallback location (./vulcan.db)");
             println!("[DB] WARNING: Data will be lost on redeploy. Add a Render Disk at /data for persistence.");
             run_migrations(&pool).await?;
-            seed_admin(&pool, config).await?;
             return Ok(pool);
         }
         Err(e) => {
@@ -154,23 +151,4 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
-async fn seed_admin(pool: &SqlitePool, config: &Config) -> Result<()> {
-    let existing = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = ?1")
-        .bind(&config.admin_default_email)
-        .fetch_optional(pool)
-        .await?;
 
-    if existing.is_none() {
-        let hash = crate::auth::hash_password(&config.admin_default_password)?;
-        sqlx::query(
-            "INSERT INTO users (email, password_hash, role) VALUES (?1, ?2, 'admin')",
-        )
-        .bind(&config.admin_default_email)
-        .bind(&hash)
-        .execute(pool)
-        .await?;
-        println!("[DB] Created default admin user: {}", config.admin_default_email);
-    }
-
-    Ok(())
-}

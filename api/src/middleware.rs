@@ -52,22 +52,6 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-pub async fn admin_middleware(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    let claims = request
-        .extensions()
-        .get::<Claims>()
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
-    }
-
-    Ok(next.run(request).await)
-}
-
 pub async fn csrf_middleware(
     request: Request,
     next: Next,

@@ -13,10 +13,6 @@ services:
         value: sqlite:/data/vulcan.db
       - key: MASTER_KEY
         generateValue: true
-      - key: ADMIN_DEFAULT_EMAIL
-        value: admin@local.local
-      - key: ADMIN_DEFAULT_PASSWORD
-        generateValue: true
       - key: NIM_BASE_URL
         value: https://integrate.api.nvidia.com/v1
       - key: RUST_LOG

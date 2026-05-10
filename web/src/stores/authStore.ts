@@ -12,7 +12,6 @@ interface User {
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
-  isAdmin: boolean
   isLoading: boolean
   setUser: (user: User | null) => void
   fetchMe: () => Promise<void>
@@ -22,13 +21,11 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
-  isAdmin: false,
   isLoading: true,
   setUser: (user) =>
     set({
       user,
       isAuthenticated: !!user,
-      isAdmin: user?.role === 'admin',
       isLoading: false,
     }),
   fetchMe: async () => {
@@ -38,11 +35,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({
         user: res.data,
         isAuthenticated: true,
-        isAdmin: res.data.role === 'admin',
         isLoading: false,
       })
     } catch {
-      set({ user: null, isAuthenticated: false, isAdmin: false, isLoading: false })
+      set({ user: null, isAuthenticated: false, isLoading: false })
     }
   },
   logout: async () => {
@@ -50,7 +46,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { api } = await import('../lib/api')
       await api.post('/auth/logout')
     } finally {
-      set({ user: null, isAuthenticated: false, isAdmin: false, isLoading: false })
+      set({ user: null, isAuthenticated: false, isLoading: false })
       window.location.href = '/'
     }
   },
