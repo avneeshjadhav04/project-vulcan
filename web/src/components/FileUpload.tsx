@@ -8,6 +8,7 @@ export interface UploadedFile {
   mime_type: string
   size_bytes: number
   extracted?: boolean
+  extracted_text?: string
 }
 
 const formatSize = (bytes: number) => {

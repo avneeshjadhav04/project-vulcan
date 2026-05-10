@@ -91,6 +91,7 @@ async fn upload_file(
             "mime_type": content_type,
             "size_bytes": size,
             "extracted": extracted_text.is_some(),
+            "extracted_text": extracted_text,
         }));
     }
 
