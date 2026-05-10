@@ -30,7 +30,9 @@ RUN mkdir -p /data && chmod 777 /data
 RUN mkdir -p /app/workspace && chmod 777 /app/workspace
 
 # Download and extract Ubuntu 24.04 LTS rootfs for proot sandbox
-RUN wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04-base-amd64.tar.gz \
+# The exact patch version changes over time; we try the latest known release
+RUN wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-amd64.tar.gz \
+    || wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-amd64.tar.gz \
     && mkdir -p /app/ubuntu-rootfs \
     && tar -xzf /tmp/ubuntu-rootfs.tar.gz -C /app/ubuntu-rootfs \
     && rm /tmp/ubuntu-rootfs.tar.gz
