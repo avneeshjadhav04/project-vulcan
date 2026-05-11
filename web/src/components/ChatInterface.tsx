@@ -90,6 +90,76 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   )
 }
 
+/* Shared Markdown components */
+const markdownComponents = {
+  code({ children, className }: { children?: React.ReactNode; className?: string }) {
+    const isInline = !className
+    if (isInline) {
+      return <InlineCode>{children}</InlineCode>
+    }
+    return <CodeBlock className={className}>{String(children)}</CodeBlock>
+  },
+  p({ children }: { children?: React.ReactNode }) {
+    return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
+  },
+  ul({ children }: { children?: React.ReactNode }) {
+    return <ul className="mb-2 list-disc pl-5 space-y-0.5">{children}</ul>
+  },
+  ol({ children }: { children?: React.ReactNode }) {
+    return <ol className="mb-2 list-decimal pl-5 space-y-0.5">{children}</ol>
+  },
+  li({ children }: { children?: React.ReactNode }) {
+    return <li className="leading-relaxed">{children}</li>
+  },
+  h1({ children }: { children?: React.ReactNode }) {
+    return <h1 className="mb-2 text-base font-semibold text-text-primary">{children}</h1>
+  },
+  h2({ children }: { children?: React.ReactNode }) {
+    return <h2 className="mb-2 text-sm font-semibold text-text-primary">{children}</h2>
+  },
+  h3({ children }: { children?: React.ReactNode }) {
+    return <h3 className="mb-1 text-xs font-semibold text-text-primary">{children}</h3>
+  },
+  blockquote({ children }: { children?: React.ReactNode }) {
+    return (
+      <blockquote className="mb-2 border-l-2 border-interactive pl-3 italic text-text-secondary">
+        {children}
+      </blockquote>
+    )
+  },
+  a({ children, href }: { children?: React.ReactNode; href?: string }) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-link-primary underline underline-offset-2 transition-colors hover:text-link-hover"
+      >
+        {children}
+      </a>
+    )
+  },
+  table({ children }: { children?: React.ReactNode }) {
+    return (
+      <div className="mb-2 overflow-x-auto border border-border-subtle">
+        <table className="w-full text-sm">{children}</table>
+      </div>
+    )
+  },
+  thead({ children }: { children?: React.ReactNode }) {
+    return <thead className="bg-layer">{children}</thead>
+  },
+  th({ children }: { children?: React.ReactNode }) {
+    return <th className="border-b border-border-subtle px-3 py-2 text-left text-[11px] font-semibold text-text-secondary">{children}</th>
+  },
+  td({ children }: { children?: React.ReactNode }) {
+    return <td className="border-b border-border-subtle px-3 py-2 text-text-secondary">{children}</td>
+  },
+  hr() {
+    return <hr className="my-3 border-border-subtle" />
+  },
+}
+
 /* Time Ago */
 function timeAgo(date: string): string {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
@@ -221,77 +291,7 @@ function MessageBubble({
             </div>
           ) : isAssistant ? (
             <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code({ children, className }) {
-                    const isInline = !className
-                    if (isInline) {
-                      return <InlineCode>{children}</InlineCode>
-                    }
-                    return <CodeBlock className={className}>{String(children)}</CodeBlock>
-                  },
-                  p({ children }) {
-                    return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-                  },
-                  ul({ children }) {
-                    return <ul className="mb-2 list-disc pl-5 space-y-0.5">{children}</ul>
-                  },
-                  ol({ children }) {
-                    return <ol className="mb-2 list-decimal pl-5 space-y-0.5">{children}</ol>
-                  },
-                  li({ children }) {
-                    return <li className="leading-relaxed">{children}</li>
-                  },
-                  h1({ children }) {
-                    return <h1 className="mb-2 text-base font-semibold text-text-primary">{children}</h1>
-                  },
-                  h2({ children }) {
-                    return <h2 className="mb-2 text-sm font-semibold text-text-primary">{children}</h2>
-                  },
-                  h3({ children }) {
-                    return <h3 className="mb-1 text-xs font-semibold text-text-primary">{children}</h3>
-                  },
-                  blockquote({ children }) {
-                    return (
-                      <blockquote className="mb-2 border-l-2 border-interactive pl-3 italic text-text-secondary">
-                        {children}
-                      </blockquote>
-                    )
-                  },
-                  a({ children, href }) {
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-link-primary underline underline-offset-2 transition-colors hover:text-link-hover"
-                      >
-                        {children}
-                      </a>
-                    )
-                  },
-                  table({ children }) {
-                    return (
-                      <div className="mb-2 overflow-x-auto border border-border-subtle">
-                        <table className="w-full text-sm">{children}</table>
-                      </div>
-                    )
-                  },
-                  thead({ children }) {
-                    return <thead className="bg-layer">{children}</thead>
-                  },
-                  th({ children }) {
-                    return <th className="border-b border-border-subtle px-3 py-2 text-left text-[11px] font-semibold text-text-secondary">{children}</th>
-                  },
-                  td({ children }) {
-                    return <td className="border-b border-border-subtle px-3 py-2 text-text-secondary">{children}</td>
-                  },
-                  hr() {
-                    return <hr className="my-3 border-border-subtle" />
-                  },
-                }}
-              >
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {msg.content}
               </ReactMarkdown>
             </div>
@@ -352,8 +352,8 @@ function MessageBubble({
   )
 }
 
-/* Streaming Indicator */
-function StreamingMessage({ content }: { content: string }) {
+/* Streaming Message */
+function StreamingMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -368,16 +368,22 @@ function StreamingMessage({ content }: { content: string }) {
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-[11px] font-semibold text-text-primary">AI</span>
-          <span className="flex items-center gap-1 text-[10px] text-interactive">
-            <Zap className="h-2.5 w-2.5" />
-            Generating...
-          </span>
+          {isStreaming && (
+            <span className="flex items-center gap-1 text-[10px] text-interactive">
+              <Zap className="h-2.5 w-2.5" />
+              Generating...
+            </span>
+          )}
         </div>
         <div className="inline-block border border-border-subtle bg-layer px-4 py-2.5">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-primary">
-            {content}
+          <div className="prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              {content}
+            </ReactMarkdown>
+          </div>
+          {isStreaming && (
             <span className="ml-0.5 inline-block h-3.5 w-0.5 bg-interactive" />
-          </p>
+          )}
         </div>
       </div>
     </motion.div>
@@ -870,13 +876,10 @@ export default function ChatInterface({
             if (raw === '[DONE]') {
               setToolExecution(null)
               setAttachedFiles([])
-              // Wait for refetch to complete before clearing streaming state to avoid flicker
-              refetch().then(() => {
-                const duration = Date.now() - startTimeRef.current
-                setResponseMeta({ model: selectedModel, durationMs: duration })
-                setStreamedContent('')
-                setStreaming(false)
-              })
+              const duration = Date.now() - startTimeRef.current
+              setResponseMeta({ model: selectedModel, durationMs: duration })
+              setStreaming(false)
+              refetch()
               return
             }
             if (raw.startsWith('[ERR]') && raw.endsWith('[/ERR]')) {
@@ -905,12 +908,10 @@ export default function ChatInterface({
       // Stream ended without [DONE] marker
       setToolExecution(null)
       setAttachedFiles([])
-      refetch().then(() => {
-        const duration = Date.now() - startTimeRef.current
-        setResponseMeta({ model: selectedModel, durationMs: duration })
-        setStreamedContent('')
-        setStreaming(false)
-      })
+      const duration = Date.now() - startTimeRef.current
+      setResponseMeta({ model: selectedModel, durationMs: duration })
+      setStreaming(false)
+      refetch()
     } catch (err: any) {
       clearTimeout(timeoutId)
       if (err.name === 'AbortError') return
@@ -968,6 +969,19 @@ export default function ChatInterface({
   }
 
   const messages = chatData?.messages || []
+
+  // Clear streamed content once the assistant message is persisted
+  useEffect(() => {
+    if (!streaming && streamedContent && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.role === 'assistant') {
+        const timer = setTimeout(() => {
+          setStreamedContent('')
+        }, 100)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [messages, streaming, streamedContent])
 
   if (isError) {
     return (
@@ -1160,23 +1174,19 @@ export default function ChatInterface({
                 />
               ))}
 
-              <AnimatePresence>
-                {toolExecution && streaming && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 6 }}
-                  >
-                    <ToolExecutionCard tool={toolExecution} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {toolExecution && streaming && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                >
+                  <ToolExecutionCard tool={toolExecution} />
+                </motion.div>
+              )}
 
-              <AnimatePresence>
-                {streaming && streamedContent && (
-                  <StreamingMessage content={streamedContent} />
-                )}
-              </AnimatePresence>
+              {streamedContent && (streaming || messages[messages.length - 1]?.role !== 'assistant') && (
+                <StreamingMessage content={streamedContent} isStreaming={streaming} />
+              )}
 
               {streaming && !streamedContent && !toolExecution && <TypingIndicator />}
             </>
