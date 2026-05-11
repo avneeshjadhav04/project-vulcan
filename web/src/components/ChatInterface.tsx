@@ -177,14 +177,12 @@ function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
-  isLastAssistant,
-  responseMeta,
+  messageMeta,
 }: {
   msg: MessageItem
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
-  isLastAssistant?: boolean
-  responseMeta?: { model: string; durationMs: number }
+  messageMeta?: { model: string; durationMs: number }
 }) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -207,10 +205,7 @@ function MessageBubble({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
+    <div
       className={`group flex gap-3 py-3 ${isUser ? 'flex-row-reverse' : ''}`}
     >
       {/* Avatar */}
@@ -303,13 +298,13 @@ function MessageBubble({
         {/* Footer: model info (bottom-left) + actions (bottom-right) */}
         <div className="mt-1 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {isLastAssistant && responseMeta && (
+            {isAssistant && messageMeta && (
               <div className="flex items-center gap-1.5 text-[10px] text-text-helper">
                 <Cpu className="h-2.5 w-2.5" />
-                <span className="truncate max-w-[150px]" title={responseMeta.model}>{responseMeta.model}</span>
+                <span className="truncate max-w-[150px]" title={messageMeta.model}>{messageMeta.model}</span>
                 <span>·</span>
                 <Clock className="h-2.5 w-2.5" />
-                <span>{(responseMeta.durationMs / 1000).toFixed(1)}s</span>
+                <span>{(messageMeta.durationMs / 1000).toFixed(1)}s</span>
               </div>
             )}
           </div>
@@ -348,7 +343,7 @@ function MessageBubble({
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -565,7 +560,8 @@ export default function ChatInterface({
   const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
   const [creatingChat, setCreatingChat] = useState(false)
   const [optimisticTitle, setOptimisticTitle] = useState<string>()
-  const [responseMeta, setResponseMeta] = useState<{ model: string; durationMs: number } | null>(null)
+  const [messageMeta, setMessageMeta] = useState<Record<string, { model: string; durationMs: number }>>({})
+  const pendingMetaRef = useRef<{ model: string; durationMs: number } | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -606,7 +602,8 @@ export default function ChatInterface({
     setSendError('')
     setToolExecution(null)
     setAttachedFiles([])
-    setResponseMeta(null)
+    setMessageMeta({})
+    pendingMetaRef.current = null
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
@@ -797,7 +794,7 @@ export default function ChatInterface({
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
-    setResponseMeta(null)
+    pendingMetaRef.current = null
     startTimeRef.current = Date.now()
 
     const controller = new AbortController()
@@ -877,7 +874,7 @@ export default function ChatInterface({
               setToolExecution(null)
               setAttachedFiles([])
               const duration = Date.now() - startTimeRef.current
-              setResponseMeta({ model: selectedModel, durationMs: duration })
+              pendingMetaRef.current = { model: selectedModel, durationMs: duration }
               setStreaming(false)
               refetch()
               return
@@ -909,14 +906,18 @@ export default function ChatInterface({
       setToolExecution(null)
       setAttachedFiles([])
       const duration = Date.now() - startTimeRef.current
-      setResponseMeta({ model: selectedModel, durationMs: duration })
+      pendingMetaRef.current = { model: selectedModel, durationMs: duration }
       setStreaming(false)
       refetch()
     } catch (err: any) {
       clearTimeout(timeoutId)
-      if (err.name === 'AbortError') return
+      if (err.name === 'AbortError') {
+        pendingMetaRef.current = null
+        return
+      }
       setSendError(err.message || 'Failed to send message')
       setStreaming(false)
+      pendingMetaRef.current = null
     } finally {
       abortControllerRef.current = null
     }
@@ -929,6 +930,7 @@ export default function ChatInterface({
     }
     setStreaming(false)
     setStreamedContent('')
+    pendingMetaRef.current = null
   }
 
   const handleRegenerate = () => {
@@ -975,13 +977,21 @@ export default function ChatInterface({
     if (!streaming && streamedContent && messages.length > 0) {
       const lastMsg = messages[messages.length - 1]
       if (lastMsg.role === 'assistant') {
-        const timer = setTimeout(() => {
-          setStreamedContent('')
-        }, 100)
-        return () => clearTimeout(timer)
+        setStreamedContent('')
       }
     }
   }, [messages, streaming, streamedContent])
+
+  // Assign pending meta to the last assistant message once it appears
+  useEffect(() => {
+    if (pendingMetaRef.current && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg.role === 'assistant') {
+        setMessageMeta(prev => ({ ...prev, [lastMsg.id]: pendingMetaRef.current! }))
+        pendingMetaRef.current = null
+      }
+    }
+  }, [messages])
 
   if (isError) {
     return (
@@ -1163,16 +1173,21 @@ export default function ChatInterface({
             <EmptyState onSuggestion={handleSend} />
           ) : (
             <>
-              {messages.map((msg, index) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  onRegenerate={index === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
-                  onEdit={msg.role === 'user' ? handleEditMessage : undefined}
-                  isLastAssistant={msg.role === 'assistant' && index === messages.length - 1}
-                  responseMeta={responseMeta || undefined}
-                />
-              ))}
+              {messages.map((msg, index) => {
+                // Skip rendering the last assistant message while streaming its content
+                if (streamedContent && msg.role === 'assistant' && index === messages.length - 1) {
+                  return null
+                }
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    onRegenerate={index === messages.length - 1 && msg.role === 'assistant' ? handleRegenerate : undefined}
+                    onEdit={msg.role === 'user' ? handleEditMessage : undefined}
+                    messageMeta={messageMeta[msg.id]}
+                  />
+                )
+              })}
 
               {toolExecution && streaming && (
                 <motion.div
@@ -1184,7 +1199,7 @@ export default function ChatInterface({
                 </motion.div>
               )}
 
-              {streamedContent && (streaming || messages[messages.length - 1]?.role !== 'assistant') && (
+              {streamedContent && (
                 <StreamingMessage content={streamedContent} isStreaming={streaming} />
               )}
 
