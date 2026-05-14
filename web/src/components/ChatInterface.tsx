@@ -494,7 +494,7 @@ function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) 
       <div className="mb-6 flex h-14 w-14 items-center justify-center border border-border-subtle bg-layer">
         <Bot className="h-7 w-7 text-interactive" />
       </div>
-      <h2 className="mb-2 text-lg font-light text-text-primary">How can I help you today?</h2>
+      <h2 className="mb-2 text-lg font-semibold text-text-primary">Just Ask.</h2>
       <p className="mb-6 max-w-md text-center text-xs text-text-helper">
         I can write code, analyze data, answer questions, help with creative projects, and much more.
       </p>
