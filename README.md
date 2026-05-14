@@ -1,6 +1,6 @@
 # Project Vulcan
 
-A personal, secure AI assistant platform built with Rust, React, and NVIDIA NIM. Features a sleek dark-mode UI inspired by IBM Carbon Design System.
+A personal, secure AI assistant platform built with Rust, React, and NVIDIA NIM.
 
 ![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
