@@ -134,6 +134,8 @@ cd web && npm install && npm run dev
 | `JWT_SECRET_PATH` | No | - | RSA key path (falls back to HS256) |
 | `PORT` | No | `8080` | HTTP port |
 
+> **Security Warning:** Change default credentials before deploying to production. Never commit `.env` or `secrets/` to version control.
+
 ## Project Structure
 
 ```
@@ -167,10 +169,13 @@ cd web && npm install && npm run dev
 │   ├── vite.config.ts
 │   └── Dockerfile
 ├── db/migrations/          # SQLite schema
+├── secrets/                # JWT RSA keys (gitignored, local only)
+├── logos/                  # Brand assets
 ├── docker-compose.yml      # Local orchestration
 ├── render.yaml             # Render Blueprint
 ├── Dockerfile              # Unified production build
-└── .env.example            # Environment template
+├── .env.example            # Environment template
+├── .gitignore              # Git exclusions
 ```
 
 ## Security
@@ -181,4 +186,13 @@ cd web && npm install && npm run dev
 - **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
 - **JWT Fallback**: HS256 when RSA keys not available
 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
