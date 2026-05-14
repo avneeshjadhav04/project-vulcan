@@ -4,7 +4,6 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Settings from './pages/Settings'
-import Admin from './pages/Admin'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuthStore()
@@ -42,10 +41,6 @@ export const router = createBrowserRouter([
       {
         path: '/settings',
         element: <Settings />,
-      },
-      {
-        path: '/admin',
-        element: <Admin />,
       },
     ],
   },
