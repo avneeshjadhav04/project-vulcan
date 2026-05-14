@@ -126,11 +126,7 @@ export default function Chat() {
                   label="Settings"
                   onClick={() => navigate('/settings')}
                 />
-                <SidebarButton
-                  icon={<TerminalIcon className="h-4 w-4" />}
-                  label="System Logs"
-                  onClick={() => navigate('/admin')}
-                />
+
                 <SidebarButton
                   icon={<LogOut className="h-4 w-4" />}
                   label="Sign out"

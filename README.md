@@ -11,7 +11,6 @@ A production-ready, full-stack SaaS personal AI assistant platform built with Ru
 - **Model Selection**: Dynamic dropdown fetching the latest available models from NVIDIA NIM
 - **Bring Your Own Key (BYOK)**: Secure AES-256-GCM encrypted API key storage
 - **Sandboxed Terminal**: Isolated command execution via `proot` + Ubuntu 24.04 LTS rootfs
-- **Admin Dashboard**: User management and terminal audit logs with role-based access
 - **Landing Page**: Animated marketing page with feature showcase and terminal demo
 - **Dark Mode Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
 
@@ -115,11 +114,11 @@ cd web && npm install && npm run dev
                            │
               ┌────────────┼────────────┐
               │            │            │
-              ▼            ▼            ▼
-        ┌─────────┐ ┌──────────┐ ┌──────────┐
-        │ Sandbox │ │ NVIDIA   │ │  Admin   │
-        │(proot)  │ │   NIM    │ │ Dashboard│
-        └─────────┘ └──────────┘ └──────────┘
+               ▼            ▼
+         ┌─────────┐ ┌──────────┐
+         │ Sandbox │ │ NVIDIA   │
+         │(proot)  │ │   NIM    │
+         └─────────┘ └──────────┘
 ```
 
 ## Environment Variables
@@ -151,8 +150,7 @@ cd web && npm install && npm run dev
 │   │       ├── auth.rs     # Login/signup
 │   │       ├── chat.rs     # SSE streaming
 │   │       ├── models.rs   # NIM model fetcher
-│   │       ├── terminal.rs # WS proxy
-│   │       └── admin.rs    # Admin endpoints
+│   │       └── terminal.rs # WS proxy
 │   ├── Cargo.toml
 │   └── Dockerfile
 ├── sandbox/                # Legacy sandbox (not used)
@@ -161,7 +159,7 @@ cd web && npm install && npm run dev
 │   └── Dockerfile
 ├── web/                    # React Frontend
 │   ├── src/
-│   │   ├── pages/          # Landing, Login, Chat, Admin
+│   │   ├── pages/          # Landing, Login, Chat
 │   │   ├── components/     # ChatInterface, Terminal, etc.
 │   │   ├── stores/         # Zustand auth store
 │   │   └── lib/            # API client
