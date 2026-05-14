@@ -14,6 +14,7 @@ import {
   ArrowRight,
   ChevronDown,
   MessageCircle,
+  Github,
 } from 'lucide-react'
 
 /* ─── Terminal primitives ─── */
@@ -138,6 +139,16 @@ function Nav() {
           </a>
           <a href="#terminal" className="hidden px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary md:block">
             Terminal
+          </a>
+          <a
+            href="https://github.com/avneeshjadhav04/project-vulcan"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
+            aria-label="GitHub"
+          >
+            <Github className="h-4 w-4" />
+            <span className="hidden sm:inline">GitHub</span>
           </a>
           {isAuthenticated ? (
             <button
@@ -624,9 +635,20 @@ function Footer() {
           <img src="/VulcanLogo.png" alt="" className="h-12 w-12" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
         </div>
-        <p className="text-xs text-text-disabled">
-          Built with Rust, React, and NVIDIA NIM.
-        </p>
+        <div className="flex items-center gap-4">
+          <a
+            href="https://github.com/avneeshjadhav04/project-vulcan"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs text-text-secondary transition-colors hover:text-text-primary"
+          >
+            <Github className="h-3.5 w-3.5" />
+            View on GitHub
+          </a>
+          <p className="text-xs text-text-disabled">
+            Built with Rust, React, and NVIDIA NIM.
+          </p>
+        </div>
       </div>
     </footer>
   )
