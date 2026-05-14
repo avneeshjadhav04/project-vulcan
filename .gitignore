@@ -10,5 +10,7 @@ node_modules/
 *.db-shm
 *.db-wal
 *.log
+*.pid
 cookies.txt
 uploads/
+dist
