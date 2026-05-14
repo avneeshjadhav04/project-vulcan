@@ -56,8 +56,6 @@ Go to **Environment** tab:
 | Key | Value | Description |
 |-----|-------|-------------|
 | `MASTER_KEY` | `your-32-byte-secret-key!!!` | Random 32+ character string for encryption |
-| `ADMIN_DEFAULT_EMAIL` | `admin@local.local` | Default admin login |
-| `ADMIN_DEFAULT_PASSWORD` | `your-secure-password` | Change after first login |
 | `NIM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
 
 `DATABASE_URL` defaults to `sqlite:/data/vulcan.db` (uses the mounted disk).
@@ -68,11 +66,11 @@ Go to **Environment** tab:
 2. Wait 3-5 minutes for build
 3. Your app is live!
 
-### First Login
+### First Use
 
-- URL: Your Render service URL
-- Email: `admin@local.local`
-- Password: The `ADMIN_DEFAULT_PASSWORD` you set
+1. Open your Render service URL
+2. Create an account via the signup page
+3. Log in and add your NVIDIA NIM API key in Settings
 
 > **Note:** The sandboxed terminal runs inside the API container via `proot`. No privileged mode required. Works on Render, VPS, and local Docker.
 
@@ -92,7 +90,7 @@ docker compose up --build
 ```
 
 - App: http://localhost:8080
-- Default admin: `admin@local.local` / password from `.env`
+- Create an account at `/signup`, then log in
 
 ### Option B: Without Docker
 
@@ -132,8 +130,6 @@ cd web && npm install && npm run dev
 |----------|----------|---------|-------------|
 | `DATABASE_URL` | No | `sqlite:./vulcan.db` | SQLite database path |
 | `MASTER_KEY` | Yes | - | 32+ byte key for AES-256-GCM |
-| `ADMIN_DEFAULT_EMAIL` | No | `admin@local.local` | Admin login |
-| `ADMIN_DEFAULT_PASSWORD` | Yes | - | Admin password |
 | `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA NIM endpoint |
 | `JWT_SECRET_PATH` | No | - | RSA key path (falls back to HS256) |
 | `PORT` | No | `8080` | HTTP port |
