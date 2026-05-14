@@ -106,36 +106,24 @@ cd web && npm install && npm run dev
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Client["Client Browser"]
-        UI["React 18 + Vite<br/>TypeScript / Tailwind"]
-    end
-
-    subgraph Server["API Server"]
-        API["Rust / Axum<br/>Tokio Async Runtime"]
-        AUTH["JWT + Argon2<br/>AES-256-GCM"]
-        MW["CSRF + CORS<br/>Middleware"]
-    end
-
-    subgraph Data["Data Layer"]
-        DB[("SQLite<br/>File DB")]
-    end
-
-    subgraph External["External Services"]
-        NIM["NVIDIA NIM<br/>BYOK AI Models"]
-    end
-
-    subgraph Sandbox["Sandbox"]
-        TERM["proot + Ubuntu 24.04<br/>Isolated Terminal"]
-    end
-
-    UI <-->|"HTTP / SSE / WS"| API
-    API -->|"SQLx"| DB
-    API -->|"REST API"| NIM
-    API -->|"WebSocket"| TERM
-    API -.->|"Auth Guards"| MW
-    MW -.->|"Session Mgmt"| AUTH
+```
+  CLIENT LAYER                    API LAYER                        DATA LAYER
+  ┌─────────────────┐             ┌─────────────────┐              ┌─────────────────┐
+  │                 │   HTTP/SSE  │                 │    SQLx      │                 │
+  │  React + Vite   │◄───────────►│  Rust / Axum    │◄────────────►│     SQLite      │
+  │  TypeScript     │   WebSocket │  Tokio async    │              │   (file DB)     │
+  │  Tailwind CSS   │             │                 │              │                 │
+  └─────────────────┘             └────────┬────────┘              └─────────────────┘
+                                           │
+                          ┌────────────────┼────────────────┐
+                          │                │                │
+                          ▼                ▼                ▼
+                   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+                   │   NVIDIA    │  │   proot +   │  │  JWT /      │
+                   │    NIM      │  │ Ubuntu 24   │  │  Argon2     │
+                   │  (BYOK AI)  │  │  (Sandbox)  │  │  AES-GCM    │
+                   └─────────────┘  └─────────────┘  └─────────────┘
+                    EXTERNAL            SANDBOX           SECURITY
 ```
 
 ## Environment Variables
