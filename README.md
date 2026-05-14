@@ -1,6 +1,6 @@
 # Project Vulcan
 
-A production-ready, full-stack SaaS personal AI assistant platform built with Rust, React, and NVIDIA NIM. Features a sleek dark-mode UI inspired by IBM Carbon Design System.
+A personal, secure AI assistant platform built with Rust, React, and NVIDIA NIM. Features a sleek dark-mode UI inspired by IBM Carbon Design System.
 
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
@@ -139,7 +139,7 @@ cd web && npm install && npm run dev
 | `JWT_SECRET_PATH` | No | - | RSA key path (falls back to HS256) |
 | `PORT` | No | `8080` | HTTP port |
 
-> **Security Warning:** Change default credentials before deploying to production. Never commit `.env` or `secrets/` to version control.
+> **Security Warning:** Change default credentials before deploying publicly. Never commit `.env` or `secrets/` to version control.
 
 ## Project Structure
 
@@ -177,7 +177,7 @@ cd web && npm install && npm run dev
 ├── logos/                  # Brand assets
 ├── docker-compose.yml      # Local orchestration
 ├── render.yaml             # Render Blueprint
-├── Dockerfile              # Unified production build
+├── Dockerfile              # Unified release build
 ├── .env.example            # Environment template
 ├── .gitignore              # Git exclusions
 └── LICENSE                 # MIT License
