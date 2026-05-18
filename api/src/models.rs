@@ -24,6 +24,7 @@ pub struct Chat {
     pub user_id: String,
     pub title: String,
     pub model_id: String,
+    pub provider_id: Option<String>,
     pub folder: String,
     pub tags: String,
     pub is_pinned: i32,
@@ -43,9 +44,49 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub tokens_used: Option<i32>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Provider {
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: String,
+    #[serde(skip_serializing)]
+    pub encrypted_api_key: String,
+    pub is_active: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderResponse {
+    pub id: String,
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: String,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateProviderRequest {
+    pub name: String,
+    pub provider_type: String,
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateProviderRequest {
+    pub api_key: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct TerminalSession {
     pub id: String,
@@ -92,6 +133,7 @@ pub struct LoginRequest {
 pub struct CreateChatRequest {
     pub title: Option<String>,
     pub model_id: String,
+    pub provider_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,6 +163,8 @@ pub struct FileRecord {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateChatOrganizationRequest {
     pub title: Option<String>,
+    pub model_id: Option<String>,
+    pub provider_id: Option<String>,
     pub folder: Option<String>,
     pub tags: Option<Vec<String>>,
     pub is_pinned: Option<bool>,

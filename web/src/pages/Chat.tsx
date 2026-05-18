@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
+import { api } from '../lib/api'
 import Sidebar from '../components/Sidebar'
 import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
@@ -12,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
+import type { SelectedModel } from '../components/ProviderModelSelector'
 
 const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
@@ -24,9 +26,48 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('meta/llama-3.1-8b-instruct')
+  const [selectedModel, setSelectedModel] = useState<SelectedModel>({
+    providerId: '',
+    modelId: 'meta/llama-3.1-8b-instruct',
+  })
   const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
+
+  // Auto-select first available model when providers load
+  useEffect(() => {
+    if (selectedModel.providerId) return
+    api.get('/models')
+      .then((res) => {
+        const providers = res.data?.providers || []
+        for (const p of providers) {
+          if (p.models && p.models.length > 0) {
+            setSelectedModel({ providerId: p.provider_id, modelId: p.models[0].id })
+            break
+          }
+        }
+      })
+      .catch(() => {})
+  }, [selectedModel.providerId])
+
+  const handleModelChange = useCallback(async (sel: SelectedModel) => {
+    setSelectedModel(sel)
+    if (chatId) {
+      try {
+        const csrf = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
+        await fetch(`/api/chats/${chatId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrf,
+          },
+          credentials: 'include',
+          body: JSON.stringify({ model_id: sel.modelId, provider_id: sel.providerId }),
+        })
+      } catch (e) {
+        console.error('Failed to update chat model:', e)
+      }
+    }
+  }, [chatId])
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -164,7 +205,7 @@ export default function Chat() {
         <ChatInterface
           chatId={chatId}
           selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
+          onModelChange={handleModelChange}
         />
 
         <AnimatePresence>

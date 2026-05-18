@@ -35,7 +35,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import FileUpload, { UploadedFile } from './FileUpload'
-import ModelSelector from './ModelSelector'
+import ProviderModelSelector, { type SelectedModel } from './ProviderModelSelector'
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/csrf_token=([^;]+)/)
@@ -182,7 +182,7 @@ function MessageBubble({
   msg: MessageItem
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
-  messageMeta?: { model: string; durationMs: number }
+  messageMeta?: { provider: string; model: string; durationMs: number }
 }) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -301,7 +301,9 @@ function MessageBubble({
             {isAssistant && messageMeta && (
               <div className="flex items-center gap-1.5 text-[10px] text-text-helper">
                 <Cpu className="h-2.5 w-2.5" />
-                <span className="truncate max-w-[150px]" title={messageMeta.model}>{messageMeta.model}</span>
+                <span className="truncate max-w-[80px]" title={messageMeta.provider}>{messageMeta.provider}</span>
+                <span>/</span>
+                <span className="truncate max-w-[100px]" title={messageMeta.model}>{messageMeta.model}</span>
                 <span>·</span>
                 <Clock className="h-2.5 w-2.5" />
                 <span>{(messageMeta.durationMs / 1000).toFixed(1)}s</span>
@@ -543,8 +545,8 @@ export default function ChatInterface({
   onModelChange,
 }: {
   chatId?: string
-  selectedModel: string
-  onModelChange?: (model: string) => void
+  selectedModel: SelectedModel
+  onModelChange?: (selection: SelectedModel) => void
 }) {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -560,8 +562,8 @@ export default function ChatInterface({
   const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
   const [creatingChat, setCreatingChat] = useState(false)
   const [optimisticTitle, setOptimisticTitle] = useState<string>()
-  const [messageMeta, setMessageMeta] = useState<Record<string, { model: string; durationMs: number }>>({})
-  const pendingMetaRef = useRef<{ model: string; durationMs: number } | null>(null)
+  const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
+  const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -581,7 +583,10 @@ export default function ChatInterface({
     queryKey: ['chat', effectiveChatId],
     queryFn: async () => {
       const res = await api.get(`/chats/${effectiveChatId}`)
-      return res.data as { chat: { title: string; model_id: string }; messages: MessageItem[] }
+      return res.data as {
+        chat: { title: string; model_id: string; provider_id: string | null }
+        messages: MessageItem[]
+      }
     },
     enabled: !!effectiveChatId,
   })
@@ -590,9 +595,19 @@ export default function ChatInterface({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean; tools_enabled: boolean }
+      return res.data as { has_nim_key: boolean; has_provider: boolean; tools_enabled: boolean }
     },
   })
+
+  // Sync selected model to chat's stored provider+model when chat loads
+  useEffect(() => {
+    if (chatData?.chat.model_id) {
+      onModelChange?.({
+        providerId: chatData.chat.provider_id || '',
+        modelId: chatData.chat.model_id,
+      })
+    }
+  }, [chatData?.chat.model_id, chatData?.chat.provider_id])
 
   // Reset state when switching chats
   useEffect(() => {
@@ -627,15 +642,16 @@ export default function ChatInterface({
   // Validate model when chat loads
   useEffect(() => {
     const currentModelId = chatData?.chat.model_id
-    if (!currentModelId || !userData?.has_nim_key) {
+    const currentProviderId = chatData?.chat.provider_id
+    if (!currentModelId || !currentProviderId || !userData?.has_provider) {
       setModelValidation(null)
       return
     }
 
     let cancelled = false
     setValidatingModel(true)
-    
-    api.get(`/models/validate?model_id=${encodeURIComponent(currentModelId)}`)
+
+    api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`)
       .then(res => {
         if (!cancelled) setModelValidation(res.data)
       })
@@ -647,7 +663,7 @@ export default function ChatInterface({
       })
 
     return () => { cancelled = true }
-  }, [chatData?.chat.model_id, userData?.has_nim_key])
+  }, [chatData?.chat.model_id, chatData?.chat.provider_id, userData?.has_provider])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -805,7 +821,11 @@ export default function ChatInterface({
       let currentChatId = effectiveChatId
       if (!currentChatId) {
         setCreatingChat(true)
-        const createRes = await api.post('/chats', { title: text.slice(0, 50), model_id: selectedModel })
+        const createRes = await api.post('/chats', {
+          title: text.slice(0, 50),
+          model_id: selectedModel.modelId,
+          provider_id: selectedModel.providerId || undefined,
+        })
         currentChatId = createRes.data.id
         setEffectiveChatId(currentChatId)
         setOptimisticTitle(text.slice(0, 50))
@@ -844,7 +864,7 @@ export default function ChatInterface({
           return
         }
         if (res.status === 428) {
-          throw new Error('Add your NVIDIA NIM API key in Settings to start chatting.')
+          throw new Error('Add an AI provider API key in Settings to start chatting.')
         }
         const text = await res.text()
         throw new Error(text || `Request failed (${res.status})`)
@@ -874,7 +894,11 @@ export default function ChatInterface({
               setToolExecution(null)
               setAttachedFiles([])
               const duration = Date.now() - startTimeRef.current
-              pendingMetaRef.current = { model: selectedModel, durationMs: duration }
+              pendingMetaRef.current = {
+                provider: selectedModel.providerId || chatData?.chat.provider_id || '',
+                model: chatData?.chat.model_id || selectedModel.modelId,
+                durationMs: duration,
+              }
               setStreaming(false)
               refetch()
               return
@@ -906,7 +930,11 @@ export default function ChatInterface({
       setToolExecution(null)
       setAttachedFiles([])
       const duration = Date.now() - startTimeRef.current
-      pendingMetaRef.current = { model: selectedModel, durationMs: duration }
+      pendingMetaRef.current = {
+        provider: selectedModel.providerId || chatData?.chat.provider_id || '',
+        model: chatData?.chat.model_id || selectedModel.modelId,
+        durationMs: duration,
+      }
       setStreaming(false)
       refetch()
     } catch (err: any) {
@@ -1067,7 +1095,7 @@ export default function ChatInterface({
 
       {/* API Key Required Overlay */}
       <AnimatePresence>
-        {userData && !userData.has_nim_key && (
+        {userData && !userData.has_provider && !userData.has_nim_key && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1083,10 +1111,10 @@ export default function ChatInterface({
               <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
                 <Key className="h-6 w-6 text-interactive" />
               </div>
-              <h2 className="mb-2 text-base font-semibold text-text-primary">NVIDIA NIM API Key Required</h2>
+              <h2 className="mb-2 text-base font-semibold text-text-primary">AI Provider Required</h2>
               <p className="mb-5 text-xs text-text-helper">
-                To use Project Vulcan, you need to add a valid NVIDIA NIM API key. 
-                You can get one for free from NVIDIA&apos;s website.
+                To use Project Vulcan, you need to add at least one AI provider API key.
+                You can use NVIDIA NIM, OpenAI, Groq, or any OpenAI-compatible provider.
               </p>
               <div className="flex flex-col gap-2">
                 <button
@@ -1138,20 +1166,6 @@ export default function ChatInterface({
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{modelValidation.error || `Model '${modelValidation.model_id}' is not available`}</span>
               </div>
-              <button
-                onClick={() => {
-                  const csrf = getCsrfToken()
-                  fetch(`/api/chats/${effectiveChatId}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf || '' },
-                    credentials: 'include',
-                    body: JSON.stringify({ title: chatData?.chat.title, model_id: 'meta/llama-3.1-8b-instruct' })
-                  }).then(() => refetch())
-                }}
-                className="border border-support-warning/30 px-3 py-1 text-[11px] text-support-warning transition-colors hover:bg-support-warning/20"
-              >
-                Switch to meta/llama-3.1-8b-instruct
-              </button>
             </div>
           </motion.div>
         )}
@@ -1261,7 +1275,7 @@ export default function ChatInterface({
             />
 
             <div className="w-52 shrink-0">
-              <ModelSelector selected={selectedModel} onSelect={(id) => onModelChange?.(id)} />
+              <ProviderModelSelector selected={selectedModel} onSelect={(sel) => onModelChange?.(sel)} />
             </div>
 
             <button

@@ -1,11 +1,10 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{delete, get, post},
+    routing::{delete, get},
     Router,
 };
-use std::collections::HashMap;
 
 use crate::{middleware::AppState, models::Claims};
 

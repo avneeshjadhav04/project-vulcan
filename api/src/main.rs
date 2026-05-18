@@ -18,6 +18,7 @@ mod config;
 mod db;
 mod middleware;
 mod models;
+mod providers;
 mod routes;
 mod sandbox_engine;
 
@@ -129,6 +130,10 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::models::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::providers::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(

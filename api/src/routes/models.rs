@@ -1,107 +1,152 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Query, State},
     http::StatusCode,
     response::Json,
     routing::get,
     Router,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::{auth::decrypt_key, middleware::AppState, models::{NimModel, Claims, User}};
+use crate::{
+    auth::decrypt_key,
+    middleware::AppState,
+    models::{Claims, NimModel, Provider},
+    providers::{get_provider_definition, ProviderDefinition},
+};
 
-type ModelCache = Arc<RwLock<(Vec<NimModel>, std::time::Instant)>>;
+type ModelCache = Arc<RwLock<HashMap<String, (Vec<NimModel>, std::time::Instant)>>>;
 
-fn fallback_models() -> Vec<NimModel> {
-    // These are confirmed working models on NVIDIA NIM as of early 2025
-    vec![
-        // Meta Llama models - widely available
-        NimModel { id: "meta/llama-3.1-8b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.1-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.3-70b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        NimModel { id: "meta/llama-3.1-405b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "meta".to_string() },
-        // Mistral models
-        NimModel { id: "mistralai/mistral-7b-instruct-v0.3".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        NimModel { id: "mistralai/mixtral-8x7b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        NimModel { id: "mistralai/mixtral-8x22b-instruct-v0.1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "mistralai".to_string() },
-        // Google Gemma
-        NimModel { id: "google/gemma-2-2b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
-        NimModel { id: "google/gemma-2-9b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
-        NimModel { id: "google/gemma-2-27b-it".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "google".to_string() },
-        // Microsoft Phi
-        NimModel { id: "microsoft/phi-3-mini-128k-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "microsoft".to_string() },
-        // Qwen
-        NimModel { id: "qwen/qwen2.5-7b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
-        NimModel { id: "qwen/qwen2.5-72b-instruct".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "qwen".to_string() },
-        // DeepSeek
-        NimModel { id: "deepseek-ai/deepseek-r1".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
-        NimModel { id: "deepseek-ai/deepseek-r1-distill-llama-70b".to_string(), object: "model".to_string(), created: 1700000000, owned_by: "deepseek-ai".to_string() },
-    ]
+fn models_from_fallback(def: &ProviderDefinition) -> Vec<NimModel> {
+    def.fallback_models
+        .iter()
+        .map(|id| NimModel {
+            id: id.to_string(),
+            object: "model".to_string(),
+            created: 1700000000,
+            owned_by: def.name.to_string(),
+        })
+        .collect()
 }
 
 pub fn router() -> Router<AppState> {
-    let cache: ModelCache = Arc::new(RwLock::new((Vec::new(), std::time::Instant::now() - std::time::Duration::from_secs(400))));
+    let cache: ModelCache = Arc::new(RwLock::new(HashMap::new()));
 
     Router::new()
-        .route("/models", get(move |state| list_models(state, cache.clone())))
+        .route("/models", get(move |state, claims| list_models(state, claims, cache.clone())))
         .route("/models/validate", get(validate_model))
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ProviderModels {
+    provider_id: String,
+    provider_name: String,
+    models: Vec<NimModel>,
 }
 
 async fn list_models(
     State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
     cache: ModelCache,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let now = std::time::Instant::now();
+    let providers: Vec<Provider> = sqlx::query_as(
+        "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 ORDER BY created_at ASC"
+    )
+    .bind(&claims.sub)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("List providers for models error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if providers.is_empty() {
+        return Ok(Json(json!({ "providers": [] })));
+    }
+
+    let mut result = Vec::new();
+
+    for provider in providers {
+        let models = fetch_models_for_provider(&state, &provider, &cache).await;
+        result.push(ProviderModels {
+            provider_id: provider.id.clone(),
+            provider_name: provider.name.clone(),
+            models,
+        });
+    }
+
+    Ok(Json(json!({ "providers": result })))
+}
+
+async fn fetch_models_for_provider(
+    state: &AppState,
+    provider: &Provider,
+    cache: &ModelCache,
+) -> Vec<NimModel> {
+    let cache_key = format!("{}:{}", provider.base_url, provider.id);
     let cache_duration = std::time::Duration::from_secs(300);
     let error_cache_duration = std::time::Duration::from_secs(30);
+    let now = std::time::Instant::now();
 
     {
         let read = cache.read().await;
-        if !read.0.is_empty() && now.duration_since(read.1) < cache_duration {
-            return Ok(Json(json!({ "models": read.0.clone() })));
+        if let Some((models, timestamp)) = read.get(&cache_key) {
+            if !models.is_empty() && now.duration_since(*timestamp) < cache_duration {
+                return models.clone();
+            }
+            if models.is_empty() && now.duration_since(*timestamp) < error_cache_duration {
+                return fallback_for_provider(provider);
+            }
         }
     }
 
-    // Only one request refreshes the cache
     let mut write = cache.write().await;
-
-    // Double-check after acquiring write lock
-    if !write.0.is_empty() && now.duration_since(write.1) < cache_duration {
-        return Ok(Json(json!({ "models": write.0.clone() })));
+    if let Some((models, timestamp)) = write.get(&cache_key) {
+        if !models.is_empty() && now.duration_since(*timestamp) < cache_duration {
+            return models.clone();
+        }
+        if models.is_empty() && now.duration_since(*timestamp) < error_cache_duration {
+            return fallback_for_provider(provider);
+        }
     }
 
-    // If we previously cached an error, check error TTL before falling back
-    if write.0.is_empty() && now.duration_since(write.1) < error_cache_duration {
-        tracing::warn!("Returning fallback models — NIM API was recently unreachable");
-        return Ok(Json(json!({ "models": fallback_models() })));
-    }
+    let api_key = match decrypt_key(&provider.encrypted_api_key, &state.config.master_key) {
+        Ok(k) => k,
+        Err(e) => {
+            tracing::warn!("Failed to decrypt provider key for {}: {}", provider.id, e);
+            write.insert(cache_key, (Vec::new(), now));
+            return fallback_for_provider(provider);
+        }
+    };
 
     let res = match state.http_client
-        .get(format!("{}/models", state.config.nim_base_url))
+        .get(format!("{}/models", provider.base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            tracing::error!("Failed to fetch models: {}", e);
-            *write = (Vec::new(), now);
-            return Ok(Json(json!({ "models": fallback_models() })));
+            tracing::error!("Failed to fetch models from {}: {}", provider.base_url, e);
+            write.insert(cache_key, (Vec::new(), now));
+            return fallback_for_provider(provider);
         }
     };
 
     if !res.status().is_success() {
-        tracing::error!("NIM models endpoint returned status: {}", res.status());
-        *write = (Vec::new(), now);
-        return Ok(Json(json!({ "models": fallback_models() })));
+        tracing::error!("Models endpoint returned status: {} for {}", res.status(), provider.base_url);
+        write.insert(cache_key, (Vec::new(), now));
+        return fallback_for_provider(provider);
     }
 
     let data: serde_json::Value = match res.json().await {
         Ok(d) => d,
         Err(e) => {
-            tracing::error!("Failed to parse models response: {}", e);
-            *write = (Vec::new(), now);
-            return Ok(Json(json!({ "models": fallback_models() })));
+            tracing::error!("Failed to parse models response from {}: {}", provider.base_url, e);
+            write.insert(cache_key, (Vec::new(), now));
+            return fallback_for_provider(provider);
         }
     };
 
@@ -120,38 +165,48 @@ async fn list_models(
         .collect();
 
     let models = if models.is_empty() {
-        tracing::warn!("NIM API returned empty model list, using fallback");
-        fallback_models()
+        tracing::warn!("Provider {} returned empty model list, using fallback", provider.base_url);
+        fallback_for_provider(provider)
     } else {
         models
     };
 
-    *write = (models.clone(), now);
+    write.insert(cache_key, (models.clone(), now));
+    models
+}
 
-    Ok(Json(json!({ "models": models })))
+fn fallback_for_provider(provider: &Provider) -> Vec<NimModel> {
+    if let Some(def) = get_provider_definition(&provider.provider_type) {
+        models_from_fallback(&def)
+    } else {
+        Vec::new()
+    }
 }
 
 async fn validate_model(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
-    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    let provider_id = params.get("provider_id").cloned().unwrap_or_default();
     let model_id = params.get("model_id").cloned().unwrap_or_default();
-    if model_id.is_empty() {
-        return Ok(Json(json!({"valid": false, "error": "model_id query parameter is required"})));
+
+    if provider_id.is_empty() || model_id.is_empty() {
+        return Ok(Json(json!({"valid": false, "error": "provider_id and model_id are required"})));
     }
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
-        .bind(claims.sub.clone())
+
+    let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+        .bind(&provider_id)
+        .bind(&claims.sub)
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let nim_key = match user.encrypted_nim_key {
-        Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
-        None => return Ok(Json(json!({"valid": false, "error": "No API key configured"}))),
+    let api_key = match decrypt_key(&provider.encrypted_api_key, &state.config.master_key) {
+        Ok(k) => k,
+        Err(_) => return Ok(Json(json!({"valid": false, "error": "Failed to decrypt API key"}))),
     };
 
-    // Do a real test request to validate the model actually works
     let test_body = json!({
         "model": model_id,
         "messages": [{"role": "user", "content": "Hi"}],
@@ -160,8 +215,8 @@ async fn validate_model(
     });
 
     let test_res = state.http_client
-        .post(format!("{}/chat/completions", state.config.nim_base_url))
-        .header("Authorization", format!("Bearer {}", nim_key))
+        .post(format!("{}/chat/completions", provider.base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&test_body)
         .send()
@@ -171,19 +226,18 @@ async fn validate_model(
         Ok(res) => {
             let status = res.status();
             if status.is_success() {
-                Ok(Json(json!({"valid": true, "model_id": model_id})))
+                Ok(Json(json!({"valid": true, "provider_id": provider_id, "model_id": model_id})))
             } else {
                 let body = res.text().await.unwrap_or_default();
-                tracing::warn!("Model validation failed for {}: {} - {}", model_id, status, body);
-                
+                tracing::warn!("Model validation failed for {}/{}: {} - {}", provider_id, model_id, status, body);
                 let error_msg = if status == 404 {
-                    format!("Model '{}' is not available (404). It may require different permissions or be temporarily disabled.", model_id)
+                    format!("Model '{}' is not available on this provider (404).", model_id)
                 } else {
                     format!("Model validation failed: {}", status)
                 };
-                
                 Ok(Json(json!({
                     "valid": false,
+                    "provider_id": provider_id,
                     "model_id": model_id,
                     "error": error_msg,
                     "status": status.as_u16()
