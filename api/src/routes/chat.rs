@@ -13,8 +13,54 @@ use tokio::sync::mpsc;
 use crate::{
     auth::decrypt_key,
     middleware::AppState,
-    models::{Chat, Claims, CreateChatRequest, Message, SendMessageRequest, UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User},
+    models::{Chat, Claims, CreateChatRequest, Message, Provider, SendMessageRequest, UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User},
 };
+
+struct ResolvedProvider {
+    id: String,
+    base_url: String,
+    api_key: String,
+}
+
+async fn resolve_chat_provider(
+    state: &AppState,
+    chat: &Chat,
+    user: &User,
+) -> Result<ResolvedProvider, StatusCode> {
+    if let Some(ref provider_id) = chat.provider_id {
+        let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+            .bind(provider_id)
+            .bind(&user.id)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
+
+        if provider.is_active == 0 {
+            return Err(StatusCode::PRECONDITION_FAILED);
+        }
+
+        let api_key = decrypt_key(&provider.encrypted_api_key, &state.config.master_key)
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+        Ok(ResolvedProvider {
+            id: provider.id,
+            base_url: provider.base_url,
+            api_key,
+        })
+    } else {
+        // Legacy fallback: use user's NIM key + global NIM base URL
+        let nim_key = match user.encrypted_nim_key.clone() {
+            Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
+            None => return Err(StatusCode::PRECONDITION_FAILED),
+        };
+
+        Ok(ResolvedProvider {
+            id: "legacy".to_string(),
+            base_url: state.config.nim_base_url.clone(),
+            api_key: nim_key,
+        })
+    }
+}
 
 const MAX_MESSAGE_LENGTH: usize = 100_000;
 const MAX_TITLE_LENGTH: usize = 255;
@@ -247,11 +293,19 @@ async fn get_me(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
+    let provider_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE user_id = ?1 AND is_active = 1")
+        .bind(&claims.sub)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+
     Ok(Json(json!({
         "id": user.id,
         "email": user.email,
         "role": user.role,
         "has_nim_key": user.encrypted_nim_key.is_some(),
+        "has_provider": provider_count > 0,
+        "provider_count": provider_count,
         "memory_enabled": user.memory_enabled == 1,
         "tools_enabled": user.tools_enabled == 1,
     })))
@@ -317,20 +371,55 @@ async fn update_nim_key(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Treat empty string as a removal (set to NULL)
-    let encrypted: Option<String> = if req.api_key.trim().is_empty() {
-        None
+    // Legacy endpoint: map to a "nvidia" provider for backward compatibility
+    let trimmed = req.api_key.trim();
+    if trimmed.is_empty() {
+        // Remove legacy key and delete nvidia provider
+        sqlx::query("UPDATE users SET encrypted_nim_key = NULL WHERE id = ?1")
+            .bind(&claims.sub)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let _ = sqlx::query("DELETE FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia'")
+            .bind(&claims.sub)
+            .execute(&state.db)
+            .await;
     } else {
-        Some(crate::auth::encrypt_key(&req.api_key, &state.config.master_key)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
-    };
+        let encrypted = crate::auth::encrypt_key(trimmed, &state.config.master_key)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    sqlx::query("UPDATE users SET encrypted_nim_key = ?1 WHERE id = ?2")
-        .bind(encrypted)
-        .bind(claims.sub.clone())
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        // Update legacy field too
+        sqlx::query("UPDATE users SET encrypted_nim_key = ?1 WHERE id = ?2")
+            .bind(&encrypted)
+            .bind(&claims.sub)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Upsert nvidia provider
+        let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1")
+            .bind(&claims.sub)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if let Some((id,)) = existing {
+            sqlx::query("UPDATE providers SET encrypted_api_key = ?1, updated_at = datetime('now') WHERE id = ?2")
+                .bind(&encrypted)
+                .bind(&id)
+                .execute(&state.db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        } else {
+            sqlx::query("INSERT INTO providers (user_id, name, provider_type, base_url, encrypted_api_key) VALUES (?1, 'NVIDIA NIM', 'nvidia', ?2, ?3)")
+                .bind(&claims.sub)
+                .bind(&state.config.nim_base_url)
+                .bind(&encrypted)
+                .execute(&state.db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
 
     Ok(StatusCode::OK)
 }
@@ -339,20 +428,32 @@ async fn validate_nim_key(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
-        .bind(claims.sub.clone())
-        .fetch_one(&state.db)
+    // Legacy endpoint: validate the user's nvidia provider or legacy nim key
+    let provider: Option<Provider> = sqlx::query_as("SELECT * FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.db)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let nim_key = match user.encrypted_nim_key {
-        Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
-        None => return Ok(Json(json!({"valid": false, "error": "No API key configured"}))),
+    let (base_url, api_key) = if let Some(p) = provider {
+        let key = decrypt_key(&p.encrypted_api_key, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?;
+        (p.base_url, key)
+    } else {
+        let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
+        let nim_key = match user.encrypted_nim_key {
+            Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
+            None => return Ok(Json(json!({"valid": false, "error": "No API key configured"}))),
+        };
+        (state.config.nim_base_url.clone(), nim_key)
     };
 
     let test_res = state.http_client
-        .get(format!("{}/models", state.config.nim_base_url))
-        .header("Authorization", format!("Bearer {}", nim_key))
+        .get(format!("{}/models", base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
         .send()
         .await;
 
@@ -394,12 +495,15 @@ async fn create_chat(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    let provider_id = req.provider_id.as_deref().filter(|s| !s.is_empty());
+
     let chat: Chat = sqlx::query_as(
-        "INSERT INTO chats (user_id, title, model_id) VALUES (?1, ?2, ?3) RETURNING *"
+        "INSERT INTO chats (user_id, title, model_id, provider_id) VALUES (?1, ?2, ?3, ?4) RETURNING *"
     )
     .bind(claims.sub.clone())
     .bind(&title)
     .bind(&req.model_id)
+    .bind(provider_id)
     .fetch_one(&state.db)
     .await
     .map_err(|e| {
@@ -469,15 +573,19 @@ async fn rename_chat(
     let chat: Chat = sqlx::query_as(
         "UPDATE chats SET
             title = COALESCE(?1, title),
-            folder = COALESCE(?2, folder),
-            tags = COALESCE(?3, tags),
-            is_pinned = COALESCE(?4, is_pinned),
-            is_archived = COALESCE(?5, is_archived),
+            model_id = COALESCE(?2, model_id),
+            provider_id = COALESCE(?3, provider_id),
+            folder = COALESCE(?4, folder),
+            tags = COALESCE(?5, tags),
+            is_pinned = COALESCE(?6, is_pinned),
+            is_archived = COALESCE(?7, is_archived),
             updated_at = datetime('now')
-         WHERE id = ?6 AND user_id = ?7
+         WHERE id = ?8 AND user_id = ?9
          RETURNING *"
     )
     .bind(req.title.as_deref())
+    .bind(req.model_id.as_deref())
+    .bind(req.provider_id.as_deref())
     .bind(req.folder.as_deref())
     .bind(tags_json.as_deref())
     .bind(req.is_pinned.map(|v| if v { 1 } else { 0 }))
@@ -643,7 +751,8 @@ async fn export_chat(
 /// Returns the summary text.
 async fn summarize_conversation(
     state: &AppState,
-    nim_key: &str,
+    base_url: &str,
+    api_key: &str,
     model_id: &str,
     messages_to_summarize: &[Message],
 ) -> Result<String, String> {
@@ -672,8 +781,8 @@ async fn summarize_conversation(
     });
 
     let res = state.http_client
-        .post(format!("{}/chat/completions", state.config.nim_base_url))
-        .header("Authorization", format!("Bearer {}", nim_key))
+        .post(format!("{}/chat/completions", base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
@@ -738,17 +847,14 @@ async fn send_message(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let nim_key = match user.encrypted_nim_key {
-        Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
-        None => return Err(StatusCode::PRECONDITION_FAILED),
-    };
-
     let chat: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
         .bind(id.clone())
         .bind(claims.sub.clone())
         .fetch_one(&state.db)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
     sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
         .bind(id.clone())
@@ -788,13 +894,14 @@ async fn send_message(
         } else {
             // Generate summary in background (don't block response)
             let state_clone = state.clone();
-            let nim_key_clone = nim_key.clone();
+            let base_url_clone = resolved.base_url.clone();
+            let api_key_clone = resolved.api_key.clone();
             let model_id_clone = chat.model_id.clone();
             let chat_id_clone = id.clone();
             let older_msgs: Vec<Message> = older.to_vec();
 
             tokio::spawn(async move {
-                match summarize_conversation(&state_clone, &nim_key_clone, &model_id_clone, &older_msgs).await {
+                match summarize_conversation(&state_clone, &base_url_clone, &api_key_clone, &model_id_clone, &older_msgs).await {
                     Ok(summary) => {
                         let _ = sqlx::query(
                             "UPDATE chats SET summary = ?1, summary_updated_at = datetime('now') WHERE id = ?2"
@@ -846,8 +953,8 @@ async fn send_message(
         });
 
         match state.http_client
-            .post(format!("{}/chat/completions", state.config.nim_base_url))
-            .header("Authorization", format!("Bearer {}", nim_key))
+            .post(format!("{}/chat/completions", resolved.base_url))
+            .header("Authorization", format!("Bearer {}", resolved.api_key))
             .header("Content-Type", "application/json")
             .json(&tool_body)
             .send()
@@ -870,7 +977,7 @@ async fn send_message(
                                                 .ok()
                                                 .and_then(|a| a["command"].as_str().map(|s| s.to_string()))
                                         } else { None };
-                                        return stream_final_response(state, nim_key, chat.model_id, tool_messages, id, db, cmd, tool_result).await;
+                                        return stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, tool_messages, id, db, cmd, tool_result).await;
                                     }
                                 }
                             }
@@ -879,23 +986,25 @@ async fn send_message(
                 } else {
                     let status = tool_res.status();
                     let body_text = tool_res.text().await.unwrap_or_default();
-                    tracing::warn!("NIM tool request returned non-success status: {} body: {}. Falling back to normal streaming.", status, body_text);
+                    tracing::warn!("Tool request returned non-success status: {} body: {}. Falling back to normal streaming.", status, body_text);
                 }
             }
             Err(e) => {
-                tracing::warn!("NIM tool request failed: {}. Falling back to normal streaming.", e);
+                tracing::warn!("Tool request failed: {}. Falling back to normal streaming.", e);
             }
         }
     }
 
     let db = state.db.clone();
-    stream_final_response(state, nim_key, chat.model_id, messages_payload, id, db, None, json!({})).await
+    stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, messages_payload, id, db, None, json!({})).await
 }
 
 async fn stream_final_response(
     state: AppState,
-    nim_key: String,
+    base_url: String,
+    api_key: String,
     model_id: String,
+    provider_id: String,
     messages: Vec<serde_json::Value>,
     chat_id: String,
     db: sqlx::SqlitePool,
@@ -905,9 +1014,9 @@ async fn stream_final_response(
     let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
     let (tx, rx) = mpsc::channel::<String>(64);
 
-    let nim_response = state.http_client
-        .post(format!("{}/chat/completions", state.config.nim_base_url))
-        .header("Authorization", format!("Bearer {}", nim_key))
+    let provider_response = state.http_client
+        .post(format!("{}/chat/completions", base_url))
+        .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
@@ -915,16 +1024,16 @@ async fn stream_final_response(
 
     let mut stream_opt = None;
 
-    match nim_response {
+    match provider_response {
         Ok(res) => {
             if !res.status().is_success() {
                 let status = res.status();
                 let body_text = res.text().await.unwrap_or_default();
-                tracing::error!("NIM returned error status: {} body: {} model={}", status, body_text, model_id);
+                tracing::error!("Provider returned error status: {} body: {} model={}", status, body_text, model_id);
                 let user_msg = if status == 404 {
                     let models_res = state.http_client
-                        .get(format!("{}/models", state.config.nim_base_url))
-                        .header("Authorization", format!("Bearer {}", nim_key))
+                        .get(format!("{}/models", base_url))
+                        .header("Authorization", format!("Bearer {}", api_key))
                         .send()
                         .await;
                     let suggestion = match models_res {
@@ -942,7 +1051,7 @@ async fn stream_final_response(
                         format!("{} Try selecting a different model from the dropdown.[/ERR]", base_msg)
                     }
                 } else if status == 401 {
-                    "[ERR]Invalid API key (401). Please check your NVIDIA NIM API key in Settings.[/ERR]".to_string()
+                    "[ERR]Invalid API key (401). Please check your API key in Settings.[/ERR]".to_string()
                 } else {
                     format!("[ERR]AI provider returned error {}: {}. Please check your API key and try again.[/ERR]", status, body_text.chars().take(200).collect::<String>())
                 };
@@ -953,7 +1062,7 @@ async fn stream_final_response(
             }
         }
         Err(e) => {
-            tracing::error!("NIM request error: {}", e);
+            tracing::error!("Provider request error: {}", e);
             let _ = tx.send("[ERR]Failed to connect to AI provider. Please check your internet connection and API key.[/ERR]".to_string()).await;
             let _ = tx.send("[DONE]".to_string()).await;
         }
@@ -987,8 +1096,8 @@ async fn stream_final_response(
                                     if data == "[DONE]" {
                                         let _ = tx.send("[DONE]".to_string()).await;
                                         let estimated_tokens = (full_content.len() / 4) as i32;
-                                        if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used) VALUES (?1, 'assistant', ?2, ?3)")
-                                            .bind(chat_id.clone()).bind(&full_content).bind(estimated_tokens)
+                                        if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                            .bind(chat_id.clone()).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
                                             .execute(&db).await {
                                             tracing::error!("Failed to persist assistant message: {}", e);
                                         }
@@ -1014,8 +1123,8 @@ async fn stream_final_response(
             let _ = tx.send("[DONE]".to_string()).await;
             if !full_content.is_empty() {
                 let estimated_tokens = (full_content.len() / 4) as i32;
-                if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used) VALUES (?1, 'assistant', ?2, ?3)")
-                    .bind(chat_id).bind(&full_content).bind(estimated_tokens)
+                if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                    .bind(chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
                     .execute(&db).await {
                     tracing::error!("Failed to persist assistant message: {}", e);
                 }

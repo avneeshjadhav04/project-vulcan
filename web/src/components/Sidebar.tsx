@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
+import type { SelectedModel } from './ProviderModelSelector'
 import {
   Plus,
   Trash2,
@@ -22,6 +23,7 @@ interface ChatItem {
   id: string
   title: string
   model_id: string
+  provider_id: string
   folder: string
   tags: string
   is_pinned: number
@@ -34,7 +36,7 @@ export default function Sidebar({
   selectedModel,
 }: {
   activeChatId: string | null
-  selectedModel: string
+  selectedModel: SelectedModel
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -58,8 +60,12 @@ export default function Sidebar({
   })
 
   const createChat = useMutation({
-    mutationFn: async (modelId: string) => {
-      const res = await api.post('/chats', { title: 'New Chat', model_id: modelId })
+    mutationFn: async (selection: SelectedModel) => {
+      const res = await api.post('/chats', {
+        title: 'New Chat',
+        model_id: selection.modelId,
+        provider_id: selection.providerId || undefined,
+      })
       return res.data as ChatItem
     },
     onSuccess: (data) => {
@@ -265,7 +271,13 @@ export default function Sidebar({
 
       {/* New Chat Button */}
       <button
-        onClick={() => createChat.mutate(selectedModel)}
+        onClick={() => {
+          if (!selectedModel.providerId) {
+            showError('Please select a model from the dropdown first')
+            return
+          }
+          createChat.mutate(selectedModel)
+        }}
         disabled={createChat.isPending}
         className="flex w-full items-center justify-center gap-2 border border-border-subtle bg-layer py-2 text-sm text-text-primary transition-colors hover:border-border-strong hover:bg-layer-hover disabled:opacity-50"
       >

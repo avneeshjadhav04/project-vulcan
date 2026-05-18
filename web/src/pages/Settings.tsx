@@ -16,25 +16,53 @@ import {
   User,
   Fingerprint,
   Lock,
-  Sparkles,
-  ExternalLink,
-  Copy,
   CheckCircle2,
   Brain,
+  Plus,
+  X,
+  Server,
+  TestTube,
+  Loader2,
 } from 'lucide-react'
+
+interface Provider {
+  id: string
+  name: string
+  provider_type: string
+  base_url: string
+  is_active: boolean
+}
+
+const BUILT_IN_PROVIDERS = [
+  { id: 'nvidia', name: 'NVIDIA NIM', base_url: 'https://integrate.api.nvidia.com/v1' },
+  { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com/v1' },
+  { id: 'groq', name: 'Groq', base_url: 'https://api.groq.com/openai/v1' },
+  { id: 'anthropic', name: 'Anthropic', base_url: 'https://api.anthropic.com/v1' },
+  { id: 'ollama', name: 'Ollama', base_url: 'http://localhost:11434/v1' },
+  { id: 'openrouter', name: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1' },
+  { id: 'together', name: 'Together AI', base_url: 'https://api.together.xyz/v1' },
+  { id: 'custom', name: 'Custom Provider', base_url: '' },
+]
 
 export default function Settings() {
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
-  const [apiKey, setApiKey] = useState('')
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [providersLoading, setProvidersLoading] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [showKey, setShowKey] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; status?: number} | null>(null)
-  const [validating, setValidating] = useState(false)
   const navigate = useNavigate()
+
+  // Add provider form state
+  const [selectedType, setSelectedType] = useState('nvidia')
+  const [customName, setCustomName] = useState('')
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; provider_id?: string} | null>(null)
+  const [validating, setValidating] = useState(false)
 
   useEffect(() => {
     if (saved) {
@@ -43,55 +71,79 @@ export default function Settings() {
     }
   }, [saved])
 
-  const handleSave = async () => {
-    if (!apiKey.trim()) return
+  useEffect(() => {
+    loadProviders()
+  }, [])
+
+  const loadProviders = async () => {
+    setProvidersLoading(true)
+    try {
+      const res = await api.get('/providers')
+      setProviders(res.data || [])
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load providers')
+    } finally {
+      setProvidersLoading(false)
+    }
+  }
+
+  const handleAddProvider = async () => {
     setError('')
-    setSaved(false)
     setLoading(true)
     try {
-      await api.post('/me/key', { api_key: apiKey })
+      const def = BUILT_IN_PROVIDERS.find((p) => p.id === selectedType)
+      const name = selectedType === 'custom' ? customName.trim() : (def?.name || selectedType)
+      const baseUrl = selectedType === 'custom' ? customBaseUrl.trim() : (def?.base_url || '')
+
+      if (!name || !baseUrl || !apiKey.trim()) {
+        setError('Name, base URL, and API key are required')
+        setLoading(false)
+        return
+      }
+
+      await api.post('/providers', {
+        name,
+        provider_type: selectedType,
+        base_url: baseUrl,
+        api_key: apiKey.trim(),
+      })
       setSaved(true)
+      setShowAddModal(false)
       setApiKey('')
+      setCustomName('')
+      setCustomBaseUrl('')
+      setSelectedType('nvidia')
+      await loadProviders()
       await fetchMe()
     } catch (err: any) {
-      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to save API key')
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to add provider')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCopyKey = () => {
-    if (apiKey) {
-      navigator.clipboard.writeText(apiKey)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const handleRemoveKey = async () => {
-    if (!confirm('Remove your NVIDIA NIM API key? You will need to add it again to use AI features.')) return
+  const handleRemoveProvider = async (id: string) => {
+    if (!confirm('Remove this provider? Chats using it will no longer work until you add it again.')) return
     setError('')
-    setLoading(true)
     try {
-      await api.post('/me/key', { api_key: '' })
+      await api.delete(`/providers/${id}`)
+      await loadProviders()
       await fetchMe()
       setSaved(true)
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to remove API key')
-    } finally {
-      setLoading(false)
+      setError(err.response?.data?.error || 'Failed to remove provider')
     }
   }
 
-  const handleValidate = async () => {
+  const handleValidateProvider = async (id: string) => {
     setValidating(true)
     setValidationResult(null)
     setError('')
     try {
-      const res = await api.get('/me/key/validate')
+      const res = await api.post(`/providers/${id}/validate`)
       setValidationResult(res.data)
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to validate API key')
+      setError(err.response?.data?.error || 'Failed to validate provider')
     } finally {
       setValidating(false)
     }
@@ -104,11 +156,6 @@ export default function Settings() {
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to toggle memory')
     }
-  }
-
-  const maskKey = (hasKey: boolean | undefined) => {
-    if (!hasKey) return 'Not configured'
-    return 'nvapi-••••••••••••••••••••••••••••••••'
   }
 
   return (
@@ -167,7 +214,6 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-
             <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
               <div className="flex items-center gap-3">
                 <Lock className="h-4 w-4 text-link-primary" />
@@ -177,49 +223,32 @@ export default function Settings() {
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <Key className={`h-4 w-4 ${user?.has_nim_key ? 'text-support-success' : 'text-text-helper'}`} />
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">NIM API Key</p>
-                  <p className="text-sm font-mono text-text-secondary">{maskKey(user?.has_nim_key)}</p>
-                </div>
-              </div>
-              {user?.has_nim_key && (
-                <button
-                  onClick={handleRemoveKey}
-                  className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Remove
-                </button>
-              )}
-            </div>
           </div>
         </div>
 
-        {/* API Key Configuration */}
+        {/* Provider Management */}
         <div className="border border-border-subtle bg-layer p-5">
           <div className="mb-4 flex items-start justify-between">
             <div>
               <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Key className="h-4 w-4" />
-                AI Provider Key
+                <Server className="h-4 w-4" />
+                AI Providers
               </h2>
               <p className="mt-1 text-xs text-text-helper">
-                Your NVIDIA NIM API key is encrypted at rest and only decrypted in-memory during requests.
+                Add one or more AI providers. Your API keys are encrypted at rest with AES-256-GCM.
               </p>
             </div>
-            <a
-              href="https://build.nvidia.com/explore/discover"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 px-2 py-1 text-[11px] text-interactive transition-colors hover:text-link-hover"
+            <button
+              onClick={() => {
+                setShowAddModal(true)
+                setError('')
+                setApiKey('')
+              }}
+              className="flex items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
             >
-              <ExternalLink className="h-3 w-3" />
-              Get Key
-            </a>
+              <Plus className="h-3.5 w-3.5" />
+              Add Provider
+            </button>
           </div>
 
           <AnimatePresence>
@@ -248,97 +277,81 @@ export default function Settings() {
               >
                 <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
                   <Check className="h-4 w-4 shrink-0" />
-                  API key saved successfully.
+                  Saved successfully.
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="relative">
-            <div className="flex items-center gap-2 border border-border-subtle bg-background px-3 py-2.5 focus-within:border-focus focus-within:ring-1 focus-within:ring-focus">
-              <Key className="h-4 w-4 text-text-helper shrink-0" />
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-placeholder font-mono"
-              />
-              <button
-                onClick={() => setShowKey(!showKey)}
-                className="p-1 text-text-helper transition-colors hover:text-text-primary"
-                title={showKey ? 'Hide key' : 'Show key'}
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-              {apiKey && (
-                <button
-                  onClick={handleCopyKey}
-                  className="p-1 text-text-helper transition-colors hover:text-text-primary"
-                  title="Copy to clipboard"
-                >
-                  {copied ? <Check className="h-4 w-4 text-support-success" /> : <Copy className="h-4 w-4" />}
-                </button>
-              )}
+          {providersLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
             </div>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between">
-            <p className="text-[11px] text-text-helper">
-              Your key never leaves this device unencrypted.
-            </p>
-            <div className="flex items-center gap-2">
-              {user?.has_nim_key && (
-                <button
-                  onClick={handleValidate}
-                  disabled={validating}
-                  className="flex items-center gap-2 border border-border-subtle bg-background px-3 py-2 text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                >
-                  {validating ? (
-                    <div className="h-3.5 w-3.5 animate-spin border-2 border-border-subtle border-t-text-primary" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5" />
-                  )}
-                  Test Key
-                </button>
-              )}
-              <button
-                onClick={handleSave}
-                disabled={loading || !apiKey.trim()}
-                className="flex items-center gap-2 bg-interactive px-4 py-2 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
-              >
-                {loading ? (
-                  <div className="h-3.5 w-3.5 animate-spin border-2 border-white/30 border-t-white" />
-                ) : (
-                  <Save className="h-3.5 w-3.5" />
-                )}
-                Save Key
-              </button>
+          ) : providers.length === 0 ? (
+            <div className="border border-border-subtle bg-background px-4 py-6 text-center">
+              <Server className="mx-auto mb-2 h-6 w-6 text-text-helper" />
+              <p className="text-xs text-text-helper">No providers configured</p>
+              <p className="mt-1 text-[10px] text-text-helper/70">Add a provider to start chatting</p>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              {providers.map((p) => (
+                <div key={p.id} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`flex h-6 w-6 items-center justify-center ${p.is_active ? 'bg-interactive/10' : 'bg-border-subtle'}`}>
+                      <Key className={`h-3 w-3 ${p.is_active ? 'text-interactive' : 'text-text-helper'}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
+                      <p className="text-[10px] font-mono text-text-helper truncate">{p.base_url}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleValidateProvider(p.id)}
+                      disabled={validating}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                    >
+                      {validating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <TestTube className="h-3 w-3" />
+                      )}
+                      Test
+                    </button>
+                    <button
+                      onClick={() => handleRemoveProvider(p.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <AnimatePresence>
-            {validationResult && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-3 overflow-hidden"
-              >
-                {validationResult.valid ? (
-                  <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    API key is valid and working!
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {validationResult.error || `API key validation failed (status ${validationResult.status})`}
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {validationResult && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 overflow-hidden"
+            >
+              {validationResult.valid ? (
+                <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  Provider key is valid and working!
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {validationResult.error || 'Provider validation failed'}
+                </div>
+              )}
+            </motion.div>
+          )}
         </div>
 
         {/* Memory Toggle */}
@@ -354,7 +367,6 @@ export default function Settings() {
               </p>
             </div>
           </div>
-
           <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
             <div className="flex items-center gap-3">
               <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
@@ -380,7 +392,6 @@ export default function Settings() {
               />
             </button>
           </div>
-
           <div className="mt-2 space-y-1.5">
             <div className="flex items-start gap-2 text-[11px] text-text-helper">
               <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
@@ -405,29 +416,11 @@ export default function Settings() {
           </h2>
           <div className="space-y-2">
             {[
-              {
-                label: 'Encryption at Rest',
-                desc: 'API keys are encrypted with AES-256-GCM before storage.',
-                status: 'Active',
-                color: 'text-support-success',
-              },
-              {
-                label: 'Session Authentication',
-                desc: 'JWT tokens stored in HttpOnly cookies with SameSite=Strict.',
-                status: 'Active',
-                color: 'text-support-success',
-              },
-              {
-                label: 'CSRF Protection',
-                desc: 'All state-changing requests require a valid CSRF token.',
-                status: 'Active',
-                color: 'text-support-success',
-              },
+              { label: 'Encryption at Rest', desc: 'API keys are encrypted with AES-256-GCM before storage.', status: 'Active', color: 'text-support-success' },
+              { label: 'Session Authentication', desc: 'JWT tokens stored in HttpOnly cookies with SameSite=Strict.', status: 'Active', color: 'text-support-success' },
+              { label: 'CSRF Protection', desc: 'All state-changing requests require a valid CSRF token.', status: 'Active', color: 'text-support-success' },
             ].map((item, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 border border-border-subtle bg-background px-3 py-2.5"
-              >
+              <div key={i} className="flex items-start gap-3 border border-border-subtle bg-background px-3 py-2.5">
                 <div className="mt-0.5 h-1.5 w-1.5 bg-support-success shrink-0" />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
@@ -441,6 +434,124 @@ export default function Settings() {
           </div>
         </div>
       </main>
+
+      {/* Add Provider Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4"
+            onClick={() => setShowAddModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md border border-border-subtle bg-layer p-5 shadow-xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text-primary">Add AI Provider</h3>
+                <button onClick={() => setShowAddModal(false)} className="text-text-helper hover:text-text-primary">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {error && (
+                <div className="mb-3 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    Provider
+                  </label>
+                  <select
+                    value={selectedType}
+                    onChange={(e) => setSelectedType(e.target.value)}
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
+                  >
+                    {BUILT_IN_PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedType === 'custom' && (
+                  <>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        placeholder="My Custom Provider"
+                        className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                        Base URL
+                      </label>
+                      <input
+                        type="text"
+                        value={customBaseUrl}
+                        onChange={(e) => setCustomBaseUrl(e.target.value)}
+                        placeholder="https://api.example.com/v1"
+                        className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    API Key
+                  </label>
+                  <div className="flex items-center gap-2 border border-border-subtle bg-background px-3 py-2 focus-within:border-focus focus-within:ring-1 focus-within:ring-focus">
+                    <Key className="h-4 w-4 text-text-helper shrink-0" />
+                    <input
+                      type={showKey ? 'text' : 'password'}
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-... or nvapi-..."
+                      className="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-placeholder font-mono"
+                    />
+                    <button
+                      onClick={() => setShowKey(!showKey)}
+                      className="p-1 text-text-helper transition-colors hover:text-text-primary"
+                    >
+                      {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleAddProvider}
+                    disabled={loading}
+                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Save Provider
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

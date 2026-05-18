@@ -5,7 +5,7 @@ use axum::{
     response::Response,
 };
 
-use crate::{config::Config, models::Claims, sandbox_engine::SandboxState};
+use crate::{config::Config, sandbox_engine::SandboxState};
 
 #[derive(Clone)]
 pub struct AppState {
