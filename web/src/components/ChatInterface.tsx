@@ -50,8 +50,8 @@ export default function ChatInterface({
   const queryClient = useQueryClient()
 
   const [streamState, streamActions] = useChatStream()
-  const { streaming, streamedContent, sendError, toolExecution, creatingChat, pendingFinish } = streamState
-  const { startStream, stopStream, finishStream } = streamActions
+  const { streaming, streamedContent, sendError, toolExecution, creatingChat } = streamState
+  const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const voice = useVoiceInput({
     onTranscript: (text) => {
@@ -152,15 +152,18 @@ export default function ChatInterface({
     }
   }, [chatData?.messages])
 
-  // Smoothly finish stream when persisted assistant message is confirmed
+  // Smoothly clear streamed content when persisted assistant message is confirmed
   useEffect(() => {
-    if (pendingFinish && chatData?.messages && chatData.messages.length > 0) {
+    if (!streaming && streamedContent && chatData?.messages && chatData.messages.length > 0) {
       const lastMsg = chatData.messages[chatData.messages.length - 1]
-      if (lastMsg.role === 'assistant' && streamedContent && lastMsg.content === streamedContent) {
-        finishStream()
+      if (lastMsg.role === 'assistant') {
+        const timer = setTimeout(() => {
+          clearStreamedContent()
+        }, 150)
+        return () => clearTimeout(timer)
       }
     }
-  }, [chatData?.messages, pendingFinish, streamedContent, finishStream])
+  }, [streaming, streamedContent, chatData?.messages, clearStreamedContent])
 
   const handleSend = useCallback(async (textOverride?: string) => {
     const text = textOverride || input.trim()
@@ -338,7 +341,7 @@ export default function ChatInterface({
       <ChatMessages
         messages={messages}
         streaming={streaming}
-        pendingFinish={pendingFinish}
+
         streamedContent={streamedContent}
         toolExecution={toolExecution}
         creatingChat={creatingChat}

@@ -196,13 +196,13 @@ function HeroTerminal() {
     { text: '$ vulcan --start', color: 'text-text-disabled', speed: 28 },
     { text: '[ OK ] Loading configuration...', color: 'text-text-secondary', speed: 22 },
     { text: '[ OK ] Initializing SQLite database', color: 'text-text-secondary', speed: 22 },
-    { text: '[ OK ] Connected to NVIDIA NIM API', color: 'text-support-success', speed: 24 },
+    { text: '[ OK ] Connected to AI providers', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] Sandboxed terminal initialized', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] AES-256-GCM encryption active', color: 'text-support-success', speed: 24 },
     { text: 'Loading available models...', color: 'text-interactive', speed: 30 },
-    { text: '  meta/llama-3.1-8b-instruct        ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  meta/llama-3.1-70b-instruct       ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  nvidia/nemotron-4-340b-instruct   ready', color: 'text-text-secondary', speed: 18 },
+    { text: '  nvidia/llama-3.1-8b-instruct      ready', color: 'text-text-secondary', speed: 18 },
+    { text: '  openai/gpt-4o-mini                ready', color: 'text-text-secondary', speed: 18 },
+    { text: '  groq/llama-3.3-70b-versatile      ready', color: 'text-text-secondary', speed: 18 },
     { text: '', color: 'text-text-secondary', speed: 10 },
     { text: 'Project Vulcan is ready.', color: 'text-support-success', speed: 26 },
   ]
@@ -258,7 +258,7 @@ function Hero() {
         >
           <div className="mb-6 inline-flex items-center gap-2 border border-border-subtle bg-layer px-3 py-1.5 text-xs font-medium text-text-secondary">
             <Sparkles className="h-3 w-3" />
-            Powered by NVIDIA NIM
+            Multi-Provider AI
           </div>
 
           <h1 className="mb-5 text-5xl font-light leading-tight tracking-tight text-text-primary md:text-7xl">
@@ -267,8 +267,9 @@ function Hero() {
           </h1>
 
           <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-text-secondary">
-            A secure, self-hosted AI platform. Chat with the latest models,
-            execute terminal commands safely, and bring your own NVIDIA NIM key.
+            A secure, self-hosted AI platform. Chat with the latest models from
+            NVIDIA NIM, OpenAI, Groq, and more. Execute terminal commands safely,
+            and bring your own API keys.
           </p>
 
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -341,7 +342,7 @@ function Features() {
     {
       icon: MessageSquare,
       title: 'AI Chat',
-      description: 'Real-time streaming chat with NVIDIA NIM models. Choose from the latest LLMs with a minimal interface.',
+      description: 'Real-time streaming chat with SSE, smooth handoff, syntax highlighting, and live typing indicators.',
     },
     {
       icon: Terminal,
@@ -351,12 +352,12 @@ function Features() {
     {
       icon: Lock,
       title: 'Bring Your Own Key',
-      description: 'Your NVIDIA NIM API key is encrypted with AES-256-GCM and only decrypted in-memory during requests.',
+      description: 'Your API keys are encrypted with AES-256-GCM and only decrypted in-memory during requests.',
     },
     {
       icon: Cpu,
-      title: 'Model Selection',
-      description: 'Dynamic dropdown with the latest available models fetched directly from NVIDIA NIM.',
+      title: 'Multi-Provider Support',
+      description: 'Connect NVIDIA NIM, OpenAI, Groq, or any OpenAI-compatible provider. Switch models on the fly.',
     },
     {
       icon: Shield,
@@ -646,7 +647,7 @@ function Footer() {
             View on GitHub
           </a>
           <p className="text-xs text-text-disabled">
-            Built with Rust, React, and NVIDIA NIM.
+            Built with Rust, React, and multi-provider AI.
           </p>
         </div>
       </div>
