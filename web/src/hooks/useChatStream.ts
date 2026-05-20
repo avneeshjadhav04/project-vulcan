@@ -8,11 +8,13 @@ export interface StreamState {
   sendError: string
   toolExecution: { command: string; stdout: string; stderr: string; status: string } | null
   creatingChat: boolean
+  pendingFinish: boolean
 }
 
 export interface StreamActions {
   startStream: (text: string, options: StreamOptions) => Promise<void>
   stopStream: () => void
+  finishStream: () => void
 }
 
 export interface StreamOptions {
@@ -25,6 +27,7 @@ export interface StreamOptions {
   onStreamError?: (error: string) => void
   refetchChat: () => Promise<any>
   windowHistoryReplace: (chatId: string) => void
+  onChatCreated?: () => void
 }
 
 export function useChatStream(): [StreamState, StreamActions] {
@@ -33,6 +36,7 @@ export function useChatStream(): [StreamState, StreamActions] {
   const [sendError, setSendError] = useState('')
   const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
   const [creatingChat, setCreatingChat] = useState(false)
+  const [pendingFinish, setPendingFinish] = useState(false)
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const startTimeRef = useRef<number>(0)
@@ -45,6 +49,14 @@ export function useChatStream(): [StreamState, StreamActions] {
     setStreaming(false)
     setStreamedContent('')
     setToolExecution(null)
+    setPendingFinish(false)
+  }, [])
+
+  const finishStream = useCallback(() => {
+    setStreaming(false)
+    setStreamedContent('')
+    setToolExecution(null)
+    setPendingFinish(false)
   }, [])
 
   const startStream = useCallback(async (text: string, options: StreamOptions) => {
@@ -58,12 +70,14 @@ export function useChatStream(): [StreamState, StreamActions] {
       onStreamError,
       refetchChat,
       windowHistoryReplace,
+      onChatCreated,
     } = options
 
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
     setToolExecution(null)
+    setPendingFinish(false)
     startTimeRef.current = Date.now()
 
     const controller = new AbortController()
@@ -85,6 +99,7 @@ export function useChatStream(): [StreamState, StreamActions] {
         setOptimisticTitle(text.slice(0, 50))
         windowHistoryReplace(currentChatId)
         setCreatingChat(false)
+        onChatCreated?.()
       } else {
         currentChatId = currentChatId as string
       }
@@ -157,7 +172,8 @@ export function useChatStream(): [StreamState, StreamActions] {
                 model: selectedModel.modelId,
                 durationMs: duration,
               })
-              setStreaming(false)
+              // Don't finish yet — wait for refetch to confirm message persisted
+              setPendingFinish(true)
               await refetchChat()
               return
             }
@@ -167,6 +183,7 @@ export function useChatStream(): [StreamState, StreamActions] {
               setSendError(errorMsg || 'An error occurred')
               onStreamError?.(errorMsg || 'An error occurred')
               setStreaming(false)
+              setPendingFinish(false)
               return
             }
 
@@ -196,7 +213,7 @@ export function useChatStream(): [StreamState, StreamActions] {
         model: selectedModel.modelId,
         durationMs: duration,
       })
-      setStreaming(false)
+      setPendingFinish(true)
       await refetchChat()
     } catch (err: any) {
       clearTimeout(timeoutId)
@@ -206,13 +223,14 @@ export function useChatStream(): [StreamState, StreamActions] {
       setSendError(err.message || 'Failed to send message')
       onStreamError?.(err.message || 'Failed to send message')
       setStreaming(false)
+      setPendingFinish(false)
     } finally {
       abortControllerRef.current = null
     }
   }, [])
 
   return [
-    { streaming, streamedContent, sendError, toolExecution, creatingChat },
-    { startStream, stopStream },
+    { streaming, streamedContent, sendError, toolExecution, creatingChat, pendingFinish },
+    { startStream, stopStream, finishStream },
   ]
 }

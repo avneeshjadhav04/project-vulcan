@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
@@ -47,10 +47,11 @@ export default function ChatInterface({
   const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
 
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const [streamState, streamActions] = useChatStream()
-  const { streaming, streamedContent, sendError, toolExecution, creatingChat } = streamState
-  const { startStream, stopStream } = streamActions
+  const { streaming, streamedContent, sendError, toolExecution, creatingChat, pendingFinish } = streamState
+  const { startStream, stopStream, finishStream } = streamActions
 
   const voice = useVoiceInput({
     onTranscript: (text) => {
@@ -151,6 +152,16 @@ export default function ChatInterface({
     }
   }, [chatData?.messages])
 
+  // Smoothly finish stream when persisted assistant message is confirmed
+  useEffect(() => {
+    if (pendingFinish && chatData?.messages && chatData.messages.length > 0) {
+      const lastMsg = chatData.messages[chatData.messages.length - 1]
+      if (lastMsg.role === 'assistant' && streamedContent && lastMsg.content === streamedContent) {
+        finishStream()
+      }
+    }
+  }, [chatData?.messages, pendingFinish, streamedContent, finishStream])
+
   const handleSend = useCallback(async (textOverride?: string) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
@@ -167,15 +178,17 @@ export default function ChatInterface({
         pendingMetaRef.current = meta
       },
       onStreamError: (error) => {
-        // Error is already set in hook state; this is for side effects if needed
         console.error('Stream error:', error)
       },
       refetchChat: refetch,
       windowHistoryReplace: (id) => {
         window.history.replaceState({}, '', `/chat/${id}`)
       },
+      onChatCreated: () => {
+        queryClient.invalidateQueries({ queryKey: ['chats'] })
+      },
     })
-  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream])
+  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
 
   // The hook doesn't expose these setters. I need to rethink this.
   // Let me use a reducer-based approach for ChatInterface state instead.
@@ -325,6 +338,7 @@ export default function ChatInterface({
       <ChatMessages
         messages={messages}
         streaming={streaming}
+        pendingFinish={pendingFinish}
         streamedContent={streamedContent}
         toolExecution={toolExecution}
         creatingChat={creatingChat}
