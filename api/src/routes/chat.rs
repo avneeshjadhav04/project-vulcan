@@ -863,6 +863,16 @@ async fn send_message(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Auto-update title on first user message if still "New Chat"
+    if chat.title == "New Chat" {
+        let new_title = if content.len() > 50 { &content[..50] } else { content };
+        let _ = sqlx::query("UPDATE chats SET title = ?1 WHERE id = ?2")
+            .bind(new_title)
+            .bind(id.clone())
+            .execute(&state.db)
+            .await;
+    }
+
     let _ = sqlx::query("UPDATE chats SET updated_at = datetime('now') WHERE id = ?1")
         .bind(id.clone())
         .execute(&state.db)
