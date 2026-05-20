@@ -17,6 +17,7 @@ interface MessageItem {
 interface ChatMessagesProps {
   messages: MessageItem[]
   streaming: boolean
+  pendingFinish: boolean
   streamedContent: string
   toolExecution: { command: string; stdout: string; stderr: string; status: string } | null
   creatingChat: boolean
@@ -34,6 +35,7 @@ interface ChatMessagesProps {
 export default function ChatMessages({
   messages,
   streaming,
+  pendingFinish,
   streamedContent,
   toolExecution,
   creatingChat,
@@ -69,13 +71,13 @@ export default function ChatMessages({
             <div className="h-5 w-5 animate-spin border-2 border-interactive border-t-transparent" />
             <p className="mt-3 text-xs text-text-helper">Creating chat...</p>
           </div>
-        ) : messages.length === 0 && !streaming ? (
+        ) : messages.length === 0 && !streaming && !pendingFinish ? (
           <EmptyState onSuggestion={onSuggestion} />
         ) : (
           <>
             {messages.map((msg, index) => {
-              // Skip rendering the last assistant message while streaming its content
-              if (streamedContent && msg.role === 'assistant' && index === messages.length - 1) {
+              // Skip rendering the last assistant message while streaming or finishing its content
+              if ((streamedContent || pendingFinish) && msg.role === 'assistant' && index === messages.length - 1) {
                 return null
               }
               return (
@@ -89,7 +91,7 @@ export default function ChatMessages({
               )
             })}
 
-            {toolExecution && streaming && (
+            {toolExecution && (streaming || pendingFinish) && (
               <ToolExecutionCard tool={toolExecution} />
             )}
 

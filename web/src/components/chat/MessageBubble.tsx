@@ -175,7 +175,7 @@ export default function MessageBubble({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+          <div className="flex items-center gap-1 opacity-100 transition-opacity">
             <button
               onClick={handleCopy}
               aria-label="Copy message"
