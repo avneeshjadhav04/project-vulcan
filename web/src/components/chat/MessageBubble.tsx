@@ -29,6 +29,7 @@ interface MessageBubbleProps {
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
   messageMeta?: { provider: string; model: string; durationMs: number }
+  animateMount?: boolean
 }
 
 export default function MessageBubble({
@@ -36,6 +37,7 @@ export default function MessageBubble({
   onRegenerate,
   onEdit,
   messageMeta,
+  animateMount = true,
 }: MessageBubbleProps) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -60,7 +62,7 @@ export default function MessageBubble({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={animateMount ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className={`group flex gap-3 py-3 ${isUser ? 'flex-row-reverse' : ''}`}
