@@ -371,10 +371,12 @@ async fn execute_tool(
             }
             let content = args["content"].as_str().ok_or("Missing content")?;
             let workspace = format!("./workspace/{}", chat_id);
-            tokio::fs::create_dir_all(&workspace)
-                .await
-                .map_err(|e| e.to_string())?;
             let path = std::path::Path::new(&workspace).join(filename);
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             tokio::fs::write(&path, content)
                 .await
                 .map_err(|e| e.to_string())?;

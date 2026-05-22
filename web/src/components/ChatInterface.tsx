@@ -107,13 +107,8 @@ export default function ChatInterface({
     pendingMetaRef.current = null
   }, [chatId])
 
-  // Load attached files for chat
-  useEffect(() => {
-    if (!effectiveChatId) return
-    api.get(`/chats/${effectiveChatId}/files`)
-      .then((res) => setAttachedFiles(res.data || []))
-      .catch(() => setAttachedFiles([]))
-  }, [effectiveChatId])
+  // Removed: We no longer load all past files into the input box.
+  // attachedFiles only represents files about to be sent.
 
   // Validate model when chat loads
   useEffect(() => {
@@ -152,16 +147,13 @@ export default function ChatInterface({
     }
   }, [chatData?.messages])
 
-  // Smoothly clear streamed content when persisted assistant message is confirmed
+  // Smoothly clear streamed content when streaming finishes
   useEffect(() => {
-    if (!streaming && streamedContent && chatData?.messages && chatData.messages.length > 0) {
-      const lastMsg = chatData.messages[chatData.messages.length - 1]
-      if (lastMsg.role === 'assistant') {
-        const timer = setTimeout(() => {
-          clearStreamedContent()
-        }, 150)
-        return () => clearTimeout(timer)
-      }
+    if (!streaming && streamedContent && chatData?.messages) {
+      const timer = setTimeout(() => {
+        clearStreamedContent()
+      }, 150)
+      return () => clearTimeout(timer)
     }
   }, [streaming, streamedContent, chatData?.messages, clearStreamedContent])
 
@@ -169,14 +161,18 @@ export default function ChatInterface({
     const text = textOverride || input.trim()
     if (!text || streaming) return
 
-    if (!textOverride) setInput('')
+    const currentFiles = [...attachedFiles]
+    if (!textOverride) {
+      setInput('')
+      setAttachedFiles([])
+    }
 
     await startStream(text, {
       effectiveChatId,
       selectedModel,
       setEffectiveChatId,
       setOptimisticTitle,
-      attachedFiles,
+      attachedFiles: currentFiles,
       onStreamDone: (meta) => {
         pendingMetaRef.current = meta
       },
@@ -373,6 +369,20 @@ export default function ChatInterface({
         onStop={stopStream}
         streaming={streaming}
         effectiveChatId={effectiveChatId}
+        getChatId={async () => {
+          if (effectiveChatId) return effectiveChatId
+          // Create chat optimistically
+          const createRes = await api.post('/chats', {
+            title: 'New Chat',
+            model_id: selectedModel.modelId,
+            provider_id: selectedModel.providerId || undefined,
+          })
+          const newId = createRes.data.id as string
+          setEffectiveChatId(newId)
+          window.history.replaceState({}, '', `/chat/${newId}`)
+          queryClient.invalidateQueries({ queryKey: ['chats'] })
+          return newId
+        }}
         selectedModel={selectedModel}
         onModelChange={onModelChange || (() => {})}
         attachedFiles={attachedFiles}

@@ -146,6 +146,14 @@ export default function Login() {
     setError('')
   }, [isSignup])
 
+  useEffect(() => {
+    // Fetch a pre-session CSRF token so login/signup submissions succeed
+    // under the strict CSRF middleware policy.
+    import('../lib/api').then(({ fetchCsrfToken }) => {
+      fetchCsrfToken()
+    })
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')

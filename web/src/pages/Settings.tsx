@@ -295,7 +295,7 @@ export default function Settings() {
                 setError('')
                 setApiKey('')
               }}
-              className="flex items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
+              className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
             >
               <Plus className="h-3.5 w-3.5" />
               Add Provider

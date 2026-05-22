@@ -159,6 +159,9 @@ export function useChatStream(): [StreamState, StreamActions] {
         throw new Error(text || `Request failed (${res.status})`)
       }
 
+      // Fetch the newly inserted user message right away so it shows up in UI
+      await refetchChat()
+
       const reader = res.body?.getReader()
       if (!reader) return
 

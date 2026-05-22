@@ -26,12 +26,12 @@ const getFileIcon = (mimeType: string) => {
 }
 
 interface FileUploadProps {
-  chatId: string
+  getChatId: () => Promise<string>
   files: UploadedFile[]
   onFilesChange: (files: UploadedFile[]) => void
 }
 
-export default function FileUpload({ chatId, files, onFilesChange }: FileUploadProps) {
+export default function FileUpload({ getChatId, files, onFilesChange }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
 
@@ -54,8 +54,9 @@ export default function FileUpload({ chatId, files, onFilesChange }: FileUploadP
     }
 
     try {
+      const activeChatId = await getChatId()
       const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-      const res = await fetch(`/api/chats/${chatId}/files`, {
+      const res = await fetch(`/api/chats/${activeChatId}/files`, {
         method: 'POST',
         headers: {
           'X-CSRF-Token': csrfToken,
@@ -101,8 +102,9 @@ export default function FileUpload({ chatId, files, onFilesChange }: FileUploadP
 
   const removeFile = useCallback(async (fileId: string) => {
     try {
+      const activeChatId = await getChatId()
       const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-      const res = await fetch(`/api/chats/${chatId}/files/${fileId}`, {
+      const res = await fetch(`/api/chats/${activeChatId}/files/${fileId}`, {
         method: 'DELETE',
         headers: {
           'X-CSRF-Token': csrfToken,
@@ -115,7 +117,7 @@ export default function FileUpload({ chatId, files, onFilesChange }: FileUploadP
     } catch (err) {
       console.error('Delete error:', err)
     }
-  }, [chatId, files, onFilesChange])
+  }, [getChatId, files, onFilesChange])
 
   return (
     <div className="relative">
