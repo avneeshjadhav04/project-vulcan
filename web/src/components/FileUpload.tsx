@@ -41,7 +41,16 @@ export default function FileUpload({ chatId, files, onFilesChange }: FileUploadP
 
     const formData = new FormData()
     for (const file of fileList) {
+      if (file.size > 50 * 1024 * 1024) {
+        alert(`File ${file.name} is too large. Max size is 50MB.`)
+        continue
+      }
       formData.append('file', file)
+    }
+
+    if (!Array.from(formData.keys()).length) {
+      setUploading(false)
+      return
     }
 
     try {
