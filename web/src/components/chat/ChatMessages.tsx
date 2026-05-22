@@ -86,6 +86,7 @@ export default function ChatMessages({
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   messageMeta={messageMeta[msg.id]}
+                  animateMount={!(msg.role === 'assistant' && index === lastAssistantIndex)}
                 />
               )
             })}

@@ -12,11 +12,11 @@ export default function StreamingMessage({ content, isStreaming }: { content: st
       className="flex gap-3 py-3"
     >
       <div className="flex shrink-0 flex-col items-center pt-0.5">
-        <div className="flex h-7 w-7 items-center justify-center border border-border-subtle bg-interactive">
-          <Sparkles className="h-3.5 w-3.5 text-white" aria-hidden="true" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient shadow-sm">
+          <Sparkles className="h-4 w-4 text-white" aria-hidden="true" />
         </div>
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 max-w-[85%] flex-1">
         <div className="mb-1 flex items-center gap-2">
           <span className="text-[11px] font-semibold text-text-primary">AI</span>
           {isStreaming && (
@@ -26,7 +26,7 @@ export default function StreamingMessage({ content, isStreaming }: { content: st
             </span>
           )}
         </div>
-        <div className="inline-block border border-border-subtle bg-layer px-4 py-2.5">
+        <div className="inline-block border border-white/5 bg-layer/60 px-5 py-3 text-left text-text-primary shadow-sm backdrop-blur-md rounded-2xl rounded-tl-sm">
           <div className="prose prose-invert prose-sm max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {content}
