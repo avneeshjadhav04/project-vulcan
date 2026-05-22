@@ -38,25 +38,11 @@ pub async fn init_db(config: &Config) -> Result<SqlitePool> {
         Ok(pool) => {
             println!("[DB] Connected successfully at configured location");
             run_migrations(&pool).await?;
-            return Ok(pool);
-        }
-        Err(e) => {
-            println!("[DB] Failed to open at configured location: {}", e);
-        }
-    }
-
-    // Fallback: Try in current working directory (ephemeral, lost on redeploy)
-    let fallback = "sqlite:vulcan.db".to_string();
-    println!("[DB] Trying fallback location: {}", fallback);
-    match try_connect(&fallback).await {
-        Ok(pool) => {
-            println!("[DB] Connected successfully at fallback location (./vulcan.db)");
-            println!("[DB] WARNING: Data will be lost on redeploy. Add a Render Disk at /data for persistence.");
-            run_migrations(&pool).await?;
             Ok(pool)
         }
         Err(e) => {
-            bail!("Failed to open SQLite database at any location: {}", e);
+            println!("[DB] Failed to open at configured location: {}", e);
+            bail!("Failed to open SQLite database: {}", e);
         }
     }
 }

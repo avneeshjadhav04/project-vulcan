@@ -132,7 +132,7 @@ impl Config {
         if let Some(ref origin) = cors_origin {
             println!("[CONFIG] CORS restricted to: {}", origin);
         } else {
-            println!("[CONFIG] CORS using mirror_request (dev mode)");
+            println!("[CONFIG] CORS restricted to predefined development origins");
         }
 
         Ok(Self {

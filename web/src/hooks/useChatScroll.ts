@@ -35,7 +35,21 @@ export function useChatScroll({
       const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
       if (nearBottom && !isAutoScrollingRef.current) {
         isAutoScrollingRef.current = true
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+
+        let targetElement: Element | null = null
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'user') {
+            targetElement = document.getElementById(`msg-${messages[i].id}`)
+            break
+          }
+        }
+
+        if (targetElement) {
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        } else {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }
+
         setTimeout(() => {
           isAutoScrollingRef.current = false
         }, 300)
@@ -47,7 +61,7 @@ export function useChatScroll({
         cancelAnimationFrame(scrollDebounceRef.current)
       }
     }
-  }, [messages, streamedContent])
+  }, [messages]) // Removed streamedContent so it doesn't constantly yank scroll down while reading
 
   // Reset scroll position when switching chats
   const chatContextId = messages.length === 0 ? 'empty' : messages[0]?.chat_id

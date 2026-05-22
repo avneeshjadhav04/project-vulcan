@@ -17,6 +17,7 @@ interface ChatInputProps {
   onStop: () => void
   streaming: boolean
   effectiveChatId?: string
+  getChatId: () => Promise<string>
   selectedModel: SelectedModel
   onModelChange: (sel: SelectedModel) => void
   attachedFiles: UploadedFile[]
@@ -36,6 +37,7 @@ export default function ChatInput({
   onStop,
   streaming,
   effectiveChatId,
+  getChatId,
   selectedModel,
   onModelChange,
   attachedFiles,
@@ -91,9 +93,11 @@ export default function ChatInput({
           onDragOver={(e) => e.preventDefault()}
           className="relative flex items-end gap-2 rounded-glass border border-white/10 bg-layer/50 p-2 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
         >
-          {effectiveChatId && (
-            <FileUpload chatId={effectiveChatId} files={attachedFiles} onFilesChange={onFilesChange} />
-          )}
+          <FileUpload 
+            getChatId={getChatId} 
+            files={attachedFiles} 
+            onFilesChange={onFilesChange} 
+          />
           <textarea
             ref={textareaRef}
             value={input}
