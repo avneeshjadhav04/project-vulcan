@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { SelectedModel } from '../components/ProviderModelSelector'
 
@@ -39,6 +39,7 @@ export interface StreamOptions {
   refetchChat: () => Promise<any>
   windowHistoryReplace: (chatId: string) => void
   onChatCreated?: () => void
+  isRegenerate?: boolean
 }
 
 export function useChatStream(): [StreamState, StreamActions] {
@@ -61,6 +62,14 @@ export function useChatStream(): [StreamState, StreamActions] {
     setToolExecution(null)
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
+
   const clearStreamedContent = useCallback(() => {
     setStreamedContent('')
     setToolExecution(null)
@@ -78,6 +87,7 @@ export function useChatStream(): [StreamState, StreamActions] {
       refetchChat,
       windowHistoryReplace,
       onChatCreated,
+      isRegenerate,
     } = options
 
     setStreaming(true)
@@ -131,7 +141,7 @@ export function useChatStream(): [StreamState, StreamActions] {
           'X-CSRF-Token': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || '',
         },
         credentials: 'include',
-        body: JSON.stringify({ content: messageContent }),
+        body: JSON.stringify({ content: messageContent, is_regenerate: isRegenerate }),
         signal: controller.signal,
       })
 

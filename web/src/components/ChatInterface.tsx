@@ -165,7 +165,7 @@ export default function ChatInterface({
     }
   }, [streaming, streamedContent, chatData?.messages, clearStreamedContent])
 
-  const handleSend = useCallback(async (textOverride?: string) => {
+  const handleSend = useCallback(async (textOverride?: string, isRegenerate = false) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
 
@@ -190,18 +190,31 @@ export default function ChatInterface({
       onChatCreated: () => {
         queryClient.invalidateQueries({ queryKey: ['chats'] })
       },
+      isRegenerate,
     })
   }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
 
   // The hook doesn't expose these setters. I need to rethink this.
   // Let me use a reducer-based approach for ChatInterface state instead.
 
-  const handleRegenerate = useCallback(() => {
+  const handleRegenerate = useCallback(async () => {
     const lastUserMessage = chatData?.messages?.slice().reverse().find((m) => m.role === 'user')
+    const lastAssistantMsg = chatData?.messages?.slice().reverse().find((m) => m.role === 'assistant')
+    
     if (lastUserMessage) {
-      handleSend(lastUserMessage.content)
+      if (lastAssistantMsg && effectiveChatId) {
+        try {
+          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
+          await fetch(`/api/chats/${effectiveChatId}/messages/${lastAssistantMsg.id}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': csrfToken },
+            credentials: 'include'
+          })
+        } catch (e) {}
+      }
+      handleSend(lastUserMessage.content, true)
     }
-  }, [chatData?.messages, handleSend])
+  }, [chatData?.messages, handleSend, effectiveChatId])
 
   const handleEditMessage = useCallback(async (msgId: string, newContent: string) => {
     try {

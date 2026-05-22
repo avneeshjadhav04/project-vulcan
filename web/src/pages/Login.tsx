@@ -137,7 +137,10 @@ export default function Login() {
   const navigate = useNavigate()
   const fetchMe = useAuthStore((s) => s.fetchMe)
 
-  const redirectTo = searchParams.get('redirect') || '/chat'
+  let redirectTo = searchParams.get('redirect') || '/chat'
+  if (!redirectTo.startsWith('/') || redirectTo.startsWith('//')) {
+    redirectTo = '/chat'
+  }
 
   useEffect(() => {
     setError('')

@@ -345,7 +345,7 @@ async fn execute_tool(
     match name {
         "execute_terminal_command" => {
             let cmd = args["command"].as_str().ok_or("Missing command")?;
-            let exec_res = crate::sandbox_engine::run_command_http(cmd, &state.sandbox).await;
+            let exec_res = crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], &state.sandbox).await;
             match exec_res {
                 Ok(resp) => Ok(json!({"command": cmd, "stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})),
                 Err(e) => Ok(json!({"command": cmd, "error": format!("Execution failed: {}", e), "status": "error"})),
@@ -353,6 +353,9 @@ async fn execute_tool(
         }
         "create_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
             let content = args["content"].as_str().ok_or("Missing content")?;
             let workspace = format!("./workspace/{}", chat_id);
             tokio::fs::create_dir_all(&workspace).await.map_err(|e| e.to_string())?;
@@ -362,6 +365,9 @@ async fn execute_tool(
         }
         "read_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
             let workspace = format!("./workspace/{}", chat_id);
             let path = std::path::Path::new(&workspace).join(filename);
             let content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
@@ -369,6 +375,9 @@ async fn execute_tool(
         }
         "modify_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
             let operation = args["operation"].as_str().ok_or("Missing operation")?;
             let new_content = args["new_content"].as_str().ok_or("Missing new_content")?;
             let workspace = format!("./workspace/{}", chat_id);
@@ -521,7 +530,7 @@ async fn execute_tool(
             let script_path = format!("{}/__temp_script.py", workspace);
             tokio::fs::write(&script_path, code).await.map_err(|e| e.to_string())?;
             let exec_res = crate::sandbox_engine::run_command_http(
-                &format!("python3 {}", script_path),
+                &["python3", &script_path],
                 &state.sandbox,
             ).await;
 
@@ -1230,12 +1239,19 @@ async fn send_message(
 
     let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
-    sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
-        .bind(id.clone())
-        .bind(&content)
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let is_regenerate = req.is_regenerate.unwrap_or(false);
+    if !is_regenerate {
+        sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
+            .bind(id.clone())
+            .bind(&content)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    } else {
+        // Optionally, we could delete the last assistant message here if we want to be thorough,
+        // but the frontend will also call DELETE on the specific message it wants to replace.
+        // It's safer to rely on the frontend deleting the exact message and its descendants.
+    }
 
     // Auto-update title on first user message if still "New Chat"
     if chat.title == "New Chat" {
@@ -1572,6 +1588,15 @@ async fn run_llm_stream(
                                     if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
                                         full_content.push_str(content);
                                         let _ = tx.send(content.to_string()).await;
+                                        if full_content.len() > MAX_MESSAGE_LENGTH {
+                                            tracing::error!("Full content exceeded max size, aborting stream");
+                                            let _ = tx.send("[DONE]".to_string()).await;
+                                            let estimated_tokens = (full_content.len() / 4) as i32;
+                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                                .execute(&db).await;
+                                            return;
+                                        }
                                     }
                                 }
                             }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { codeToHtml } from 'shiki'
+import DOMPurify from 'dompurify'
 
 interface CodeBlockProps {
   children: string
@@ -47,7 +48,7 @@ export default function CodeBlock({ children, className }: CodeBlockProps) {
       </div>
       <div
         className="overflow-x-auto p-3 text-sm leading-relaxed"
-        dangerouslySetInnerHTML={{ __html: highlighted || `<pre class="font-mono text-text-secondary">${escapeHtml(children)}</pre>` }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(highlighted || `<pre class="font-mono text-text-secondary">${escapeHtml(children)}</pre>`) }}
       />
     </div>
   )

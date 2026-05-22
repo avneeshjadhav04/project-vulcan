@@ -106,7 +106,10 @@ async fn run() -> anyhow::Result<()> {
             .allow_credentials(true)
     } else {
         CorsLayer::new()
-            .allow_origin(AllowOrigin::mirror_request())
+            .allow_origin(tower_http::cors::AllowOrigin::list(vec![
+                "http://localhost:5173".parse()?,
+                "http://localhost:8080".parse()?,
+            ]))
             .allow_methods([
                 axum::http::Method::GET,
                 axum::http::Method::POST,

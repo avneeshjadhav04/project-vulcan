@@ -11,6 +11,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.51",
     "axios": "^1.7",
+    "dompurify": "^3.4.5",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.414",
     "react": "^18.3",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5",
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3",
     "@types/react-dom": "^18.3",
     "@vitejs/plugin-react": "^4.3",

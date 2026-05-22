@@ -46,7 +46,15 @@ async fn upload_file(
             continue;
         }
 
-        let filename = field.file_name().unwrap_or("unnamed").to_string();
+        let raw_filename = field.file_name().unwrap_or("unnamed");
+        // Sanitize filename to prevent path traversal and header injection
+        let filename = std::path::Path::new(raw_filename)
+            .file_name()
+            .unwrap_or(std::ffi::OsStr::new("unnamed"))
+            .to_string_lossy()
+            .replace("\"", "")
+            .replace("\r", "")
+            .replace("\n", "");
         let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
         let size = data.len() as i64;

@@ -141,6 +141,7 @@ pub struct CreateChatRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SendMessageRequest {
     pub content: String,
+    pub is_regenerate: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

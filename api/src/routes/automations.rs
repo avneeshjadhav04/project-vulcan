@@ -211,16 +211,66 @@ pub async fn run_due_automations(state: &AppState) {
         match action_type {
             "chat_message" => {
                 let prompt = action["prompt"].as_str().unwrap_or("");
-                let _model_id = action["model_id"].as_str().unwrap_or("nvidia/llama-3.1-nemotron-70b");
+                let model_id = action["model_id"].as_str().unwrap_or("nvidia/llama-3.1-nemotron-70b");
 
                 if prompt.is_empty() {
                     continue;
                 }
 
-                // Execute the automation: create a chat, send the prompt, get the response
                 tracing::info!("Running automation {}: {} -> {}", auto.id, auto.name, prompt);
-                // For simplicity, just log it. Full execution requires the full chat pipeline.
-                // In production, we'd create a chat and send the message through the LLM.
+                
+                let provider: Option<crate::models::Provider> = sqlx::query_as(
+                    "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 LIMIT 1"
+                )
+                .bind(&auto.user_id)
+                .fetch_optional(&state.db)
+                .await
+                .unwrap_or(None);
+
+                let (base_url, api_key, p_id) = if let Some(p) = provider {
+                    let key = crate::oauth::decrypt_token(&p.encrypted_api_key, &state.config.master_key).unwrap_or_default();
+                    (p.base_url, key, p.id)
+                } else {
+                    tracing::warn!("No active provider found for user {}", auto.user_id);
+                    continue;
+                };
+
+                let chat_id = uuid::Uuid::new_v4().to_string();
+                let _ = sqlx::query("INSERT INTO chats (id, user_id, title, model_id, provider_id) VALUES (?1, ?2, ?3, ?4, ?5)")
+                    .bind(&chat_id)
+                    .bind(&auto.user_id)
+                    .bind(&auto.name)
+                    .bind(model_id)
+                    .bind(&p_id)
+                    .execute(&state.db).await;
+
+                let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used) VALUES (?1, 'user', ?2, ?3)")
+                    .bind(&chat_id).bind(prompt).bind(prompt.len() as i32 / 4)
+                    .execute(&state.db).await;
+
+                let payload = serde_json::json!({
+                    "model": model_id,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "stream": false
+                });
+
+                if let Ok(response) = state.http_client
+                    .post(format!("{}/chat/completions", base_url))
+                    .header("Authorization", format!("Bearer {}", api_key))
+                    .json(&payload)
+                    .send()
+                    .await 
+                {
+                    if let Ok(data) = response.json::<serde_json::Value>().await {
+                        if let Some(content) = data["choices"][0]["message"]["content"].as_str() {
+                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                .bind(&chat_id).bind(content).bind(content.len() as i32 / 4).bind(&p_id).bind(model_id)
+                                .execute(&state.db).await;
+                        }
+                    }
+                }
             }
             _ => {
                 tracing::warn!("Unknown automation action type: {}", action_type);

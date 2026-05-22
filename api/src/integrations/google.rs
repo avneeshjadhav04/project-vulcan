@@ -354,10 +354,9 @@ fn get_header(headers: &serde_json::Value, name: &str) -> String {
 
 fn extract_email_body(payload: &serde_json::Value) -> String {
     if let Some(body_data) = payload["body"]["data"].as_str() {
-        if let Ok(decoded) = base64::Engine::decode(
-            &base64::engine::general_purpose::URL_SAFE,
-            body_data.replace('-', "+").replace('_', "/")
-        ) {
+        if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE, body_data)
+            .or_else(|_| base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, body_data))
+        {
             if let Ok(s) = String::from_utf8(decoded) {
                 return s;
             }
