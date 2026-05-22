@@ -7,6 +7,11 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
   const voiceRef = useRef<any>(null)
   const voiceTimerRef = useRef<any>(null)
 
+  const onTranscriptRef = useRef(onTranscript)
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript
+  }, [onTranscript])
+
   const checkSupport = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     setVoiceSupported(!!SpeechRecognition)
@@ -59,7 +64,7 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
       voiceRef.current = null
       if (finalTranscript.trim()) {
         voiceTimerRef.current = setTimeout(() => {
-          onTranscript(finalTranscript.trim())
+          onTranscriptRef.current(finalTranscript.trim())
         }, 600)
       }
     }
@@ -107,7 +112,7 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
     } catch {
       setIsListening(false)
     }
-  }, [isListening, onTranscript])
+  }, [isListening])
 
   return { isListening, voiceSupported, checkSupport, toggle }
 }

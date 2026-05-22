@@ -41,16 +41,23 @@ export function useChatScroll({
         }, 300)
       }
     })
+
+    return () => {
+      if (scrollDebounceRef.current) {
+        cancelAnimationFrame(scrollDebounceRef.current)
+      }
+    }
   }, [messages, streamedContent])
 
   // Reset scroll position when switching chats
+  const chatContextId = messages.length === 0 ? 'empty' : messages[0]?.chat_id
   useEffect(() => {
     const container = scrollContainerRef.current
     if (container) {
       container.scrollTop = container.scrollHeight
     }
     setShowScrollBtn(false)
-  }, [messages.length === 0 ? 'empty' : messages[0]?.chat_id])
+  }, [chatContextId])
 
   return {
     messagesEndRef,

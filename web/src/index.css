@@ -4,7 +4,7 @@
 
 @layer base {
   html {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: 'Inter', sans-serif;
     background-color: #161616;
     color: #f4f4f4;
     -webkit-font-smoothing: antialiased;
@@ -57,7 +57,7 @@
     @apply w-full rounded-carbon border border-border-subtle bg-layer px-4 py-3 text-sm text-text-primary outline-none transition-all placeholder:text-text-placeholder focus:border-interactive focus:ring-1 focus:ring-interactive shadow-sm;
   }
 
-  .carton-layer {
+  .carbon-layer {
     @apply rounded-glass bg-glass-gradient backdrop-blur-xl border border-white/10;
   }
 }

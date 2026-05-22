@@ -97,7 +97,7 @@ export default function ChatInterface({
         modelId: chatData.chat.model_id,
       })
     }
-  }, [chatData?.chat.model_id, chatData?.chat.provider_id])
+  }, [chatData?.chat.model_id, chatData?.chat.provider_id, onModelChange])
 
   // Reset state when switching chats
   useEffect(() => {
