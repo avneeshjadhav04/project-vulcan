@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 
 export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) => void }) {
   const [isListening, setIsListening] = useState(false)
@@ -11,6 +11,20 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     setVoiceSupported(!!SpeechRecognition)
   }, [])
+
+  useEffect(() => {
+    checkSupport()
+    return () => {
+      if (voiceRef.current) {
+        try { voiceRef.current.stop() } catch {}
+        voiceRef.current = null
+      }
+      if (voiceTimerRef.current) {
+        clearTimeout(voiceTimerRef.current)
+        voiceTimerRef.current = null
+      }
+    }
+  }, [checkSupport])
 
   const toggle = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition

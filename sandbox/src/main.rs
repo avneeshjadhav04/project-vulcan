@@ -16,7 +16,7 @@ struct SandboxState {
 
 #[derive(serde::Deserialize)]
 struct RunRequest {
-    command: String,
+    command: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -62,15 +62,21 @@ async fn http_execute(
         .unwrap_or(false);
 
     let mut child = if use_nsjail {
-        Command::new("nsjail")
-            .args(&["--config", "/etc/nsjail.cfg", "--", "/bin/sh", "-c", &req.command])
-            .stdout(std::process::Stdio::piped())
+        let mut cmd = Command::new("nsjail");
+        cmd.args(&["--config", "/etc/nsjail.cfg", "--"]);
+        cmd.args(&req.command);
+        cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
     } else {
-        Command::new("/bin/sh")
-            .args(&["-c", &req.command])
-            .stdout(std::process::Stdio::piped())
+        if req.command.is_empty() {
+            return Err(axum::http::StatusCode::BAD_REQUEST);
+        }
+        let mut cmd = Command::new(&req.command[0]);
+        if req.command.len() > 1 {
+            cmd.args(&req.command[1..]);
+        }
+        cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
     }.map_err(|e| {
@@ -141,7 +147,13 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
                     Ok(v) => v,
                     Err(_) => continue,
                 };
-                let command = cmd["command"].as_str().unwrap_or("").to_string();
+                let command: Vec<String> = match cmd["command"].as_array() {
+                    Some(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
+                    None => {
+                        let s = cmd["command"].as_str().unwrap_or("").to_string();
+                        if s.is_empty() { vec![] } else { vec!["/bin/sh".to_string(), "-c".to_string(), s] }
+                    }
+                };
                 if command.is_empty() {
                     continue;
                 }
@@ -157,7 +169,7 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
                             return;
                         }
                     };
-                    run_command(&command, sender_clone).await;
+                    run_command(command, sender_clone).await;
                 });
             }
             Ok(WsMessage::Close(_)) => break,
@@ -170,7 +182,7 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
     }
 }
 
-async fn run_command(command: &str, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+async fn run_command(command: Vec<String>, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
         run_command_inner(command, sender.clone())
@@ -182,19 +194,17 @@ async fn run_command(command: &str, sender: Arc<tokio::sync::Mutex<futures::stre
     }
 }
 
-async fn run_command_inner(command: &str, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
     // Check if nsjail is available; fall back to direct execution for local dev
     let use_nsjail = Command::new("which").arg("nsjail").output().await
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     let mut child = if use_nsjail {
-        match Command::new("nsjail")
-            .args(&[
-                "--config", "/etc/nsjail.cfg",
-                "--",
-                "/bin/sh", "-c", command,
-            ])
+        let mut cmd = Command::new("nsjail");
+        cmd.args(&["--config", "/etc/nsjail.cfg", "--"]);
+        cmd.args(&command);
+        match cmd
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -207,8 +217,14 @@ async fn run_command_inner(command: &str, sender: Arc<tokio::sync::Mutex<futures
             }
         }
     } else {
-        match Command::new("/bin/sh")
-            .args(&["-c", command])
+        if command.is_empty() {
+            return;
+        }
+        let mut cmd = Command::new(&command[0]);
+        if command.len() > 1 {
+            cmd.args(&command[1..]);
+        }
+        match cmd
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()

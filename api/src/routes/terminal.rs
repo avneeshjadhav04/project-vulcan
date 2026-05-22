@@ -65,7 +65,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                 .await;
 
                 // Spawn command and get streaming receiver
-                let stream_rx = match crate::sandbox_engine::run_command_stream(command.clone(), sandbox.clone()).await {
+                let stream_rx = match crate::sandbox_engine::run_command_stream(vec!["/bin/bash".to_string(), "-c".to_string(), command.clone()], sandbox.clone()).await {
                     Ok(rx) => rx,
                     Err(e) => {
                         let err = serde_json::json!({"type": "stderr", "data": e}).to_string();

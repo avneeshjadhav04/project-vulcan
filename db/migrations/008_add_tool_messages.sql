@@ -6,6 +6,8 @@ PRAGMA foreign_keys = OFF;
 CREATE TABLE messages_new (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    parent_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+    branch_id TEXT,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system')),
     content TEXT NOT NULL,
     tokens_used INTEGER,
@@ -16,8 +18,8 @@ CREATE TABLE messages_new (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO messages_new (id, chat_id, role, content, tokens_used, provider_id, model_id, created_at)
-    SELECT id, chat_id, role, content, tokens_used, provider_id, model_id, created_at FROM messages;
+INSERT INTO messages_new (id, chat_id, parent_message_id, branch_id, role, content, tokens_used, provider_id, model_id, created_at)
+    SELECT id, chat_id, parent_message_id, branch_id, role, content, tokens_used, provider_id, model_id, created_at FROM messages;
 
 DROP TABLE messages;
 ALTER TABLE messages_new RENAME TO messages;

@@ -111,7 +111,7 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
                     }
 
                     // Ensure directory is executable and writable
-                    if let Err(e) = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o777)) {
+                    if let Err(e) = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700)) {
                         println!("[DB] WARNING: Could not set permissions on {}: {}", p.display(), e);
                     }
                 }
@@ -119,7 +119,7 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
 
             if path_obj.exists() {
                 println!("[DB] Database file exists, setting permissions");
-                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666));
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
             } else {
                 println!("[DB] Database file does not exist yet, will be created on connect");
             }
@@ -131,13 +131,16 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
         .map_err(|e| anyhow::anyhow!("Invalid SQLite connection URL: {}", e))?
         .create_if_missing(true);
     let pool = SqlitePoolOptions::new()
+        .after_connect(|conn, _meta| Box::pin(async move {
+            use sqlx::Executor;
+            conn.execute("PRAGMA foreign_keys = ON").await?;
+            Ok(())
+        }))
         .connect_with(opts)
         .await?;
     println!("[DB] SQLite pool created successfully");
 
-    // Enable foreign keys and WAL mode for every connection
-    sqlx::query("PRAGMA foreign_keys = ON").execute(&pool).await?;
-    println!("[DB] Foreign keys enabled");
+    // Enable WAL mode
     sqlx::query("PRAGMA journal_mode = WAL").execute(&pool).await?;
     println!("[DB] WAL mode enabled");
 

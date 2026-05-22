@@ -47,7 +47,7 @@ fn verify_proot_env() -> Result<(), String> {
 }
 
 /// Build a Command that runs inside the proot Ubuntu environment.
-fn build_proot_command(cmd: &str) -> Result<Command, String> {
+fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
     verify_proot_env()?;
 
     let mut command = Command::new("proot");
@@ -64,15 +64,13 @@ fn build_proot_command(cmd: &str) -> Result<Command, String> {
         "/tmp:/tmp",
         "-w",
         WORKSPACE_GUEST_PATH,
-        "/bin/bash",
-        "-c",
-        cmd,
     ]);
+    command.args(cmd);
     Ok(command)
 }
 
 /// Execute a command and return the complete output (for AI tool calling).
-pub async fn run_command_http(cmd: &str, state: &SandboxState) -> Result<RunResponse, String> {
+pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunResponse, String> {
     let _permit = state
         .semaphore
         .acquire()
@@ -140,7 +138,7 @@ pub async fn run_command_http(cmd: &str, state: &SandboxState) -> Result<RunResp
 /// - `{"type":"stderr","data":"..."}`
 /// - `{"status":"success|error","code":N}`
 pub async fn run_command_stream(
-    cmd: String,
+    cmd: Vec<String>,
     state: SandboxState,
 ) -> Result<mpsc::UnboundedReceiver<String>, String> {
     let (tx, rx) = mpsc::unbounded_channel();
@@ -159,14 +157,15 @@ pub async fn run_command_stream(
             }
         };
         let _permit = permit; // hold permit for duration of command
-        run_command_inner(&cmd, tx).await;
+        run_command_inner(cmd, tx).await;
     });
 
     Ok(rx)
 }
 
-async fn run_command_inner(cmd: &str, sender: mpsc::UnboundedSender<String>) {
-    let mut child = match build_proot_command(cmd) {
+async fn run_command_inner(cmd: Vec<String>, sender: mpsc::UnboundedSender<String>) {
+    let cmd_refs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+    let mut child = match build_proot_command(&cmd_refs) {
         Ok(mut c) => match c
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

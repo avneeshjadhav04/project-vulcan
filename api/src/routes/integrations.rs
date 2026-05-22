@@ -78,7 +78,7 @@ async fn auth_url(
     State(state): State<AppState>,
     _claims: axum::Extension<Claims>,
     Path(provider): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<impl axum::response::IntoResponse, StatusCode> {
     let (config, state_param, challenge, _verifier) = match provider.as_str() {
         "google" => {
             let cfg = integrations::google::google_oauth_config(&state)
@@ -97,38 +97,53 @@ async fn auth_url(
         _ => return Err(StatusCode::NOT_FOUND),
     };
 
-    // Store state → verifier mapping temporarily (in-memory via DB or we could use a cookie)
-    // For simplicity, store the verifier in a short-lived cookie
-    // Actually, we'll encode verifier in the state parameter
-    // The state will be: random_32_bytes + ":" + verifier
-    let combined_state = format!("{}:{}", state_param, _verifier);
+    let url = oauth::build_auth_url(&config, &state_param, &challenge);
 
-    let url = oauth::build_auth_url(&config, &combined_state, &challenge);
+    let cookie_value = format!("{}:{}", state_param, _verifier);
+    let cookie_str = format!("oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax", cookie_value);
+    
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(axum::http::header::SET_COOKIE, cookie_str.parse().unwrap());
 
-    Ok(Json(serde_json::json!({"url": url})))
+    Ok((headers, Json(serde_json::json!({"url": url}))))
 }
 
 async fn oauth_callback(
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
-) -> Result<Redirect, StatusCode> {
+) -> Result<impl axum::response::IntoResponse, StatusCode> {
     if let Some(error) = query.error {
         tracing::warn!("OAuth callback error for {}: {}", provider, error);
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Extract verifier from state
-    let verifier = query.state
-        .split(':')
-        .nth(1)
-        .unwrap_or("")
-        .to_string();
+    let cookie_header = headers.get(axum::http::header::COOKIE)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
 
-    if verifier.is_empty() {
+    let mut stored_state = None;
+    let mut stored_verifier = None;
+    for c in cookie_header.split(';') {
+        let c = c.trim();
+        if c.starts_with("oauth_state=") {
+            let val = &c["oauth_state=".len()..];
+            let parts: Vec<&str> = val.split(':').collect();
+            if parts.len() == 2 {
+                stored_state = Some(parts[0].to_string());
+                stored_verifier = Some(parts[1].to_string());
+            }
+        }
+    }
+
+    if stored_state.is_none() || stored_state.unwrap() != query.state {
+        tracing::warn!("OAuth CSRF validation failed");
         return Err(StatusCode::BAD_REQUEST);
     }
+    
+    let verifier = stored_verifier.unwrap();
 
     let config = match provider.as_str() {
         "google" => integrations::google::google_oauth_config(&state)
@@ -180,9 +195,13 @@ async fn oauth_callback(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let clear_cookie = "oauth_state=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(axum::http::header::SET_COOKIE, clear_cookie.parse().unwrap());
+
     // Redirect back to settings page
     let redirect_url = format!("{}/settings?integration={}&status=connected", state.config.app_base_url, provider);
-    Ok(Redirect::to(&redirect_url))
+    Ok((headers, Redirect::to(&redirect_url)))
 }
 
 async fn disconnect(
