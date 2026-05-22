@@ -170,51 +170,53 @@ export function useChatStream(): [StreamState, StreamActions] {
         buffer = events.pop() || ''
 
         for (const event of events) {
-          for (const line of event.split('\n')) {
-            if (!line.startsWith('data: ')) continue
-            const raw = line.slice(6)
-            if (!raw.trim()) continue
+          const raw = event
+            .split('\n')
+            .filter((line) => line.startsWith('data: '))
+            .map((line) => line.slice(6))
+            .join('\n')
 
-            if (raw === '[DONE]') {
-              setToolExecution(null)
-              const duration = Date.now() - startTimeRef.current
-              onStreamDone?.({
-                provider: selectedModel.providerId || '',
-                model: selectedModel.modelId,
-                durationMs: duration,
-              })
-              setStreaming(false)
-              return true
-            }
+          if (!raw.trim()) continue
 
-            if (raw.startsWith('[ERR]') && raw.endsWith('[/ERR]')) {
-              const errorMsg = raw.slice(5, -6)
-              setSendError(errorMsg || 'An error occurred')
-              onStreamError?.(errorMsg || 'An error occurred')
-              setStreaming(false)
-              return true
-            }
-
-            if (raw.startsWith('[TOOL]') && raw.endsWith('[/TOOL]')) {
-              try {
-                const toolData = JSON.parse(raw.slice(6, -7))
-                setToolExecution({
-                  tool_name: toolData.tool_name || 'unknown',
-                  tool_id: toolData.tool_id || '',
-                  command: toolData.command || '',
-                  stdout: toolData.stdout || '',
-                  stderr: toolData.stderr || '',
-                  status: toolData.status || 'error',
-                  filename: toolData.filename || '',
-                  query: toolData.query || '',
-                  results: toolData.results || [],
-                })
-              } catch {}
-              continue
-            }
-
-            setStreamedContent((prev) => prev + raw)
+          if (raw === '[DONE]') {
+            setToolExecution(null)
+            const duration = Date.now() - startTimeRef.current
+            onStreamDone?.({
+              provider: selectedModel.providerId || '',
+              model: selectedModel.modelId,
+              durationMs: duration,
+            })
+            setStreaming(false)
+            return true
           }
+
+          if (raw.startsWith('[ERR]') && raw.endsWith('[/ERR]')) {
+            const errorMsg = raw.slice(5, -6)
+            setSendError(errorMsg || 'An error occurred')
+            onStreamError?.(errorMsg || 'An error occurred')
+            setStreaming(false)
+            return true
+          }
+
+          if (raw.startsWith('[TOOL]') && raw.endsWith('[/TOOL]')) {
+            try {
+              const toolData = JSON.parse(raw.slice(6, -7))
+              setToolExecution({
+                tool_name: toolData.tool_name || 'unknown',
+                tool_id: toolData.tool_id || '',
+                command: toolData.command || '',
+                stdout: toolData.stdout || '',
+                stderr: toolData.stderr || '',
+                status: toolData.status || 'error',
+                filename: toolData.filename || '',
+                query: toolData.query || '',
+                results: toolData.results || [],
+              })
+            } catch {}
+            continue
+          }
+
+          setStreamedContent((prev) => prev + raw)
         }
         return false
       }

@@ -1,5 +1,8 @@
 use axum::{
-    extract::{ws::{Message as WsMessage, WebSocket, WebSocketUpgrade}, State, Json},
+    extract::{
+        ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
+        Json, State,
+    },
     response::Response,
     routing::{get, post},
     Router,
@@ -55,15 +58,22 @@ async fn http_execute(
     State(state): State<SandboxState>,
     Json(req): Json<RunRequest>,
 ) -> Result<Json<RunResponse>, axum::http::StatusCode> {
-    let _permit = state.semaphore.acquire().await.map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let _permit = state
+        .semaphore
+        .acquire()
+        .await
+        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
 
-    let use_nsjail = Command::new("which").arg("nsjail").output().await
+    let use_nsjail = Command::new("which")
+        .arg("nsjail")
+        .output()
+        .await
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     let mut child = if use_nsjail {
         let mut cmd = Command::new("nsjail");
-        cmd.args(&["--config", "/etc/nsjail.cfg", "--"]);
+        cmd.args(["--config", "/etc/nsjail.cfg", "--"]);
         cmd.args(&req.command);
         cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -79,38 +89,43 @@ async fn http_execute(
         cmd.stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-    }.map_err(|e| {
+    }
+    .map_err(|e| {
         tracing::error!("Failed to spawn command: {}", e);
         axum::http::StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        async {
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let mut stdout_buf = Vec::new();
+        let mut stderr_buf = Vec::new();
 
-            let mut stdout_reader = tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
-            let mut stderr_reader = tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
+        let mut stdout_reader =
+            tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
+        let mut stderr_reader =
+            tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
 
-            let stdout_fut = tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
-            let stderr_fut = tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
+        let stdout_fut = tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
+        let stderr_fut = tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
 
-            let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
-            if stdout_res.is_err() || stderr_res.is_err() {
-                return Err("Failed to read output");
-            }
-
-            let status = child.wait().await.map_err(|_| "Wait failed")?;
-
-            Ok(RunResponse {
-                stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
-                stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
-                status: if status.success() { "success".to_string() } else { "error".to_string() },
-                code: status.code(),
-            })
+        let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
+        if stdout_res.is_err() || stderr_res.is_err() {
+            return Err("Failed to read output");
         }
-    ).await;
+
+        let status = child.wait().await.map_err(|_| "Wait failed")?;
+
+        Ok(RunResponse {
+            stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
+            stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
+            status: if status.success() {
+                "success".to_string()
+            } else {
+                "error".to_string()
+            },
+            code: status.code(),
+        })
+    })
+    .await;
 
     match result {
         Ok(Ok(resp)) => Ok(Json(resp)),
@@ -127,10 +142,7 @@ async fn http_execute(
     }
 }
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<SandboxState>,
-) -> Response {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<SandboxState>) -> Response {
     ws.max_message_size(64 * 1024)
         .max_frame_size(64 * 1024)
         .on_upgrade(move |socket| handle_socket(socket, state))
@@ -148,10 +160,17 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
                     Err(_) => continue,
                 };
                 let command: Vec<String> = match cmd["command"].as_array() {
-                    Some(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
+                    Some(arr) => arr
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect(),
                     None => {
                         let s = cmd["command"].as_str().unwrap_or("").to_string();
-                        if s.is_empty() { vec![] } else { vec!["/bin/sh".to_string(), "-c".to_string(), s] }
+                        if s.is_empty() {
+                            vec![]
+                        } else {
+                            vec!["/bin/sh".to_string(), "-c".to_string(), s]
+                        }
                     }
                 };
                 if command.is_empty() {
@@ -165,7 +184,11 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
                         Ok(p) => p,
                         Err(_) => {
                             let payload = serde_json::json!({"status": "error", "message": "Server overloaded"}).to_string();
-                            let _ = sender_clone.lock().await.send(WsMessage::Text(payload)).await;
+                            let _ = sender_clone
+                                .lock()
+                                .await
+                                .send(WsMessage::Text(payload))
+                                .await;
                             return;
                         }
                     };
@@ -182,27 +205,39 @@ async fn handle_socket(socket: WebSocket, state: SandboxState) {
     }
 }
 
-async fn run_command(command: Vec<String>, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+async fn run_command(
+    command: Vec<String>,
+    sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>,
+) {
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
-        run_command_inner(command, sender.clone())
-    ).await;
+        run_command_inner(command, sender.clone()),
+    )
+    .await;
 
     if result.is_err() {
-        let payload = serde_json::json!({"status": "error", "message": "Command timed out after 60 seconds"}).to_string();
+        let payload =
+            serde_json::json!({"status": "error", "message": "Command timed out after 60 seconds"})
+                .to_string();
         let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
     }
 }
 
-async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>) {
+async fn run_command_inner(
+    command: Vec<String>,
+    sender: Arc<tokio::sync::Mutex<futures::stream::SplitSink<WebSocket, WsMessage>>>,
+) {
     // Check if nsjail is available; fall back to direct execution for local dev
-    let use_nsjail = Command::new("which").arg("nsjail").output().await
+    let use_nsjail = Command::new("which")
+        .arg("nsjail")
+        .output()
+        .await
         .map(|o| o.status.success())
         .unwrap_or(false);
 
     let mut child = if use_nsjail {
         let mut cmd = Command::new("nsjail");
-        cmd.args(&["--config", "/etc/nsjail.cfg", "--"]);
+        cmd.args(["--config", "/etc/nsjail.cfg", "--"]);
         cmd.args(&command);
         match cmd
             .stdout(std::process::Stdio::piped())
@@ -211,7 +246,8 @@ async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<
         {
             Ok(c) => c,
             Err(e) => {
-                let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+                let payload =
+                    serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
                 let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
                 return;
             }
@@ -231,7 +267,8 @@ async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<
         {
             Ok(c) => c,
             Err(e) => {
-                let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+                let payload =
+                    serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
                 let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
                 return;
             }
@@ -252,7 +289,11 @@ async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<
         let mut lines = stdout_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let payload = serde_json::json!({"type": "stdout", "data": line}).to_string();
-            let _ = sender_stdout.lock().await.send(WsMessage::Text(payload)).await;
+            let _ = sender_stdout
+                .lock()
+                .await
+                .send(WsMessage::Text(payload))
+                .await;
         }
     };
 
@@ -261,7 +302,11 @@ async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<
         let mut lines = stderr_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let payload = serde_json::json!({"type": "stderr", "data": line}).to_string();
-            let _ = sender_stderr.lock().await.send(WsMessage::Text(payload)).await;
+            let _ = sender_stderr
+                .lock()
+                .await
+                .send(WsMessage::Text(payload))
+                .await;
         }
     };
 
@@ -275,7 +320,8 @@ async fn run_command_inner(command: Vec<String>, sender: Arc<tokio::sync::Mutex<
             let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
         }
         Err(e) => {
-            let payload = serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+            let payload =
+                serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
             let _ = sender.lock().await.send(WsMessage::Text(payload)).await;
         }
     }

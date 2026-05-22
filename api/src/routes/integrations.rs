@@ -36,7 +36,7 @@ async fn list_integrations(
     claims: axum::Extension<Claims>,
 ) -> Result<Json<Vec<IntegrationInfo>>, StatusCode> {
     let credentials: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT provider, scopes, expires_at FROM integration_credentials WHERE user_id = ?1"
+        "SELECT provider, scopes, expires_at FROM integration_credentials WHERE user_id = ?1",
     )
     .bind(&claims.sub)
     .fetch_all(&state.db)
@@ -100,8 +100,11 @@ async fn auth_url(
     let url = oauth::build_auth_url(&config, &state_param, &challenge);
 
     let cookie_value = format!("{}:{}", state_param, _verifier);
-    let cookie_str = format!("oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax", cookie_value);
-    
+    let cookie_str = format!(
+        "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
+        cookie_value
+    );
+
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(axum::http::header::SET_COOKIE, cookie_str.parse().unwrap());
 
@@ -120,7 +123,8 @@ async fn oauth_callback(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let cookie_header = headers.get(axum::http::header::COOKIE)
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("");
 
@@ -128,8 +132,7 @@ async fn oauth_callback(
     let mut stored_verifier = None;
     for c in cookie_header.split(';') {
         let c = c.trim();
-        if c.starts_with("oauth_state=") {
-            let val = &c["oauth_state=".len()..];
+        if let Some(val) = c.strip_prefix("oauth_state=") {
             let parts: Vec<&str> = val.split(':').collect();
             if parts.len() == 2 {
                 stored_state = Some(parts[0].to_string());
@@ -142,7 +145,7 @@ async fn oauth_callback(
         tracing::warn!("OAuth CSRF validation failed");
         return Err(StatusCode::BAD_REQUEST);
     }
-    
+
     let verifier = stored_verifier.unwrap();
 
     let config = match provider.as_str() {
@@ -163,7 +166,9 @@ async fn oauth_callback(
     let encrypted_access = oauth::encrypt_token(&token.access_token, &state.config.master_key)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let encrypted_refresh = token.refresh_token.as_ref()
+    let encrypted_refresh = token
+        .refresh_token
+        .as_ref()
         .map(|rt| oauth::encrypt_token(rt, &state.config.master_key))
         .transpose()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -197,10 +202,16 @@ async fn oauth_callback(
 
     let clear_cookie = "oauth_state=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::SET_COOKIE, clear_cookie.parse().unwrap());
+    headers.insert(
+        axum::http::header::SET_COOKIE,
+        clear_cookie.parse().unwrap(),
+    );
 
     // Redirect back to settings page
-    let redirect_url = format!("{}/settings?integration={}&status=connected", state.config.app_base_url, provider);
+    let redirect_url = format!(
+        "{}/settings?integration={}&status=connected",
+        state.config.app_base_url, provider
+    );
     Ok((headers, Redirect::to(&redirect_url)))
 }
 
@@ -209,14 +220,13 @@ async fn disconnect(
     claims: axum::Extension<Claims>,
     Path(provider): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
-    let result = sqlx::query(
-        "DELETE FROM integration_credentials WHERE user_id = ?1 AND provider = ?2"
-    )
-    .bind(&claims.sub)
-    .bind(&provider)
-    .execute(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let result =
+        sqlx::query("DELETE FROM integration_credentials WHERE user_id = ?1 AND provider = ?2")
+            .bind(&claims.sub)
+            .bind(&provider)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);

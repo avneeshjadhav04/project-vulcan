@@ -1,14 +1,13 @@
-use crate::{
-    middleware::AppState,
-    models::IntegrationCredential,
-    oauth,
-};
+use crate::{middleware::AppState, models::IntegrationCredential, oauth};
 use serde_json::json;
 
 pub fn google_oauth_config(state: &AppState) -> Option<oauth::OAuthConfig> {
     let client_id = state.config.google_client_id.clone()?;
     let client_secret = state.config.google_client_secret.clone()?;
-    let redirect_uri = format!("{}/api/integrations/google/callback", state.config.app_base_url);
+    let redirect_uri = format!(
+        "{}/api/integrations/google/callback",
+        state.config.app_base_url
+    );
 
     Some(oauth::OAuthConfig {
         client_id,
@@ -31,7 +30,7 @@ pub async fn get_valid_token(
 ) -> Result<String, String> {
     let config = google_oauth_config(state).ok_or("Google OAuth not configured")?;
 
-    if oauth::is_token_expired(&credential. expires_at) {
+    if oauth::is_token_expired(&credential.expires_at) {
         let refresh_token = credential
             .encrypted_refresh_token
             .as_ref()
@@ -40,9 +39,11 @@ pub async fn get_valid_token(
         let rt = oauth::decrypt_token(refresh_token, &state.config.master_key)?;
         let new_token = oauth::refresh_access_token(&state.http_client, &config, &rt).await?;
 
-        credential.encrypted_access_token = oauth::encrypt_token(&new_token.access_token, &state.config.master_key)?;
+        credential.encrypted_access_token =
+            oauth::encrypt_token(&new_token.access_token, &state.config.master_key)?;
         if let Some(ref rt2) = new_token.refresh_token {
-            credential.encrypted_refresh_token = Some(oauth::encrypt_token(rt2, &state.config.master_key)?);
+            credential.encrypted_refresh_token =
+                Some(oauth::encrypt_token(rt2, &state.config.master_key)?);
         }
         credential.expires_at = oauth::compute_expiry(new_token.expires_in);
 
@@ -85,7 +86,8 @@ pub async fn list_calendar_events(
     }
     url = format!("{}?{}", url, query_parts.join("&"));
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -99,19 +101,25 @@ pub async fn list_calendar_events(
 
     let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
 
-    let events = data["items"].as_array().map(|items| {
-        items.iter().map(|e| {
-            json!({
-                "id": e["id"],
-                "summary": e["summary"],
-                "start": e["start"],
-                "end": e["end"],
-                "location": e["location"],
-                "description": e.get("description"),
-                "attendees": e.get("attendees"),
-            })
-        }).collect::<Vec<_>>()
-    }).unwrap_or_default();
+    let events = data["items"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|e| {
+                    json!({
+                        "id": e["id"],
+                        "summary": e["summary"],
+                        "start": e["start"],
+                        "end": e["end"],
+                        "location": e["location"],
+                        "description": e.get("description"),
+                        "attendees": e.get("attendees"),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
 
     Ok(json!({"status": "success", "events": events, "count": events.len()}))
 }
@@ -125,8 +133,12 @@ pub async fn create_calendar_event(
     let token = get_valid_token(state, &mut cred).await?;
 
     let summary = params["summary"].as_str().ok_or("Missing summary")?;
-    let start_time = params["start_time"].as_str().ok_or("Missing start_time (ISO 8601)")?;
-    let end_time = params["end_time"].as_str().ok_or("Missing end_time (ISO 8601)")?;
+    let start_time = params["start_time"]
+        .as_str()
+        .ok_or("Missing start_time (ISO 8601)")?;
+    let end_time = params["end_time"]
+        .as_str()
+        .ok_or("Missing end_time (ISO 8601)")?;
 
     let body = json!({
         "summary": summary,
@@ -136,7 +148,8 @@ pub async fn create_calendar_event(
         "location": params["location"].as_str().unwrap_or(""),
     });
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .post("https://www.googleapis.com/calendar/v3/calendars/primary/events")
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
@@ -171,8 +184,12 @@ pub async fn delete_calendar_event(
 
     let event_id = params["event_id"].as_str().ok_or("Missing event_id")?;
 
-    let url = format!("https://www.googleapis.com/calendar/v3/calendars/primary/events/{}", urlencoding::encode(event_id));
-    let res = state.http_client
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events/{}",
+        urlencoding::encode(event_id)
+    );
+    let res = state
+        .http_client
         .delete(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -206,14 +223,13 @@ pub async fn send_email(
         "From: me\r\nTo: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{}",
         to, subject, body_text
     );
-    let encoded = base64::Engine::encode(
-        &base64::engine::general_purpose::URL_SAFE,
-        email.as_bytes()
-    );
+    let encoded =
+        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE, email.as_bytes());
 
     let gmail_body = json!({"raw": encoded});
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send")
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
@@ -242,12 +258,20 @@ pub async fn list_emails(
     let query = params["query"].as_str().unwrap_or("");
 
     let url = if query.is_empty() {
-        format!("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={}", max_results)
+        format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={}",
+            max_results
+        )
     } else {
-        format!("https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={}&q={}", max_results, urlencoding::encode(query))
+        format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={}&q={}",
+            max_results,
+            urlencoding::encode(query)
+        )
     };
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -305,8 +329,12 @@ pub async fn read_email(
 
     let email_id = params["email_id"].as_str().ok_or("Missing email_id")?;
 
-    let res = state.http_client
-        .get(format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full", email_id))
+    let res = state
+        .http_client
+        .get(format!(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=full",
+            email_id
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -336,16 +364,9 @@ pub async fn read_email(
     }))
 }
 
-pub async fn search_emails(
-    state: &AppState,
-    user_id: &str,
-    params: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    list_emails(state, user_id, params).await
-}
-
 fn get_header(headers: &serde_json::Value, name: &str) -> String {
-    headers.as_array()
+    headers
+        .as_array()
         .and_then(|h| h.iter().find(|h| h["name"] == name))
         .and_then(|h| h["value"].as_str())
         .unwrap_or("")
@@ -354,9 +375,13 @@ fn get_header(headers: &serde_json::Value, name: &str) -> String {
 
 fn extract_email_body(payload: &serde_json::Value) -> String {
     if let Some(body_data) = payload["body"]["data"].as_str() {
-        if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE, body_data)
-            .or_else(|_| base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, body_data))
-        {
+        if let Ok(decoded) = base64::Engine::decode(
+            &base64::engine::general_purpose::URL_SAFE,
+            body_data,
+        )
+        .or_else(|_| {
+            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, body_data)
+        }) {
             if let Ok(s) = String::from_utf8(decoded) {
                 return s;
             }
@@ -385,7 +410,7 @@ async fn get_credential(
     provider: &str,
 ) -> Result<IntegrationCredential, String> {
     sqlx::query_as::<_, IntegrationCredential>(
-        "SELECT * FROM integration_credentials WHERE user_id = ?1 AND provider = ?2"
+        "SELECT * FROM integration_credentials WHERE user_id = ?1 AND provider = ?2",
     )
     .bind(user_id)
     .bind(provider)

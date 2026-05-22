@@ -35,7 +35,10 @@ pub fn router() -> Router<AppState> {
     let cache: ModelCache = Arc::new(RwLock::new(HashMap::new()));
 
     Router::new()
-        .route("/models", get(move |state, claims| list_models(state, claims, cache.clone())))
+        .route(
+            "/models",
+            get(move |state, claims| list_models(state, claims, cache.clone())),
+        )
         .route("/models/validate", get(validate_model))
 }
 
@@ -52,7 +55,7 @@ async fn list_models(
     cache: ModelCache,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let providers: Vec<Provider> = sqlx::query_as(
-        "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 ORDER BY created_at ASC"
+        "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 ORDER BY created_at ASC",
     )
     .bind(&claims.sub)
     .fetch_all(&state.db)
@@ -121,7 +124,8 @@ async fn fetch_models_for_provider(
         }
     };
 
-    let res = match state.http_client
+    let res = match state
+        .http_client
         .get(format!("{}/models", provider.base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
@@ -136,7 +140,11 @@ async fn fetch_models_for_provider(
     };
 
     if !res.status().is_success() {
-        tracing::error!("Models endpoint returned status: {} for {}", res.status(), provider.base_url);
+        tracing::error!(
+            "Models endpoint returned status: {} for {}",
+            res.status(),
+            provider.base_url
+        );
         write.insert(cache_key, (Vec::new(), now));
         return fallback_for_provider(provider);
     }
@@ -144,7 +152,11 @@ async fn fetch_models_for_provider(
     let data: serde_json::Value = match res.json().await {
         Ok(d) => d,
         Err(e) => {
-            tracing::error!("Failed to parse models response from {}: {}", provider.base_url, e);
+            tracing::error!(
+                "Failed to parse models response from {}: {}",
+                provider.base_url,
+                e
+            );
             write.insert(cache_key, (Vec::new(), now));
             return fallback_for_provider(provider);
         }
@@ -165,7 +177,10 @@ async fn fetch_models_for_provider(
         .collect();
 
     let models = if models.is_empty() {
-        tracing::warn!("Provider {} returned empty model list, using fallback", provider.base_url);
+        tracing::warn!(
+            "Provider {} returned empty model list, using fallback",
+            provider.base_url
+        );
         fallback_for_provider(provider)
     } else {
         models
@@ -192,19 +207,26 @@ async fn validate_model(
     let model_id = params.get("model_id").cloned().unwrap_or_default();
 
     if provider_id.is_empty() || model_id.is_empty() {
-        return Ok(Json(json!({"valid": false, "error": "provider_id and model_id are required"})));
+        return Ok(Json(
+            json!({"valid": false, "error": "provider_id and model_id are required"}),
+        ));
     }
 
-    let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
-        .bind(&provider_id)
-        .bind(&claims.sub)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let provider: Provider =
+        sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+            .bind(&provider_id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let api_key = match decrypt_key(&provider.encrypted_api_key, &state.config.master_key) {
         Ok(k) => k,
-        Err(_) => return Ok(Json(json!({"valid": false, "error": "Failed to decrypt API key"}))),
+        Err(_) => {
+            return Ok(Json(
+                json!({"valid": false, "error": "Failed to decrypt API key"}),
+            ))
+        }
     };
 
     let test_body = json!({
@@ -214,7 +236,8 @@ async fn validate_model(
         "stream": false,
     });
 
-    let test_res = state.http_client
+    let test_res = state
+        .http_client
         .post(format!("{}/chat/completions", provider.base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
@@ -226,12 +249,23 @@ async fn validate_model(
         Ok(res) => {
             let status = res.status();
             if status.is_success() {
-                Ok(Json(json!({"valid": true, "provider_id": provider_id, "model_id": model_id})))
+                Ok(Json(
+                    json!({"valid": true, "provider_id": provider_id, "model_id": model_id}),
+                ))
             } else {
                 let body = res.text().await.unwrap_or_default();
-                tracing::warn!("Model validation failed for {}/{}: {} - {}", provider_id, model_id, status, body);
+                tracing::warn!(
+                    "Model validation failed for {}/{}: {} - {}",
+                    provider_id,
+                    model_id,
+                    status,
+                    body
+                );
                 let error_msg = if status == 404 {
-                    format!("Model '{}' is not available on this provider (404).", model_id)
+                    format!(
+                        "Model '{}' is not available on this provider (404).",
+                        model_id
+                    )
                 } else {
                     format!("Model validation failed: {}", status)
                 };
@@ -246,7 +280,9 @@ async fn validate_model(
         }
         Err(e) => {
             tracing::error!("Model validation request failed: {}", e);
-            Ok(Json(json!({"valid": false, "error": format!("Connection failed: {}", e)})))
+            Ok(Json(
+                json!({"valid": false, "error": format!("Connection failed: {}", e)}),
+            ))
         }
     }
 }

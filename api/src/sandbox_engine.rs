@@ -71,11 +71,7 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
 
 /// Execute a command and return the complete output (for AI tool calling).
 pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunResponse, String> {
-    let _permit = state
-        .semaphore
-        .acquire()
-        .await
-        .map_err(|e| e.to_string())?;
+    let _permit = state.semaphore.acquire().await.map_err(|e| e.to_string())?;
 
     let mut child = build_proot_command(cmd)?
         .stdout(std::process::Stdio::piped())
@@ -83,41 +79,36 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
         .spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        async {
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        let mut stdout_buf = Vec::new();
+        let mut stderr_buf = Vec::new();
 
-            let mut stdout_reader =
-                tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
-            let mut stderr_reader =
-                tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
+        let mut stdout_reader =
+            tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
+        let mut stderr_reader =
+            tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
 
-            let stdout_fut =
-                tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
-            let stderr_fut =
-                tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
+        let stdout_fut = tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
+        let stderr_fut = tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
 
-            let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
-            if stdout_res.is_err() || stderr_res.is_err() {
-                return Err("Failed to read output".to_string());
-            }
+        let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
+        if stdout_res.is_err() || stderr_res.is_err() {
+            return Err("Failed to read output".to_string());
+        }
 
-            let status = child.wait().await.map_err(|e| e.to_string())?;
+        let status = child.wait().await.map_err(|e| e.to_string())?;
 
-            Ok(RunResponse {
-                stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
-                stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
-                status: if status.success() {
-                    "success".to_string()
-                } else {
-                    "error".to_string()
-                },
-                code: status.code(),
-            })
-        },
-    )
+        Ok(RunResponse {
+            stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
+            stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
+            status: if status.success() {
+                "success".to_string()
+            } else {
+                "error".to_string()
+            },
+            code: status.code(),
+        })
+    })
     .await;
 
     match result {
@@ -174,16 +165,13 @@ async fn run_command_inner(cmd: Vec<String>, sender: mpsc::UnboundedSender<Strin
             Ok(c) => c,
             Err(e) => {
                 let _ = sender.send(
-                    serde_json::json!({"status": "error", "message": e.to_string()})
-                        .to_string(),
+                    serde_json::json!({"status": "error", "message": e.to_string()}).to_string(),
                 );
                 return;
             }
         },
         Err(e) => {
-            let _ = sender.send(
-                serde_json::json!({"status": "error", "message": e}).to_string(),
-            );
+            let _ = sender.send(serde_json::json!({"status": "error", "message": e}).to_string());
             return;
         }
     };
@@ -225,8 +213,8 @@ async fn run_command_inner(cmd: Vec<String>, sender: mpsc::UnboundedSender<Strin
             let _ = sender.send(payload);
         }
         Err(e) => {
-            let payload = serde_json::json!({"status": "error", "message": e.to_string()})
-                .to_string();
+            let payload =
+                serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
             let _ = sender.send(payload);
         }
     }
