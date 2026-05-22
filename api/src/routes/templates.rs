@@ -28,22 +28,25 @@ async fn list_templates(
     let templates: Vec<(String, String, String, Option<String>, i32)> = sqlx::query_as(
         "SELECT id, title, content, shortcut, is_builtin FROM prompt_templates 
          WHERE user_id = ?1 OR is_builtin = 1 
-         ORDER BY is_builtin DESC, created_at DESC"
+         ORDER BY is_builtin DESC, created_at DESC",
     )
     .bind(&claims.sub)
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let result = templates.into_iter().map(|(id, title, content, shortcut, is_builtin)| {
-        serde_json::json!({
-            "id": id,
-            "title": title,
-            "content": content,
-            "shortcut": shortcut,
-            "is_builtin": is_builtin == 1,
+    let result = templates
+        .into_iter()
+        .map(|(id, title, content, shortcut, is_builtin)| {
+            serde_json::json!({
+                "id": id,
+                "title": title,
+                "content": content,
+                "shortcut": shortcut,
+                "is_builtin": is_builtin == 1,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(result))
 }
@@ -58,7 +61,7 @@ async fn create_template(
     }
 
     let id = uuid::Uuid::new_v4().to_string().replace("-", "");
-    
+
     sqlx::query(
         "INSERT INTO prompt_templates (id, user_id, title, content, shortcut) VALUES (?1, ?2, ?3, ?4, ?5)"
     )
@@ -71,13 +74,16 @@ async fn create_template(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({
-        "id": id,
-        "title": req.title,
-        "content": req.content,
-        "shortcut": req.shortcut,
-        "is_builtin": false,
-    }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "id": id,
+            "title": req.title,
+            "content": req.content,
+            "shortcut": req.shortcut,
+            "is_builtin": false,
+        })),
+    ))
 }
 
 async fn delete_template(
@@ -86,7 +92,7 @@ async fn delete_template(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     let result = sqlx::query(
-        "DELETE FROM prompt_templates WHERE id = ?1 AND user_id = ?2 AND is_builtin = 0"
+        "DELETE FROM prompt_templates WHERE id = ?1 AND user_id = ?2 AND is_builtin = 0",
     )
     .bind(&id)
     .bind(&claims.sub)

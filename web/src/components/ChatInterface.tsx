@@ -194,18 +194,15 @@ export default function ChatInterface({
     })
   }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
 
-  // The hook doesn't expose these setters. I need to rethink this.
-  // Let me use a reducer-based approach for ChatInterface state instead.
 
   const handleRegenerate = useCallback(async () => {
     const lastUserMessage = chatData?.messages?.slice().reverse().find((m) => m.role === 'user')
-    const lastAssistantMsg = chatData?.messages?.slice().reverse().find((m) => m.role === 'assistant')
-    
+
     if (lastUserMessage) {
-      if (lastAssistantMsg && effectiveChatId) {
+      if (effectiveChatId) {
         try {
           const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-          await fetch(`/api/chats/${effectiveChatId}/messages/${lastAssistantMsg.id}`, {
+          await fetch(`/api/chats/${effectiveChatId}/messages/${lastUserMessage.id}/after`, {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'include'
@@ -240,7 +237,7 @@ export default function ChatInterface({
       if (!deleteRes.ok) throw new Error('Failed to clear subsequent messages')
 
       await refetch()
-      handleSend(newContent)
+      handleSend(newContent, true)
     } catch (err: any) {
       // Error is displayed via UI if needed
       console.error('Edit message error:', err)

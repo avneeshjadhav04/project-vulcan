@@ -17,7 +17,10 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/providers", get(list_providers).post(create_provider))
-        .route("/providers/:id", delete(delete_provider).patch(update_provider))
+        .route(
+            "/providers/:id",
+            delete(delete_provider).patch(update_provider),
+        )
         .route("/providers/:id/validate", post(validate_provider))
 }
 
@@ -25,22 +28,26 @@ async fn list_providers(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<Vec<ProviderResponse>>, StatusCode> {
-    let providers: Vec<Provider> = sqlx::query_as("SELECT * FROM providers WHERE user_id = ?1 ORDER BY created_at ASC")
-        .bind(&claims.sub)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("List providers error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let providers: Vec<Provider> =
+        sqlx::query_as("SELECT * FROM providers WHERE user_id = ?1 ORDER BY created_at ASC")
+            .bind(&claims.sub)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| {
+                tracing::error!("List providers error: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
-    let responses: Vec<ProviderResponse> = providers.into_iter().map(|p| ProviderResponse {
-        id: p.id,
-        name: p.name,
-        provider_type: p.provider_type,
-        base_url: p.base_url,
-        is_active: p.is_active == 1,
-    }).collect();
+    let responses: Vec<ProviderResponse> = providers
+        .into_iter()
+        .map(|p| ProviderResponse {
+            id: p.id,
+            name: p.name,
+            provider_type: p.provider_type,
+            base_url: p.base_url,
+            is_active: p.is_active == 1,
+        })
+        .collect();
 
     Ok(Json(responses))
 }
@@ -76,11 +83,10 @@ async fn create_provider(
         base_url.to_string()
     };
 
-    let encrypted = encrypt_key(api_key, &state.config.master_key)
-        .map_err(|e| {
-            tracing::error!("Encrypt provider key error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let encrypted = encrypt_key(api_key, &state.config.master_key).map_err(|e| {
+        tracing::error!("Encrypt provider key error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let provider: Provider = sqlx::query_as(
         "INSERT INTO providers (user_id, name, provider_type, base_url, encrypted_api_key) VALUES (?1, ?2, ?3, ?4, ?5) RETURNING *"
@@ -97,13 +103,16 @@ async fn create_provider(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok((StatusCode::CREATED, Json(ProviderResponse {
-        id: provider.id,
-        name: provider.name,
-        provider_type: provider.provider_type,
-        base_url: provider.base_url,
-        is_active: provider.is_active == 1,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ProviderResponse {
+            id: provider.id,
+            name: provider.name,
+            provider_type: provider.provider_type,
+            base_url: provider.base_url,
+            is_active: provider.is_active == 1,
+        }),
+    ))
 }
 
 async fn delete_provider(
@@ -134,22 +143,22 @@ async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, StatusCode> {
-    let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
-        .bind(&id)
-        .bind(&claims.sub)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let provider: Provider =
+        sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+            .bind(&id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let mut encrypted = provider.encrypted_api_key;
     if let Some(new_key) = req.api_key {
         let trimmed = new_key.trim();
         if !trimmed.is_empty() {
-            encrypted = encrypt_key(trimmed, &state.config.master_key)
-                .map_err(|e| {
-                    tracing::error!("Encrypt provider key error: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+            encrypted = encrypt_key(trimmed, &state.config.master_key).map_err(|e| {
+                tracing::error!("Encrypt provider key error: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         }
     }
 
@@ -183,17 +192,19 @@ async fn validate_provider(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
-        .bind(&id)
-        .bind(&claims.sub)
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let provider: Provider =
+        sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+            .bind(&id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let api_key = decrypt_key(&provider.encrypted_api_key, &state.config.master_key)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let test_res = state.http_client
+    let test_res = state
+        .http_client
         .get(format!("{}/models", provider.base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
@@ -203,10 +214,17 @@ async fn validate_provider(
         Ok(res) => {
             let status = res.status();
             if status.is_success() {
-                Ok(Json(json!({"valid": true, "provider_id": id, "status": status.as_u16()})))
+                Ok(Json(
+                    json!({"valid": true, "provider_id": id, "status": status.as_u16()}),
+                ))
             } else {
                 let body = res.text().await.unwrap_or_default();
-                tracing::warn!("Provider validation failed for {}: {} - {}", id, status, body);
+                tracing::warn!(
+                    "Provider validation failed for {}: {} - {}",
+                    id,
+                    status,
+                    body
+                );
                 Ok(Json(json!({
                     "valid": false,
                     "provider_id": id,
@@ -217,7 +235,9 @@ async fn validate_provider(
         }
         Err(e) => {
             tracing::error!("Provider validation request failed: {}", e);
-            Ok(Json(json!({"valid": false, "error": format!("Connection failed: {}", e)})))
+            Ok(Json(
+                json!({"valid": false, "error": format!("Connection failed: {}", e)}),
+            ))
         }
     }
 }

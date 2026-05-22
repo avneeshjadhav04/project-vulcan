@@ -11,7 +11,10 @@ use crate::{middleware::AppState, models::Claims};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats/:chat_id/files", post(upload_file).get(list_files))
-        .route("/chats/:chat_id/files/:file_id", delete(delete_file).get(download_file))
+        .route(
+            "/chats/:chat_id/files/:file_id",
+            delete(delete_file).get(download_file),
+        )
 }
 
 async fn upload_file(
@@ -21,14 +24,13 @@ async fn upload_file(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
     // Verify chat belongs to user
-    let chat_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?1 AND user_id = ?2)"
-    )
-    .bind(&chat_id)
-    .bind(&claims.sub)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let chat_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?1 AND user_id = ?2)")
+            .bind(&chat_id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if !chat_exists {
         return Err(StatusCode::NOT_FOUND);
@@ -36,11 +38,17 @@ async fn upload_file(
 
     let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string());
     let chat_dir = std::path::Path::new(&upload_dir).join(&chat_id);
-    tokio::fs::create_dir_all(&chat_dir).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tokio::fs::create_dir_all(&chat_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut uploaded_files = Vec::new();
 
-    while let Some(field) = multipart.next_field().await.map_err(|_| StatusCode::BAD_REQUEST)? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
         let name = field.name().unwrap_or("unknown").to_string();
         if name != "file" {
             continue;
@@ -55,7 +63,10 @@ async fn upload_file(
             .replace("\"", "")
             .replace("\r", "")
             .replace("\n", "");
-        let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
         let size = data.len() as i64;
 
@@ -72,7 +83,9 @@ async fn upload_file(
         let storage_filename = format!("{}.{}", file_id, ext);
         let storage_path = chat_dir.join(&storage_filename);
 
-        tokio::fs::write(&storage_path, &data).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        tokio::fs::write(&storage_path, &data)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Extract text from common file types
         let extracted_text = extract_text(&data, &content_type, &filename);
@@ -103,7 +116,10 @@ async fn upload_file(
         }));
     }
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "files": uploaded_files }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "files": uploaded_files })),
+    ))
 }
 
 async fn list_files(
@@ -112,7 +128,7 @@ async fn list_files(
     Path(chat_id): Path<String>,
 ) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     let files: Vec<crate::models::FileRecord> = sqlx::query_as(
-        "SELECT * FROM files WHERE chat_id = ?1 AND user_id = ?2 ORDER BY created_at DESC"
+        "SELECT * FROM files WHERE chat_id = ?1 AND user_id = ?2 ORDER BY created_at DESC",
     )
     .bind(&chat_id)
     .bind(&claims.sub)
@@ -120,16 +136,19 @@ async fn list_files(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let result: Vec<serde_json::Value> = files.into_iter().map(|f| {
-        serde_json::json!({
-            "id": f.id,
-            "filename": f.filename,
-            "mime_type": f.mime_type,
-            "size_bytes": f.size_bytes,
-            "extracted": f.extracted_text.is_some(),
-            "created_at": f.created_at,
+    let result: Vec<serde_json::Value> = files
+        .into_iter()
+        .map(|f| {
+            serde_json::json!({
+                "id": f.id,
+                "filename": f.filename,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size_bytes,
+                "extracted": f.extracted_text.is_some(),
+                "created_at": f.created_at,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(result))
 }
@@ -139,15 +158,14 @@ async fn delete_file(
     claims: axum::Extension<Claims>,
     Path((chat_id, file_id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    let file: Option<crate::models::FileRecord> = sqlx::query_as(
-        "SELECT * FROM files WHERE id = ?1 AND chat_id = ?2 AND user_id = ?3"
-    )
-    .bind(&file_id)
-    .bind(&chat_id)
-    .bind(&claims.sub)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let file: Option<crate::models::FileRecord> =
+        sqlx::query_as("SELECT * FROM files WHERE id = ?1 AND chat_id = ?2 AND user_id = ?3")
+            .bind(&file_id)
+            .bind(&chat_id)
+            .bind(&claims.sub)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(f) = file {
         let _ = tokio::fs::remove_file(&f.storage_path).await;
@@ -167,24 +185,33 @@ async fn download_file(
     claims: axum::Extension<Claims>,
     Path((chat_id, file_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let file: Option<crate::models::FileRecord> = sqlx::query_as(
-        "SELECT * FROM files WHERE id = ?1 AND chat_id = ?2 AND user_id = ?3"
-    )
-    .bind(&file_id)
-    .bind(&chat_id)
-    .bind(&claims.sub)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let file: Option<crate::models::FileRecord> =
+        sqlx::query_as("SELECT * FROM files WHERE id = ?1 AND chat_id = ?2 AND user_id = ?3")
+            .bind(&file_id)
+            .bind(&chat_id)
+            .bind(&claims.sub)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(f) = file {
-        let data = tokio::fs::read(&f.storage_path).await.map_err(|_| StatusCode::NOT_FOUND)?;
-        
+        let data = tokio::fs::read(&f.storage_path)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
+
         // Return with content-type and content-disposition
         Ok((
             axum::http::HeaderMap::from_iter([
-                (axum::http::header::CONTENT_TYPE, f.mime_type.parse().unwrap()),
-                (axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", f.filename).parse().unwrap()),
+                (
+                    axum::http::header::CONTENT_TYPE,
+                    f.mime_type.parse().unwrap(),
+                ),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{}\"", f.filename)
+                        .parse()
+                        .unwrap(),
+                ),
             ]),
             data,
         ))
@@ -195,15 +222,9 @@ async fn download_file(
 
 fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> {
     match mime_type {
-        "text/plain" | "text/markdown" | "text/x-markdown" => {
-            String::from_utf8(data.to_vec()).ok()
-        }
-        "text/csv" => {
-            String::from_utf8(data.to_vec()).ok()
-        }
-        "application/json" => {
-            String::from_utf8(data.to_vec()).ok()
-        }
+        "text/plain" | "text/markdown" | "text/x-markdown" => String::from_utf8(data.to_vec()).ok(),
+        "text/csv" => String::from_utf8(data.to_vec()).ok(),
+        "application/json" => String::from_utf8(data.to_vec()).ok(),
         _ => {
             // For other types, try to detect by extension
             let ext = std::path::Path::new(filename)
@@ -211,9 +232,10 @@ fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> 
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
             match ext {
-                "txt" | "md" | "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "json" | "csv" | "yaml" | "yml" | "toml" | "html" | "css" | "sh" | "sql" | "go" | "c" | "cpp" | "h" | "java" | "kt" | "swift" | "rb" | "php" | "xml" | "log" | "ini" | "cfg" | "conf" => {
-                    String::from_utf8(data.to_vec()).ok()
-                }
+                "txt" | "md" | "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "json" | "csv"
+                | "yaml" | "yml" | "toml" | "html" | "css" | "sh" | "sql" | "go" | "c" | "cpp"
+                | "h" | "java" | "kt" | "swift" | "rb" | "php" | "xml" | "log" | "ini" | "cfg"
+                | "conf" => String::from_utf8(data.to_vec()).ok(),
                 _ => None,
             }
         }

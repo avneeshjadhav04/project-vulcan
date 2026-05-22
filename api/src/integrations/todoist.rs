@@ -1,14 +1,13 @@
-use crate::{
-    middleware::AppState,
-    models::IntegrationCredential,
-    oauth,
-};
+use crate::{middleware::AppState, models::IntegrationCredential, oauth};
 use serde_json::json;
 
 pub fn todoist_oauth_config(state: &AppState) -> Option<oauth::OAuthConfig> {
     let client_id = state.config.todoist_client_id.clone()?;
     let client_secret = state.config.todoist_client_secret.clone()?;
-    let redirect_uri = format!("{}/api/integrations/todoist/callback", state.config.app_base_url);
+    let redirect_uri = format!(
+        "{}/api/integrations/todoist/callback",
+        state.config.app_base_url
+    );
 
     Some(oauth::OAuthConfig {
         client_id,
@@ -20,12 +19,9 @@ pub fn todoist_oauth_config(state: &AppState) -> Option<oauth::OAuthConfig> {
     })
 }
 
-async fn get_credential(
-    state: &AppState,
-    user_id: &str,
-) -> Result<IntegrationCredential, String> {
+async fn get_credential(state: &AppState, user_id: &str) -> Result<IntegrationCredential, String> {
     sqlx::query_as::<_, IntegrationCredential>(
-        "SELECT * FROM integration_credentials WHERE user_id = ?1 AND provider = 'todoist'"
+        "SELECT * FROM integration_credentials WHERE user_id = ?1 AND provider = 'todoist'",
     )
     .bind(user_id)
     .fetch_one(&state.db)
@@ -59,7 +55,8 @@ pub async fn list_tasks(
         url = format!("{}?filter={}", url, urlencoding::encode(filter));
     }
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -73,17 +70,20 @@ pub async fn list_tasks(
 
     let tasks: Vec<serde_json::Value> = res.json().await.map_err(|e| e.to_string())?;
 
-    let simplified: Vec<_> = tasks.iter().map(|t| {
-        json!({
-            "id": t["id"],
-            "content": t["content"],
-            "description": t.get("description").unwrap_or(&json!("")),
-            "due": t.get("due"),
-            "priority": t.get("priority").unwrap_or(&json!(1)),
-            "project_id": t.get("project_id"),
-            "is_completed": t.get("is_completed").unwrap_or(&json!(false)),
+    let simplified: Vec<_> = tasks
+        .iter()
+        .map(|t| {
+            json!({
+                "id": t["id"],
+                "content": t["content"],
+                "description": t.get("description").unwrap_or(&json!("")),
+                "due": t.get("due"),
+                "priority": t.get("priority").unwrap_or(&json!(1)),
+                "project_id": t.get("project_id"),
+                "is_completed": t.get("is_completed").unwrap_or(&json!(false)),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(json!({"status": "success", "tasks": simplified, "count": simplified.len()}))
 }
@@ -112,7 +112,8 @@ pub async fn create_task(
         body["project_id"] = json!(project_id);
     }
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .post("https://api.todoist.com/rest/v2/tasks")
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
@@ -146,12 +147,21 @@ pub async fn update_task(
     let task_id = params["task_id"].as_str().ok_or("Missing task_id")?;
 
     let mut body = json!({});
-    if let Some(c) = params["content"].as_str() { body["content"] = json!(c); }
-    if let Some(d) = params["description"].as_str() { body["description"] = json!(d); }
-    if let Some(ds) = params["due_string"].as_str() { body["due_string"] = json!(ds); }
-    if let Some(p) = params["priority"].as_i64() { body["priority"] = json!(p); }
+    if let Some(c) = params["content"].as_str() {
+        body["content"] = json!(c);
+    }
+    if let Some(d) = params["description"].as_str() {
+        body["description"] = json!(d);
+    }
+    if let Some(ds) = params["due_string"].as_str() {
+        body["due_string"] = json!(ds);
+    }
+    if let Some(p) = params["priority"].as_i64() {
+        body["priority"] = json!(p);
+    }
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .post(format!("https://api.todoist.com/rest/v2/tasks/{}", task_id))
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
@@ -178,8 +188,12 @@ pub async fn complete_task(
 
     let task_id = params["task_id"].as_str().ok_or("Missing task_id")?;
 
-    let res = state.http_client
-        .post(format!("https://api.todoist.com/rest/v2/tasks/{}/close", task_id))
+    let res = state
+        .http_client
+        .post(format!(
+            "https://api.todoist.com/rest/v2/tasks/{}/close",
+            task_id
+        ))
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await

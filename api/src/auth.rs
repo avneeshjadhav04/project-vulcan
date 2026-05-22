@@ -59,7 +59,10 @@ pub fn validate_password(password: &str) -> Result<()> {
         anyhow::bail!("Password must be at least 6 characters");
     }
     if password.len() > MAX_PASSWORD_LENGTH {
-        anyhow::bail!("Password must be at most {} characters", MAX_PASSWORD_LENGTH);
+        anyhow::bail!(
+            "Password must be at most {} characters",
+            MAX_PASSWORD_LENGTH
+        );
     }
     Ok(())
 }
@@ -82,8 +85,8 @@ pub fn create_token(user_id: &str, email: &str, role: &str, state: &AppState) ->
     // Try RSA first, fallback to HS256
     if let Some(ref path) = state.config.jwt_secret_path {
         if std::path::Path::new(path).exists() {
-            let private_key = std::fs::read_to_string(path)
-                .context("Failed to read JWT private key")?;
+            let private_key =
+                std::fs::read_to_string(path).context("Failed to read JWT private key")?;
             let encoding_key = EncodingKey::from_rsa_pem(private_key.as_bytes())?;
             let token = encode(&Header::new(Algorithm::RS256), &claims, &encoding_key)?;
             return Ok(token);
@@ -122,7 +125,7 @@ pub fn verify_token(token: &str, state: &AppState) -> Result<Claims> {
 
 pub fn generate_csrf_token() -> String {
     let bytes: [u8; 32] = rand::random();
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&bytes)
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
 pub fn encrypt_key(plaintext: &str, master_key: &[u8; 32]) -> Result<String> {

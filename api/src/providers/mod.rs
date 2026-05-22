@@ -71,12 +71,7 @@ pub fn built_in_providers() -> Vec<ProviderDefinition> {
             id: "ollama",
             name: "Ollama",
             base_url: "http://localhost:11434/v1",
-            fallback_models: vec![
-                "llama3.1",
-                "mistral",
-                "codellama",
-                "phi3",
-            ],
+            fallback_models: vec!["llama3.1", "mistral", "codellama", "phi3"],
         },
         ProviderDefinition {
             id: "openrouter",

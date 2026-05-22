@@ -130,39 +130,23 @@ async fn run() -> anyhow::Result<()> {
         .route("/live", get(live_check))
         .route("/ready", get(ready_check))
         .merge(routes::auth::router())
+        .merge(routes::chat::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::models::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
-            routes::chat::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::providers::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
+        .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
-            routes::models::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::providers::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::terminal::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::files::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::templates::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::templates::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
             routes::integrations::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::automations::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::automations::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
-
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
         .layer(cors)
@@ -172,9 +156,10 @@ async fn run() -> anyhow::Result<()> {
     // Serve static files if dist/ exists (production mode)
     let app = if std::path::Path::new("./dist").exists() {
         println!("[INIT] Serving static frontend from ./dist");
-        Router::new()
-            .nest("/api", api_routes)
-            .nest_service("/", ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")))
+        Router::new().nest("/api", api_routes).nest_service(
+            "/",
+            ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
+        )
     } else {
         println!("[INIT] Running in API-only mode (no dist/ found)");
         api_routes

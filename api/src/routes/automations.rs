@@ -8,15 +8,18 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-use crate::{
-    middleware::AppState,
-    models::Claims,
-};
+use crate::{middleware::AppState, models::Claims};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/automations", get(list_automations).post(create_automation))
-        .route("/automations/:id", patch(update_automation).delete(delete_automation))
+        .route(
+            "/automations",
+            get(list_automations).post(create_automation),
+        )
+        .route(
+            "/automations/:id",
+            patch(update_automation).delete(delete_automation),
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -55,13 +58,12 @@ async fn list_automations(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<Vec<Automation>>, StatusCode> {
-    let autos: Vec<Automation> = sqlx::query_as(
-        "SELECT * FROM automations WHERE user_id = ?1 ORDER BY created_at DESC"
-    )
-    .bind(&claims.sub)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let autos: Vec<Automation> =
+        sqlx::query_as("SELECT * FROM automations WHERE user_id = ?1 ORDER BY created_at DESC")
+            .bind(&claims.sub)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(autos))
 }
@@ -71,7 +73,10 @@ async fn create_automation(
     claims: axum::Extension<Claims>,
     Json(req): Json<CreateAutomationRequest>,
 ) -> Result<(StatusCode, Json<Automation>), StatusCode> {
-    if req.name.trim().is_empty() || req.cron_expression.trim().is_empty() || req.action.trim().is_empty() {
+    if req.name.trim().is_empty()
+        || req.cron_expression.trim().is_empty()
+        || req.action.trim().is_empty()
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -102,16 +107,17 @@ async fn update_automation(
     Path(id): Path<String>,
     Json(req): Json<UpdateAutomationRequest>,
 ) -> Result<Json<Automation>, StatusCode> {
-    let existing: Automation = sqlx::query_as(
-        "SELECT * FROM automations WHERE id = ?1 AND user_id = ?2"
-    )
-    .bind(&id)
-    .bind(&claims.sub)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    let existing: Automation =
+        sqlx::query_as("SELECT * FROM automations WHERE id = ?1 AND user_id = ?2")
+            .bind(&id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let next_run = req.cron_expression.as_ref()
+    let next_run = req
+        .cron_expression
+        .as_ref()
         .map(|c| compute_next_run(c))
         .unwrap_or(existing.next_run_at.unwrap_or_default());
 
@@ -163,22 +169,39 @@ fn compute_next_run(expr: &str) -> String {
     let now = chrono::Utc::now();
     let lower = expr.to_lowercase();
 
-    if let Some(min_str) = lower.strip_prefix("every ").and_then(|s| s.strip_suffix(" minutes")) {
+    if let Some(min_str) = lower
+        .strip_prefix("every ")
+        .and_then(|s| s.strip_suffix(" minutes"))
+    {
         let mins: i64 = min_str.trim().parse().unwrap_or(5);
-        (now + chrono::Duration::minutes(mins)).format("%Y-%m-%dT%H:%M:%SZ").to_string()
-    } else if let Some(hour_str) = lower.strip_prefix("every ").and_then(|s| s.strip_suffix(" hours")) {
+        (now + chrono::Duration::minutes(mins))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    } else if let Some(hour_str) = lower
+        .strip_prefix("every ")
+        .and_then(|s| s.strip_suffix(" hours"))
+    {
         let hours: i64 = hour_str.trim().parse().unwrap_or(1);
-        (now + chrono::Duration::hours(hours)).format("%Y-%m-%dT%H:%M:%SZ").to_string()
-    } else if lower.starts_with("every day at ") {
-        let time_part = &lower[13..].trim();
+        (now + chrono::Duration::hours(hours))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
+    } else if let Some(time_part) = lower.strip_prefix("every day at ") {
+        let time_part = time_part.trim();
         let today = now.format("%Y-%m-%d").to_string();
         format!("{}T{}:00Z", today, time_part)
-    } else if let Some(sec_str) = lower.strip_prefix("every ").and_then(|s| s.strip_suffix(" seconds")) {
+    } else if let Some(sec_str) = lower
+        .strip_prefix("every ")
+        .and_then(|s| s.strip_suffix(" seconds"))
+    {
         let secs: i64 = sec_str.trim().parse().unwrap_or(30);
-        (now + chrono::Duration::seconds(secs)).format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        (now + chrono::Duration::seconds(secs))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
     } else {
         // Default: every 30 minutes
-        (now + chrono::Duration::minutes(30)).format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        (now + chrono::Duration::minutes(30))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string()
     }
 }
 
@@ -211,16 +234,23 @@ pub async fn run_due_automations(state: &AppState) {
         match action_type {
             "chat_message" => {
                 let prompt = action["prompt"].as_str().unwrap_or("");
-                let model_id = action["model_id"].as_str().unwrap_or("nvidia/llama-3.1-nemotron-70b");
+                let model_id = action["model_id"]
+                    .as_str()
+                    .unwrap_or("nvidia/llama-3.1-nemotron-70b");
 
                 if prompt.is_empty() {
                     continue;
                 }
 
-                tracing::info!("Running automation {}: {} -> {}", auto.id, auto.name, prompt);
-                
+                tracing::info!(
+                    "Running automation {}: {} -> {}",
+                    auto.id,
+                    auto.name,
+                    prompt
+                );
+
                 let provider: Option<crate::models::Provider> = sqlx::query_as(
-                    "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 LIMIT 1"
+                    "SELECT * FROM providers WHERE user_id = ?1 AND is_active = 1 LIMIT 1",
                 )
                 .bind(&auto.user_id)
                 .fetch_optional(&state.db)
@@ -228,7 +258,9 @@ pub async fn run_due_automations(state: &AppState) {
                 .unwrap_or(None);
 
                 let (base_url, api_key, p_id) = if let Some(p) = provider {
-                    let key = crate::oauth::decrypt_token(&p.encrypted_api_key, &state.config.master_key).unwrap_or_default();
+                    let key =
+                        crate::oauth::decrypt_token(&p.encrypted_api_key, &state.config.master_key)
+                            .unwrap_or_default();
                     (p.base_url, key, p.id)
                 } else {
                     tracing::warn!("No active provider found for user {}", auto.user_id);
@@ -256,12 +288,13 @@ pub async fn run_due_automations(state: &AppState) {
                     "stream": false
                 });
 
-                if let Ok(response) = state.http_client
+                if let Ok(response) = state
+                    .http_client
                     .post(format!("{}/chat/completions", base_url))
                     .header("Authorization", format!("Bearer {}", api_key))
                     .json(&payload)
                     .send()
-                    .await 
+                    .await
                 {
                     if let Ok(data) = response.json::<serde_json::Value>().await {
                         if let Some(content) = data["choices"][0]["message"]["content"].as_str() {

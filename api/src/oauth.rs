@@ -34,7 +34,8 @@ pub struct PkcePair {
 
 pub fn generate_pkce_pair() -> PkcePair {
     let verifier_bytes: Vec<u8> = (0..64).map(|_| rand::thread_rng().gen()).collect();
-    let verifier = BASE64.encode(&verifier_bytes)
+    let verifier = BASE64
+        .encode(&verifier_bytes)
         .replace('+', "-")
         .replace('/', "_")
         .trim_end_matches('=')
@@ -43,13 +44,17 @@ pub fn generate_pkce_pair() -> PkcePair {
     let mut hasher = Sha256::new();
     hasher.update(verifier.as_bytes());
     let hash = hasher.finalize();
-    let challenge = BASE64.encode(&hash)
+    let challenge = BASE64
+        .encode(hash)
         .replace('+', "-")
         .replace('/', "_")
         .trim_end_matches('=')
         .to_string();
 
-    PkcePair { verifier, challenge }
+    PkcePair {
+        verifier,
+        challenge,
+    }
 }
 
 pub fn generate_state() -> String {
