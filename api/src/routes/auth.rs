@@ -15,7 +15,7 @@ use crate::{
 fn build_cookie(name: &str, value: &str, max_age: i64, http_only: bool, secure: bool) -> Result<axum::http::HeaderValue, StatusCode> {
     let mut parts = vec![
         format!("{}={}", name, value),
-        "SameSite=Strict".to_string(),
+        "SameSite=Lax".to_string(),
         "Path=/".to_string(),
     ];
     if http_only {
