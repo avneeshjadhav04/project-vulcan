@@ -2,11 +2,23 @@ import { useCallback, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import type { SelectedModel } from '../components/ProviderModelSelector'
 
+export interface ToolExecution {
+  tool_name: string
+  tool_id: string
+  command?: string
+  stdout?: string
+  stderr?: string
+  status: string
+  filename?: string
+  query?: string
+  results?: Array<{ title: string; url: string; snippet: string }>
+}
+
 export interface StreamState {
   streaming: boolean
   streamedContent: string
   sendError: string
-  toolExecution: { command: string; stdout: string; stderr: string; status: string } | null
+  toolExecution: ToolExecution | null
   creatingChat: boolean
 }
 
@@ -33,7 +45,7 @@ export function useChatStream(): [StreamState, StreamActions] {
   const [streaming, setStreaming] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
   const [sendError, setSendError] = useState('')
-  const [toolExecution, setToolExecution] = useState<{ command: string; stdout: string; stderr: string; status: string } | null>(null)
+  const [toolExecution, setToolExecution] = useState<ToolExecution | null>(null)
   const [creatingChat, setCreatingChat] = useState(false)
 
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -177,10 +189,15 @@ export function useChatStream(): [StreamState, StreamActions] {
               try {
                 const toolData = JSON.parse(raw.slice(6, -7))
                 setToolExecution({
+                  tool_name: toolData.tool_name || 'unknown',
+                  tool_id: toolData.tool_id || '',
                   command: toolData.command || '',
                   stdout: toolData.stdout || '',
                   stderr: toolData.stderr || '',
                   status: toolData.status || 'error',
+                  filename: toolData.filename || '',
+                  query: toolData.query || '',
+                  results: toolData.results || [],
                 })
               } catch {}
               continue

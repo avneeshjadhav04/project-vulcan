@@ -16,8 +16,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod auth;
 mod config;
 mod db;
+mod integrations;
 mod middleware;
 mod models;
+mod oauth;
 mod providers;
 mod routes;
 mod sandbox_engine;
@@ -84,6 +86,7 @@ async fn run() -> anyhow::Result<()> {
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
     };
+    let bg_state = state.clone();
 
     let cors = if let Some(ref origin) = config.cors_origin {
         CorsLayer::new()
@@ -148,6 +151,14 @@ async fn run() -> anyhow::Result<()> {
             routes::templates::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
+        .merge(
+            routes::integrations::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::automations::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
 
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
@@ -171,6 +182,16 @@ async fn run() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("[INIT] Server starting...");
+
+    // Start background automation runner
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            routes::automations::run_due_automations(&bg_state).await;
+        }
+    });
+
     axum::serve(listener, app).await?;
 
     Ok(())

@@ -23,6 +23,11 @@ import {
   Server,
   TestTube,
   Loader2,
+  Link,
+  Unlink,
+  Wrench,
+  Mail,
+  ListTodo,
 } from 'lucide-react'
 
 interface Provider {
@@ -63,6 +68,9 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false)
   const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; provider_id?: string} | null>(null)
   const [validating, setValidating] = useState(false)
+  const [integrations, setIntegrations] = useState<Array<{ provider: string; connected: boolean; scopes?: string; expires_at?: string }>>([])
+  const [integrationsLoading, setIntegrationsLoading] = useState(false)
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(null)
 
   useEffect(() => {
     if (saved) {
@@ -73,6 +81,13 @@ export default function Settings() {
 
   useEffect(() => {
     loadProviders()
+    loadIntegrations()
+    const params = new URLSearchParams(window.location.search)
+    const justConnected = params.get('status')
+    if (justConnected === 'connected') {
+      setSaved(true)
+      window.history.replaceState({}, '', '/settings')
+    }
   }, [])
 
   const loadProviders = async () => {
@@ -84,6 +99,42 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to load providers')
     } finally {
       setProvidersLoading(false)
+    }
+  }
+
+  const loadIntegrations = async () => {
+    setIntegrationsLoading(true)
+    try {
+      const res = await api.get('/integrations')
+      setIntegrations(res.data || [])
+    } catch {
+      // integrations not yet deployed
+    } finally {
+      setIntegrationsLoading(false)
+    }
+  }
+
+  const handleConnect = async (provider: string) => {
+    setError('')
+    setConnectingProvider(provider)
+    try {
+      const res = await api.get(`/integrations/${provider}/auth-url`)
+      window.location.href = res.data.url
+    } catch (err: any) {
+      setError(err.response?.data?.error || `Failed to connect ${provider}`)
+      setConnectingProvider(null)
+    }
+  }
+
+  const handleDisconnectIntegration = async (provider: string) => {
+    if (!confirm(`Disconnect ${provider}? The AI will no longer be able to access your ${provider} data.`)) return
+    setError('')
+    try {
+      await api.delete(`/integrations/${provider}`)
+      await loadIntegrations()
+      setSaved(true)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to disconnect')
     }
   }
 
@@ -404,6 +455,149 @@ export default function Settings() {
             <div className="flex items-start gap-2 text-[11px] text-text-helper">
               <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
               <span>Summaries are stored per-chat and updated automatically</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Integrations */}
+        <div className="border border-border-subtle bg-layer p-5">
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                <Wrench className="h-4 w-4" />
+                Integrations
+              </h2>
+              <p className="mt-1 text-xs text-text-helper">
+                Connect external services so the AI can manage your calendar, email, and tasks.
+              </p>
+            </div>
+          </div>
+
+          {integrationsLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {integrations.map((int) => {
+                const isGoogle = int.provider === 'google'
+                const isTodoist = int.provider === 'todoist'
+                const Icon = isGoogle ? Mail : isTodoist ? ListTodo : Link
+                const label = isGoogle ? 'Google (Calendar + Gmail)' : isTodoist ? 'Todoist (Tasks)' : int.provider
+
+                return (
+                  <div key={int.provider} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center ${int.connected ? 'bg-support-success/10' : 'bg-border-subtle'}`}>
+                        <Icon className={`h-3 w-3 ${int.connected ? 'text-support-success' : 'text-text-helper'}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text-primary">{label}</p>
+                        <p className="text-[11px] text-text-helper">
+                          {int.connected ? (int.scopes ? `Connected` : 'Connected') : 'Not connected'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {int.connected ? (
+                        <button
+                          onClick={() => handleDisconnectIntegration(int.provider)}
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
+                        >
+                          <Unlink className="h-3 w-3" />
+                          Disconnect
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleConnect(int.provider)}
+                          disabled={connectingProvider === int.provider}
+                          className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                        >
+                          {connectingProvider === int.provider ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Link className="h-3 w-3" />
+                          )}
+                          Connect
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-start gap-2 text-[11px] text-text-helper">
+              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+              <span>Your credentials are encrypted with AES-256-GCM and never stored in plain text</span>
+            </div>
+            <div className="flex items-start gap-2 text-[11px] text-text-helper">
+              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+              <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tools & Agent Configuration */}
+        <div className="border border-border-subtle bg-layer p-5">
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                <Wrench className="h-4 w-4" />
+                AI Tools & Agent
+              </h2>
+              <p className="mt-1 text-xs text-text-helper">
+                Control how the AI uses tools: sandboxed terminal, file operations, web search, and integrations.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+              <div className="flex items-center gap-3">
+                <Wrench className={`h-4 w-4 ${user?.tools_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Enable AI Tools</p>
+                  <p className="text-[11px] text-text-helper">
+                    {user?.tools_enabled
+                      ? 'AI can execute terminal commands, manage files, search the web, and use connected integrations'
+                      : 'AI responds with text only — no tool execution'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.post('/me/tools', { tools_enabled: !user?.tools_enabled })
+                    await fetchMe()
+                  } catch {}
+                }}
+                className={`relative h-5 w-9 transition-colors ${
+                  user?.tools_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                }`}
+              >
+                <motion.div
+                  animate={{ x: user?.tools_enabled ? 16 : 2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="absolute top-1 h-3 w-3 bg-white"
+                />
+              </button>
+            </div>
+            <div className="border border-border-subtle bg-background px-3 py-2.5">
+              <div className="flex items-center gap-3">
+                <Brain className="h-4 w-4 text-link-primary" />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Agent Steps</p>
+                  <p className="text-[11px] text-text-helper">
+                    Maximum tool-calling iterations per message. Higher values allow the AI to chain multiple tools together.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="font-mono text-sm text-text-primary">{user?.max_agent_steps || 10}</span>
+                <span className="text-[10px] text-text-helper">steps (configured via max_agent_steps)</span>
+              </div>
             </div>
           </div>
         </div>

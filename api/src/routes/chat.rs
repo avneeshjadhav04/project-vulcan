@@ -145,6 +145,190 @@ fn build_tools_def() -> Vec<serde_json::Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_list_events",
+                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
+                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
+                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_create_event",
+                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string", "description": "Event title/summary"},
+                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
+                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
+                        "description": {"type": "string", "description": "Event description"},
+                        "location": {"type": "string", "description": "Event location"},
+                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
+                    },
+                    "required": ["summary", "start_time", "end_time"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_delete_event",
+                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "event_id": {"type": "string", "description": "ID of the event to delete"}
+                    },
+                    "required": ["event_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_send",
+                "description": "Send an email. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "to": {"type": "string", "description": "Recipient email address"},
+                        "subject": {"type": "string", "description": "Email subject"},
+                        "body": {"type": "string", "description": "Email body text"}
+                    },
+                    "required": ["to", "subject", "body"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_list",
+                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
+                        "query": {"type": "string", "description": "Search query for emails"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_read",
+                "description": "Read a specific email by ID. Requires Gmail connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email_id": {"type": "string", "description": "ID of the email to read"}
+                    },
+                    "required": ["email_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_list",
+                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_create",
+                "description": "Create a new task in Todoist. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "Task content/name"},
+                        "description": {"type": "string", "description": "Task description"},
+                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
+                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
+                    },
+                    "required": ["content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_update",
+                "description": "Update an existing Todoist task. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to update"},
+                        "content": {"type": "string", "description": "New task content"},
+                        "due_string": {"type": "string", "description": "New due date"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_complete",
+                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to complete"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "fetch_webpage",
+                "description": "Fetch and extract the text content of a webpage. Use this to read articles, documentation, or any web page.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "The URL of the webpage to fetch"},
+                        "extract_mode": {"type": "string", "enum": ["text", "html"], "description": "Extract clean readable text (default) or raw HTML"}
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "execute_python",
+                "description": "Execute Python code in the sandboxed environment. The code runs in an isolated Ubuntu container with Python 3 installed.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string", "description": "The Python code to execute"}
+                    },
+                    "required": ["code"]
+                }
+            }
+        }),
     ]
 }
 
@@ -153,6 +337,7 @@ async fn execute_tool(
     name: &str,
     args_str: &str,
     chat_id: &str,
+    user_id: &str,
     state: &AppState,
 ) -> Result<serde_json::Value, String> {
     let args: serde_json::Value = serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
@@ -162,8 +347,8 @@ async fn execute_tool(
             let cmd = args["command"].as_str().ok_or("Missing command")?;
             let exec_res = crate::sandbox_engine::run_command_http(cmd, &state.sandbox).await;
             match exec_res {
-                Ok(resp) => Ok(json!({"stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})),
-                Err(e) => Ok(json!({"error": format!("Execution failed: {}", e), "status": "error"})),
+                Ok(resp) => Ok(json!({"command": cmd, "stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})),
+                Err(e) => Ok(json!({"command": cmd, "error": format!("Execution failed: {}", e), "status": "error"})),
             }
         }
         "create_file" => {
@@ -218,7 +403,6 @@ async fn execute_tool(
             let res = state.http_client.get(&url).send().await.map_err(|e| e.to_string())?;
             let html = res.text().await.map_err(|e| e.to_string())?;
 
-            // Simple HTML parsing to extract results
             let mut results = Vec::new();
             let link_re = regex::Regex::new(r#"<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap();
             let snippet_re = regex::Regex::new(r#"<td[^>]*class="result-snippet"[^>]*>(.*?)</td>"#).unwrap();
@@ -244,25 +428,206 @@ async fn execute_tool(
 
             Ok(json!({"status": "success", "query": query, "results": results}))
         }
+        "calendar_list_events" => {
+            crate::integrations::google::list_calendar_events(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "calendar_create_event" => {
+            crate::integrations::google::create_calendar_event(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "calendar_delete_event" => {
+            crate::integrations::google::delete_calendar_event(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "email_send" => {
+            crate::integrations::google::send_email(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "email_list" => {
+            crate::integrations::google::list_emails(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "email_read" => {
+            crate::integrations::google::read_email(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "tasks_list" => {
+            crate::integrations::todoist::list_tasks(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "tasks_create" => {
+            crate::integrations::todoist::create_task(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "tasks_update" => {
+            crate::integrations::todoist::update_task(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "tasks_complete" => {
+            crate::integrations::todoist::complete_task(state, user_id, &args).await
+                .map_err(|e| e.to_string())
+        }
+        "fetch_webpage" => {
+            let url = args["url"].as_str().ok_or("Missing url")?;
+            let extract_mode = args["extract_mode"].as_str().unwrap_or("text");
+
+            let res = state.http_client
+                .get(url)
+                .header("User-Agent", "Mozilla/5.0 (compatible; ProjectVulcan/1.0)")
+                .send()
+                .await
+                .map_err(|e| format!("Fetch failed: {}", e))?;
+
+            if !res.status().is_success() {
+                return Err(format!("HTTP {}", res.status()));
+            }
+
+            let html = res.text().await.map_err(|e| e.to_string())?;
+
+            if extract_mode == "html" {
+                return Ok(json!({"status": "success", "url": url, "content": html, "length": html.len()}));
+            }
+
+            let document = scraper::Html::parse_document(&html);
+
+            let mut text = String::new();
+            for node in document.root_element().text() {
+                let trimmed = node.trim();
+                if !trimmed.is_empty() {
+                    if !text.is_empty() {
+                        text.push('\n');
+                    }
+                    text.push_str(trimmed);
+                }
+            }
+
+            if text.len() > 50000 {
+                text = text[..50000].to_string();
+                text.push_str("\n\n[Content truncated at 50000 characters]");
+            }
+
+            Ok(json!({
+                "status": "success",
+                "url": url,
+                "content": text,
+                "length": text.len(),
+            }))
+        }
+        "execute_python" => {
+            let code = args["code"].as_str().ok_or("Missing code")?;
+            let workspace = format!("./workspace/{}", chat_id);
+            tokio::fs::create_dir_all(&workspace).await.map_err(|e| e.to_string())?;
+            let script_path = format!("{}/__temp_script.py", workspace);
+            tokio::fs::write(&script_path, code).await.map_err(|e| e.to_string())?;
+            let exec_res = crate::sandbox_engine::run_command_http(
+                &format!("python3 {}", script_path),
+                &state.sandbox,
+            ).await;
+
+            let _ = tokio::fs::remove_file(&script_path).await;
+
+            match exec_res {
+                Ok(resp) => Ok(json!({
+                    "command": format!("python3 {}", script_path),
+                    "stdout": resp.stdout,
+                    "stderr": resp.stderr,
+                    "status": resp.status,
+                    "code": resp.code,
+                })),
+                Err(e) => Ok(json!({
+                    "command": format!("python3 {}", script_path),
+                    "error": format!("Execution failed: {}", e),
+                    "status": "error"
+                })),
+            }
+        }
         _ => Err(format!("Unknown tool: {}", name)),
     }
 }
 
-/// Resolve a tool call from the LLM response and return the tool result.
-async fn resolve_tool_call(
-    call: &serde_json::Value,
+/// Resolve all tool calls from the LLM response concurrently.
+async fn resolve_tool_calls(
+    calls: &[serde_json::Value],
     chat_id: &str,
+    user_id: &str,
     state: &AppState,
-) -> Option<(String, String, serde_json::Value)> {
-    let func = call["function"].as_object()?;
-    let name = func["name"].as_str()?;
-    let args_str = func["arguments"].as_str().unwrap_or("{}");
-    let tool_id = call["id"].as_str().unwrap_or("call_1");
+) -> Vec<(String, String, serde_json::Value)> {
+    let mut results = Vec::with_capacity(calls.len());
+    for call in calls {
+        let func = match call["function"].as_object() {
+            Some(f) => f,
+            None => continue,
+        };
+        let name = match func["name"].as_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let args_str = func["arguments"].as_str().unwrap_or("{}");
+        let tool_id = call["id"].as_str().unwrap_or("call_1").to_string();
 
-    match execute_tool(name, args_str, chat_id, state).await {
-        Ok(result) => Some((tool_id.to_string(), name.to_string(), result)),
-        Err(e) => Some((tool_id.to_string(), name.to_string(), json!({"error": e}))),
+        match execute_tool(&name, args_str, chat_id, user_id, state).await {
+            Ok(result) => results.push((tool_id, name, result)),
+            Err(e) => results.push((tool_id, name, json!({"error": e}))),
+        }
     }
+    results
+}
+
+/// Persist a tool execution result as a message in the database.
+async fn persist_tool_message(
+    db: &sqlx::SqlitePool,
+    chat_id: &str,
+    tool_call_id: &str,
+    tool_name: &str,
+    result: &serde_json::Value,
+) {
+    let content = serde_json::to_string(result).unwrap_or_default();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'tool', ?2, ?3, ?4)"
+    )
+    .bind(chat_id)
+    .bind(&content)
+    .bind(tool_call_id)
+    .bind(tool_name)
+    .execute(db)
+    .await
+    {
+        tracing::error!("Failed to persist tool message: {}", e);
+    }
+}
+
+/// Build a dynamic system prompt based on available integrations and current context.
+fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
+    let mut prompt = String::from(
+        "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform.\n\n\
+         You have access to the following capabilities:\n\
+         - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
+         - File operations: Create, read, and modify files in the workspace.\n\
+         - Web search: Search the web for current information.\n\n"
+    );
+
+    if has_google {
+        prompt.push_str(
+            "- Google Calendar: You can list, create, and manage calendar events on the user's behalf.\n\
+             - Gmail: You can read, search, and send emails for the user.\n\n"
+        );
+    }
+
+    if has_todoist {
+        prompt.push_str(
+            "- Todoist: You can list, create, update, and complete tasks on the user's behalf.\n\n"
+        );
+    }
+
+    prompt.push_str(
+        "When the user asks you to do something that requires these tools, use them proactively. \
+         If you need multiple tools, call them in sequence. \
+         Always explain what you're doing when using tools. \
+         Be concise and helpful."
+    );
+
+    prompt
 }
 
 pub fn router() -> Router<AppState> {
@@ -308,6 +673,7 @@ async fn get_me(
         "provider_count": provider_count,
         "memory_enabled": user.memory_enabled == 1,
         "tools_enabled": user.tools_enabled == 1,
+        "max_agent_steps": user.max_agent_steps,
     })))
 }
 
@@ -821,7 +1187,15 @@ fn build_messages_payload(
     }
 
     for msg in recent_messages {
-        payload.push(json!({"role": msg.role, "content": msg.content}));
+        if msg.role == "tool" {
+            payload.push(json!({
+                "role": "tool",
+                "tool_call_id": msg.tool_call_id.as_deref().unwrap_or(""),
+                "content": msg.content
+            }));
+        } else {
+            payload.push(json!({"role": msg.role, "content": msg.content}));
+        }
     }
 
     payload
@@ -933,96 +1307,180 @@ async fn send_message(
         };
 
         build_messages_payload(
-            "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations.",
+            "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform. You can execute sandboxed terminal commands, create/read/modify files, and search the web.",
             Some(&summary_text),
             recent,
         )
     } else {
-        // Memory disabled or chat is short: send all messages
         let mut payload = vec![json!({
             "role": "system",
-            "content": "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations."
+            "content": "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform. You can execute sandboxed terminal commands, create/read/modify files, and search the web."
         })];
         for msg in &history {
-            payload.push(json!({"role": msg.role, "content": msg.content}));
+            if msg.role == "tool" {
+                payload.push(json!({
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id.as_deref().unwrap_or(""),
+                    "content": msg.content
+                }));
+            } else {
+                payload.push(json!({"role": msg.role, "content": msg.content}));
+            }
         }
         payload
     };
 
     let should_use_tools = std::env::var("DISABLE_TOOLS").is_err() && user.tools_enabled == 1;
 
-    if should_use_tools {
-        let tools = build_tools_def();
-
-        let tool_body = json!({
-            "model": chat.model_id,
-            "messages": messages_payload.clone(),
-            "tools": tools,
-            "tool_choice": "auto",
-            "max_tokens": 2048,
-        });
-
-        match state.http_client
-            .post(format!("{}/chat/completions", resolved.base_url))
-            .header("Authorization", format!("Bearer {}", resolved.api_key))
-            .header("Content-Type", "application/json")
-            .json(&tool_body)
-            .send()
-            .await
-        {
-            Ok(tool_res) => {
-                if tool_res.status().is_success() {
-                    if let Ok(tool_data) = tool_res.json::<serde_json::Value>().await {
-                        if let Some(calls) = tool_data["choices"][0]["message"]["tool_calls"].as_array() {
-                            if !calls.is_empty() {
-                                if let Some(call) = calls.first() {
-                                    if let Some((tool_id, tool_name, tool_result)) = resolve_tool_call(call, &id, &state).await {
-                                        tracing::info!("AI executing tool: {} -> {}", tool_name, tool_result);
-                                        let mut tool_messages = messages_payload.clone();
-                                        tool_messages.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
-                                        tool_messages.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                        let db = state.db.clone();
-                                        let cmd = if tool_name == "execute_terminal_command" {
-                                            serde_json::from_str::<serde_json::Value>(call["function"]["arguments"].as_str().unwrap_or("{}"))
-                                                .ok()
-                                                .and_then(|a| a["command"].as_str().map(|s| s.to_string()))
-                                        } else { None };
-                                        return stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, tool_messages, id, db, cmd, tool_result).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    let status = tool_res.status();
-                    let body_text = tool_res.text().await.unwrap_or_default();
-                    tracing::warn!("Tool request returned non-success status: {} body: {}. Falling back to normal streaming.", status, body_text);
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Tool request failed: {}. Falling back to normal streaming.", e);
-            }
-        }
-    }
+    let (tx, rx) = mpsc::channel::<String>(64);
 
     let db = state.db.clone();
-    stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, messages_payload, id, db, None, json!({})).await
+    let chat_id = id.clone();
+    let model = chat.model_id.clone();
+    let provider = resolved.id.clone();
+    let url = resolved.base_url.clone();
+    let key = resolved.api_key.clone();
+    let max_steps = user.max_agent_steps as usize;
+    let state_clone = state.clone();
+    let user_id = claims.sub.clone();
+
+    tokio::spawn(async move {
+        if !should_use_tools {
+            run_llm_stream(&state_clone, &url, &key, &model, &provider, &messages_payload, &chat_id, &db, &tx).await;
+            return;
+        }
+
+        let mut current_messages = messages_payload;
+        let tools = build_tools_def();
+        let mut total_steps = 0;
+
+        loop {
+            if total_steps >= max_steps {
+                tracing::info!("Agent max steps ({}) reached, streaming final response", max_steps);
+                break;
+            }
+            total_steps += 1;
+
+            let tool_body = json!({
+                "model": model,
+                "messages": current_messages,
+                "tools": tools,
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+            });
+
+            let tool_res = match state_clone.http_client
+                .post(format!("{}/chat/completions", url))
+                .header("Authorization", format!("Bearer {}", key))
+                .header("Content-Type", "application/json")
+                .json(&tool_body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("Tool request failed: {}. Falling back to streaming.", e);
+                    break;
+                }
+            };
+
+            if !tool_res.status().is_success() {
+                let status = tool_res.status();
+                let body_len = tool_res.text().await.map(|t| t.len()).unwrap_or(0);
+                tracing::warn!("Tool request returned {} ({} bytes). Falling back to streaming.", status, body_len);
+                break;
+            }
+
+            let tool_data: serde_json::Value = match tool_res.json().await {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!("Failed to parse tool response: {}", e);
+                    break;
+                }
+            };
+
+            let choice = match tool_data["choices"][0].as_object() {
+                Some(c) => c,
+                None => break,
+            };
+
+            let assistant_msg = &choice["message"];
+            let tool_calls = match assistant_msg["tool_calls"].as_array() {
+                Some(calls) if !calls.is_empty() => calls,
+                _ => break,
+            };
+
+            let mut asst_json = json!({"role": "assistant", "content": null, "tool_calls": []});
+            if let Some(text) = assistant_msg["content"].as_str() {
+                if !text.is_empty() {
+                    asst_json["content"] = json!(text);
+                }
+            }
+            let mut tc_entries = Vec::new();
+            for call in tool_calls {
+                let tid = call["id"].as_str().unwrap_or("call_1");
+                let tname = call["function"]["name"].as_str().unwrap_or("unknown");
+                let targs = call["function"]["arguments"].as_str().unwrap_or("{}");
+                tc_entries.push(json!({
+                    "id": tid,
+                    "type": "function",
+                    "function": {"name": tname, "arguments": targs}
+                }));
+            }
+            asst_json["tool_calls"] = json!(tc_entries);
+            current_messages.push(asst_json);
+
+            let tool_results = resolve_tool_calls(tool_calls, &chat_id, &user_id, &state_clone).await;
+
+            for (tool_id, tool_name, tool_result) in &tool_results {
+                let command = if tool_name == "execute_terminal_command" {
+                    tool_result.get("command").and_then(|v| v.as_str()).unwrap_or("")
+                } else { "" };
+                let tool_event = serde_json::json!({
+                    "tool_name": tool_name,
+                    "tool_id": tool_id,
+                    "command": command,
+                    "stdout": tool_result.get("stdout").and_then(|v| v.as_str()).unwrap_or(""),
+                    "stderr": tool_result.get("stderr").and_then(|v| v.as_str()).unwrap_or(""),
+                    "status": tool_result.get("status").and_then(|v| v.as_str()).unwrap_or("success"),
+                    "filename": tool_result.get("filename").and_then(|v| v.as_str()).unwrap_or(""),
+                    "query": tool_result.get("query").and_then(|v| v.as_str()).unwrap_or(""),
+                    "results": tool_result.get("results").cloned().unwrap_or(json!([])),
+                });
+                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool_event.to_string())).await;
+
+                persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result).await;
+
+                current_messages.push(json!({
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": serde_json::to_string(tool_result).unwrap_or_default(),
+                }));
+            }
+        }
+
+        run_llm_stream(&state_clone, &url, &key, &model, &provider, &current_messages, &chat_id, &db, &tx).await;
+    });
+
+    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
+        Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
+    });
+
+    Ok(Sse::new(sse_stream))
 }
 
-async fn stream_final_response(
-    state: AppState,
-    base_url: String,
-    api_key: String,
-    model_id: String,
-    provider_id: String,
-    messages: Vec<serde_json::Value>,
-    chat_id: String,
-    db: sqlx::SqlitePool,
-    tool_command: Option<String>,
-    tool_result: serde_json::Value,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
+async fn run_llm_stream(
+    state: &AppState,
+    base_url: &str,
+    api_key: &str,
+    model_id: &str,
+    provider_id: &str,
+    messages: &[serde_json::Value],
+    chat_id: &str,
+    db: &sqlx::SqlitePool,
+    tx: &mpsc::Sender<String>,
+) {
     let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
-    let (tx, rx) = mpsc::channel::<String>(64);
 
     let provider_response = state.http_client
         .post(format!("{}/chat/completions", base_url))
@@ -1079,74 +1537,65 @@ async fn stream_final_response(
     }
 
     if let Some(mut stream) = stream_opt {
-        tokio::spawn(async move {
-            if let Some(cmd) = tool_command {
-                let tool_json = serde_json::json!({"command": cmd, "stdout": tool_result["stdout"].as_str().unwrap_or(""), "stderr": tool_result["stderr"].as_str().unwrap_or(""), "status": tool_result["status"].as_str().unwrap_or("error")});
-                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool_json.to_string())).await;
-            }
+        let mut buffer = String::new();
+        let mut full_content = String::new();
+        let chat_id = chat_id.to_string();
+        let provider_id = provider_id.to_string();
+        let model_id = model_id.to_string();
+        let db = db.clone();
 
-            let mut buffer = String::new();
-            let mut full_content = String::new();
-            const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(bytes) => {
-                        buffer.push_str(&String::from_utf8_lossy(&bytes));
-                        if buffer.len() > MAX_BUFFER_SIZE {
-                            tracing::error!("SSE buffer exceeded max size, aborting stream");
-                            break;
-                        }
-                        while let Some(pos) = buffer.find("\n\n") {
-                            let frame = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
-                            for line in frame.lines() {
-                                if line.starts_with("data: ") {
-                                    let data = &line[6..];
-                                    if data == "[DONE]" {
-                                        let _ = tx.send("[DONE]".to_string()).await;
-                                        let estimated_tokens = (full_content.len() / 4) as i32;
-                                        if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                                            .bind(chat_id.clone()).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
-                                            .execute(&db).await {
-                                            tracing::error!("Failed to persist assistant message: {}", e);
-                                        }
-                                        return;
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(bytes) => {
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    if buffer.len() > MAX_MESSAGE_LENGTH * 2 {
+                        tracing::error!("SSE buffer exceeded max size, aborting stream");
+                        break;
+                    }
+                    while let Some(pos) = buffer.find("\n\n") {
+                        let frame = buffer[..pos].to_string();
+                        buffer = buffer[pos + 2..].to_string();
+                        for line in frame.lines() {
+                            if line.starts_with("data: ") {
+                                let data = &line[6..];
+                                if data == "[DONE]" {
+                                    let _ = tx.send("[DONE]".to_string()).await;
+                                    let estimated_tokens = (full_content.len() / 4) as i32;
+                                    if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                        .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                        .execute(&db).await {
+                                        tracing::error!("Failed to persist assistant message: {}", e);
                                     }
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                                        if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                                            full_content.push_str(content);
-                                            let _ = tx.send(content.to_string()).await;
-                                        }
+                                    return;
+                                }
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
+                                    if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
+                                        full_content.push_str(content);
+                                        let _ = tx.send(content.to_string()).await;
                                     }
                                 }
                             }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Stream chunk error: {}", e);
-                        break;
-                    }
+                }
+                Err(e) => {
+                    tracing::error!("Stream chunk error: {}", e);
+                    break;
                 }
             }
+        }
 
-            let _ = tx.send("[DONE]".to_string()).await;
-            if !full_content.is_empty() {
-                let estimated_tokens = (full_content.len() / 4) as i32;
-                if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                    .bind(chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
-                    .execute(&db).await {
-                    tracing::error!("Failed to persist assistant message: {}", e);
-                }
+        let _ = tx.send("[DONE]".to_string()).await;
+        if !full_content.is_empty() {
+            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id)
+                .execute(&db).await {
+                tracing::error!("Failed to persist assistant message: {}", e);
             }
-        });
+        }
+    } else {
+        let _ = tx.send("[DONE]".to_string()).await;
     }
-
-    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
-        Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
-    });
-
-    Ok(Sse::new(sse_stream))
 }
 
 // ─── Reactions ───
