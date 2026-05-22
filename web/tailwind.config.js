@@ -42,7 +42,7 @@ export default {
       },
       backgroundImage: {
         'glass-gradient': 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)',
-        'vibrant-gradient': 'linear-gradient(135deg, #3b82f6 0%, #f97316 100%)',
+        'vibrant-gradient': 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
       },
     },
   },
