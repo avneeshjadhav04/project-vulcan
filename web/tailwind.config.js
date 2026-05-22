@@ -21,10 +21,10 @@ export default {
         'icon-primary': '#fafafa',
         'icon-secondary': '#a1a1aa',
         'icon-disabled': '#52525b',
-        interactive: '#3b82f6', // Blue
-        'interactive-hover': '#2563eb',
-        'link-primary': '#60a5fa',
-        'link-hover': '#93c5fd',
+        interactive: '#0f62fe', // Blue
+        'interactive-hover': '#0353e9',
+        'link-primary': '#0f62fe',
+        'link-hover': '#78a9ff',
         'support-error': '#ef4444',
         'support-success': '#22c55e',
         'support-warning': '#f97316', // Orange
@@ -42,7 +42,7 @@ export default {
       },
       backgroundImage: {
         'glass-gradient': 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)',
-        'vibrant-gradient': 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+        'vibrant-gradient': 'linear-gradient(135deg, #0f62fe 0%, #0f62fe 100%)',
       },
     },
   },
