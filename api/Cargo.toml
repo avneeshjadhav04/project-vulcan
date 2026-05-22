@@ -39,6 +39,8 @@ base64 = "0.22"
 sha2 = "0.10"
 regex = "1"
 urlencoding = "2"
+hex = "0.4"
+scraper = "0.20"
 
 [dev-dependencies]
 tokio-test = "0.4"

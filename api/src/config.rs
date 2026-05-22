@@ -12,6 +12,11 @@ pub struct Config {
     pub bind_addr: String,
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
+    pub app_base_url: String,
+    pub google_client_id: Option<String>,
+    pub google_client_secret: Option<String>,
+    pub todoist_client_id: Option<String>,
+    pub todoist_client_secret: Option<String>,
 }
 
 fn load_or_generate_master_key() -> Result<[u8; 32]> {
@@ -136,6 +141,11 @@ impl Config {
             bind_addr,
             cookie_secure,
             cors_origin,
+            app_base_url: env::var("APP_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            google_client_id: env::var("GOOGLE_CLIENT_ID").ok(),
+            google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
+            todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
+            todoist_client_secret: env::var("TODOIST_CLIENT_SECRET").ok(),
         })
     }
 }

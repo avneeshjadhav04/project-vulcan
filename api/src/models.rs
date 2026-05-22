@@ -46,6 +46,8 @@ pub struct Message {
     pub tokens_used: Option<i32>,
     pub provider_id: Option<String>,
     pub model_id: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub tool_name: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -179,4 +181,27 @@ pub struct EditMessageRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateToolsConfigRequest {
     pub tools_enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct IntegrationCredential {
+    pub id: String,
+    pub user_id: String,
+    pub provider: String,
+    #[serde(skip_serializing)]
+    pub encrypted_access_token: String,
+    #[serde(skip_serializing)]
+    pub encrypted_refresh_token: Option<String>,
+    pub expires_at: Option<String>,
+    pub scopes: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IntegrationInfo {
+    pub provider: String,
+    pub connected: bool,
+    pub scopes: Option<String>,
+    pub expires_at: Option<String>,
 }

@@ -5,6 +5,7 @@ import TypingIndicator from './TypingIndicator'
 import ToolExecutionCard from './ToolExecutionCard'
 import EmptyState from './EmptyState'
 import ScrollToBottom from './ScrollToBottom'
+import type { ToolExecution } from '../../hooks/useChatStream'
 
 interface MessageItem {
   id: string
@@ -18,7 +19,7 @@ interface ChatMessagesProps {
   messages: MessageItem[]
   streaming: boolean
   streamedContent: string
-  toolExecution: { command: string; stdout: string; stderr: string; status: string } | null
+  toolExecution: ToolExecution | null
   creatingChat: boolean
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
   showScrollBtn: boolean
