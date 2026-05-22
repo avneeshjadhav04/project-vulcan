@@ -58,7 +58,7 @@ export default function ChatInput({
   }, [input])
 
   return (
-    <div className="border-t border-border-subtle bg-background px-4 py-3">
+    <div className="border-t border-white/5 bg-background/80 backdrop-blur-xl px-4 py-4">
       <div className="mx-auto max-w-3xl">
         <AnimatePresence>
           {sendError && (
@@ -89,7 +89,7 @@ export default function ChatInput({
             }
           }}
           onDragOver={(e) => e.preventDefault()}
-          className="relative flex items-end gap-2 border border-border-subtle bg-layer p-2 transition-colors focus-within:border-focus focus-within:ring-1 focus-within:ring-focus"
+          className="relative flex items-end gap-2 rounded-glass border border-white/10 bg-layer/50 p-2 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
         >
           {effectiveChatId && (
             <FileUpload chatId={effectiveChatId} files={attachedFiles} onFilesChange={onFilesChange} />
@@ -121,7 +121,7 @@ export default function ChatInput({
           <button
             onClick={onToggleTools}
             aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
-            className={`flex h-7 w-7 shrink-0 items-center justify-center transition-colors ${
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
               toolsEnabled
                 ? 'bg-support-success/20 text-support-success'
                 : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
@@ -134,7 +134,7 @@ export default function ChatInput({
             <button
               onClick={onToggleVoice}
               aria-label={isListening ? 'Stop listening' : 'Voice input'}
-              className={`relative flex h-7 w-7 shrink-0 items-center justify-center transition-colors ${
+              className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
                 isListening
                   ? 'bg-support-error/20 text-support-error'
                   : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
@@ -142,7 +142,7 @@ export default function ChatInput({
             >
               {isListening ? (
                 <span className="relative flex h-4 w-4 items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full animate-ping bg-support-error/40" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-support-error/40" />
                   <MicOff className="relative h-4 w-4" aria-hidden="true" />
                 </span>
               ) : (
@@ -155,18 +155,18 @@ export default function ChatInput({
             <button
               onClick={onStop}
               aria-label="Stop generating"
-              className="flex h-8 w-8 shrink-0 items-center justify-center bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
             >
-              <StopCircle className="h-4 w-4" aria-hidden="true" />
+              <StopCircle className="h-5 w-5" aria-hidden="true" />
             </button>
           ) : (
             <button
               onClick={onSend}
               disabled={!input.trim()}
               aria-label="Send message"
-              className="flex h-8 w-8 shrink-0 items-center justify-center bg-interactive text-white transition-colors hover:bg-interactive-hover disabled:opacity-30"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 hover:shadow-interactive/30 disabled:opacity-30 disabled:shadow-none"
             >
-              <Send className="h-4 w-4" aria-hidden="true" />
+              <Send className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>
