@@ -21,15 +21,15 @@ export default {
         'icon-primary': '#fafafa',
         'icon-secondary': '#a1a1aa',
         'icon-disabled': '#52525b',
-        interactive: '#6366f1', // Indigo
-        'interactive-hover': '#4f46e5',
-        'link-primary': '#818cf8',
-        'link-hover': '#a5b4fc',
+        interactive: '#3b82f6', // Blue
+        'interactive-hover': '#2563eb',
+        'link-primary': '#60a5fa',
+        'link-hover': '#93c5fd',
         'support-error': '#ef4444',
         'support-success': '#22c55e',
-        'support-warning': '#eab308',
+        'support-warning': '#f97316', // Orange
         'support-info': '#3b82f6',
-        focus: '#818cf8',
+        focus: '#60a5fa',
       },
       fontFamily: {
         sans: ['"Inter"', 'sans-serif'],
@@ -42,7 +42,7 @@ export default {
       },
       backgroundImage: {
         'glass-gradient': 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)',
-        'vibrant-gradient': 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+        'vibrant-gradient': 'linear-gradient(135deg, #3b82f6 0%, #f97316 100%)',
       },
     },
   },
