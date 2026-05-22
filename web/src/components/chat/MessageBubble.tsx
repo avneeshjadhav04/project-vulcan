@@ -68,16 +68,16 @@ export default function MessageBubble({
       {/* Avatar */}
       <div className="flex shrink-0 flex-col items-center pt-0.5">
         <div
-          className={`flex h-7 w-7 items-center justify-center border ${
+          className={`flex h-8 w-8 items-center justify-center rounded-full shadow-sm ${
             isAssistant
-              ? 'border-border-subtle bg-interactive'
-              : 'border-border-subtle bg-layer'
+              ? 'bg-vibrant-gradient'
+              : 'border border-border-subtle bg-layer'
           }`}
         >
           {isAssistant ? (
-            <Sparkles className="h-3.5 w-3.5 text-white" aria-hidden="true" />
+            <Sparkles className="h-4 w-4 text-white" aria-hidden="true" />
           ) : (
-            <User className="h-3.5 w-3.5 text-text-secondary" aria-hidden="true" />
+            <User className="h-4 w-4 text-text-secondary" aria-hidden="true" />
           )}
         </div>
       </div>
@@ -104,10 +104,10 @@ export default function MessageBubble({
         </div>
 
         <div
-          className={`inline-block text-left ${
+          className={`inline-block text-left shadow-sm ${
             isUser
-              ? 'bg-interactive px-4 py-2.5 text-white'
-              : 'border border-border-subtle bg-layer px-4 py-2.5 text-text-primary'
+              ? 'bg-interactive text-white rounded-2xl rounded-tr-sm px-5 py-3'
+              : 'border border-white/5 bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary'
           }`}
         >
           {isEditing ? (

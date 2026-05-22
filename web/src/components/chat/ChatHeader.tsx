@@ -23,7 +23,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
   }, [])
 
   return (
-    <header className="flex items-center justify-between border-b border-border-subtle bg-background px-5 py-2.5">
+    <header className="flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
         <h2 className="truncate text-xs font-semibold text-text-primary">
           {title || optimisticTitle || 'New Chat'}
@@ -47,7 +47,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  className="absolute right-0 top-full z-50 mt-1 w-36 border border-border-subtle bg-layer shadow-lg"
+                  className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
                 >
                   <button
                     onClick={() => {

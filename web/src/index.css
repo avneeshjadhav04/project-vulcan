@@ -13,52 +13,52 @@
 
   body {
     overflow-x: hidden;
-    background-color: #161616;
+    background-color: #09090b; /* matches new tailwind background */
   }
 
   ::selection {
-    background-color: #393939;
-    color: #f4f4f4;
+    background-color: #3f3f46;
+    color: #fafafa;
   }
 
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #161616;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #525252;
-    border-radius: 0;
+    background: #3f3f46;
+    border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #6f6f6f;
+    background: #52525b;
   }
 }
 
 @layer components {
   .carbon-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 bg-interactive px-4 py-3 text-sm font-normal text-white transition-colors hover:bg-interactive-hover focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-carbon bg-vibrant-gradient px-4 py-3 text-sm font-medium text-white shadow-lg transition-all hover:opacity-90 hover:shadow-interactive/25 focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .carbon-btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 border border-border-subtle bg-transparent px-4 py-3 text-sm font-normal text-text-primary transition-colors hover:bg-layer-hover focus:outline-none focus:ring-2 focus:ring-focus focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-carbon border border-border-subtle bg-layer px-4 py-3 text-sm font-medium text-text-primary shadow-sm transition-all hover:border-interactive/50 hover:bg-layer-hover focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .carbon-btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 bg-transparent px-4 py-2 text-sm font-normal text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-carbon bg-transparent px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none disabled:opacity-50;
   }
 
   .carbon-input {
-    @apply w-full border border-border-subtle bg-layer px-4 py-3 text-sm text-text-primary outline-none transition-colors placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus;
+    @apply w-full rounded-carbon border border-border-subtle bg-layer px-4 py-3 text-sm text-text-primary outline-none transition-all placeholder:text-text-placeholder focus:border-interactive focus:ring-1 focus:ring-interactive shadow-sm;
   }
 
   .carton-layer {
-    @apply bg-layer border border-border-subtle;
+    @apply rounded-glass bg-glass-gradient backdrop-blur-xl border border-white/10;
   }
 }
 

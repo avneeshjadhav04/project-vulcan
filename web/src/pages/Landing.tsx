@@ -93,16 +93,16 @@ function TerminalWindow({
 }) {
   return (
     <div
-      className={`overflow-hidden border border-border-subtle bg-background shadow-2xl ${className}`}
-      style={{ boxShadow: '0 0 0 1px #262626, 0 25px 50px -12px rgba(0,0,0,0.5)' }}
+      className={`overflow-hidden rounded-glass border border-border-strong bg-layer/50 backdrop-blur-md shadow-2xl ${className}`}
+      style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 25px 50px -12px rgba(0,0,0,0.5)' }}
     >
-      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer px-4 py-2.5">
+      <div className="flex items-center gap-2 border-b border-white/5 bg-layer-hover/50 px-4 py-3">
         <div className="flex items-center gap-1.5">
           <div className="h-3 w-3 rounded-full bg-[#ff5f56]" />
           <div className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
           <div className="h-3 w-3 rounded-full bg-[#27c93f]" />
         </div>
-        <span className="ml-3 text-[11px] font-medium tracking-wide text-text-disabled uppercase">
+        <span className="ml-3 text-[11px] font-medium tracking-wide text-text-secondary uppercase">
           {title}
         </span>
       </div>
@@ -127,10 +127,10 @@ function Nav() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border-subtle bg-background">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-background/60 backdrop-blur-xl transition-all">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <button onClick={() => navigate('/')} className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-14 w-14" />
+          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-md" />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-1">
@@ -249,21 +249,25 @@ function Hero() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <section className="flex min-h-screen items-center justify-center px-6 pt-16">
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-24">
+      {/* Background glow effects */}
+      <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/20 opacity-50 blur-[120px] mix-blend-screen" />
+      <div className="pointer-events-none absolute right-0 top-0 -z-10 h-[400px] w-[600px] rounded-full bg-pink-500/10 opacity-40 blur-[100px] mix-blend-screen" />
+      
       <div className="relative mx-auto max-w-4xl text-center">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
         >
-          <div className="mb-6 inline-flex items-center gap-2 border border-border-subtle bg-layer px-3 py-1.5 text-xs font-medium text-text-secondary">
-            <Sparkles className="h-3 w-3" />
-            Multi-Provider AI
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-white/10">
+            <Sparkles className="h-3.5 w-3.5 text-interactive" />
+            <span className="bg-gradient-to-r from-interactive to-pink-500 bg-clip-text text-transparent">Multi-Provider AI Platform</span>
           </div>
 
-          <h1 className="mb-5 text-5xl font-light leading-tight tracking-tight text-text-primary md:text-7xl">
+          <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
             Your Personal{' '}
-            <span className="font-semibold text-interactive">AI Assistant</span>
+            <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Assistant</span>
           </h1>
 
           <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-text-secondary">
@@ -325,11 +329,11 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
       ref={ref}
       initial={{ opacity: 0, y: 16 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.3, delay }}
-      className="border border-border-subtle bg-layer p-6 transition-colors hover:border-border-strong"
+      transition={{ duration: 0.5, delay, ease: "easeOut" }}
+      className="group relative overflow-hidden rounded-glass border border-white/5 bg-layer/40 p-8 backdrop-blur-md transition-all hover:border-interactive/30 hover:bg-layer/60 hover:-translate-y-1 hover:shadow-2xl hover:shadow-interactive/10"
     >
-      <div className="mb-4 flex h-10 w-10 items-center justify-center border border-border-subtle bg-background text-interactive">
-        <Icon className="h-5 w-5" />
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+        <Icon className="h-6 w-6" />
       </div>
       <h3 className="mb-2 text-sm font-semibold text-text-primary">{title}</h3>
       <p className="text-sm leading-relaxed text-text-secondary">{description}</p>
@@ -464,15 +468,15 @@ function TerminalDemo() {
       <div className="mx-auto max-w-6xl">
         <motion.div
           ref={ref}
-          initial={{ opacity: 0, y: 16 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.4 }}
-          className="overflow-hidden border border-border-subtle bg-background"
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="overflow-hidden rounded-glass border border-white/5 bg-layer/40 backdrop-blur-md shadow-2xl"
         >
           <div className="grid items-center lg:grid-cols-2">
-            <div className="p-10">
-              <div className="mb-4 inline-flex items-center gap-2 border border-border-subtle bg-layer px-3 py-1.5 text-xs font-medium text-text-secondary">
-                <Terminal className="h-3.5 w-3.5" />
+            <div className="p-10 lg:p-14">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-text-secondary">
+                <Terminal className="h-4 w-4 text-interactive" />
                 Sandboxed Environment
               </div>
               <h2 className="mb-4 text-2xl font-light tracking-tight text-text-primary md:text-3xl">
@@ -498,8 +502,8 @@ function TerminalDemo() {
                 ))}
               </ul>
             </div>
-            <div className="border-t border-border-subtle bg-layer p-8 lg:border-t-0 lg:border-l">
-              <TerminalWindow title="sandbox — bash" className="border-0 shadow-none">
+            <div className="border-t border-white/5 bg-layer/20 p-8 lg:border-t-0 lg:border-l lg:p-12">
+              <TerminalWindow title="sandbox — bash" className="border border-white/10 shadow-none">
                 <div className="h-[320px] overflow-y-auto p-5 font-mono text-[13px] leading-relaxed">
                   {commands.slice(0, currentStep).map((cmd, i) => (
                     <div key={i} className="mb-3">
@@ -583,18 +587,19 @@ function CTASection() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
     <section className="px-6 py-24">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-4xl relative">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/10 blur-[80px] mix-blend-screen" />
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.4 }}
-          className="border border-border-subtle bg-layer p-10 text-center md:p-14"
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="rounded-glass border border-white/5 bg-layer/60 backdrop-blur-xl p-12 text-center shadow-2xl md:p-20"
         >
-          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
-            <Zap className="h-6 w-6 text-interactive" />
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+            <Zap className="h-8 w-8" />
           </div>
-          <h2 className="mb-3 text-2xl font-light tracking-tight text-text-primary md:text-3xl">
+          <h2 className="mb-4 text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
             {isAuthenticated ? 'Welcome Back' : 'Ready to Get Started?'}
           </h2>
           <p className="mx-auto mb-6 max-w-md text-base text-text-secondary">
@@ -630,10 +635,10 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="border-t border-border-subtle px-6 py-8">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 md:flex-row">
-        <div className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-12 w-12" />
+    <footer className="border-t border-white/5 bg-background/80 backdrop-blur-md px-6 py-10">
+      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
+        <div className="flex items-center gap-3">
+          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
         </div>
         <div className="flex items-center gap-4">

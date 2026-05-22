@@ -115,17 +115,17 @@ export default function Chat() {
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: sidebarWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="flex shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-background"
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="flex shrink-0 flex-col overflow-hidden border-r border-white/5 bg-layer/30 backdrop-blur-md"
             style={{ width: sidebarWidth }}
           >
             {/* Logo */}
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
               <div className="flex items-center gap-2">
-                <img src="/VulcanLogo.png" alt="" className="h-16 w-16" />
+                <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-sm" />
                 <div>
-                  <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
-                  <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
+                  <span className="text-sm font-semibold text-text-primary">Project Vulcan</span>
+                  <p className="text-[10px] text-text-secondary">Personal AI Assistant</p>
                 </div>
               </div>
               <button
@@ -142,10 +142,10 @@ export default function Chat() {
             </div>
 
             {/* Footer */}
-            <div className="border-t border-border-subtle p-3">
-              <div className="mb-2 flex items-center gap-2 border border-border-subtle bg-layer px-3 py-2">
-                <div className="flex h-6 w-6 items-center justify-center bg-layer-active">
-                  <span className="text-[10px] font-semibold text-interactive">
+            <div className="border-t border-white/5 p-3">
+              <div className="mb-2 flex items-center gap-2 rounded-carbon border border-white/5 bg-layer/50 px-3 py-2 shadow-sm transition-colors hover:bg-layer/80">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient text-white shadow-inner">
+                  <span className="text-[11px] font-bold">
                     {user?.email?.charAt(0).toUpperCase() || 'U'}
                   </span>
                 </div>
@@ -194,7 +194,7 @@ export default function Chat() {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-3 top-3 z-10 flex items-center gap-2 border border-border-subtle bg-layer px-3 py-2 text-text-disabled transition-colors hover:text-text-primary"
+          className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-carbon border border-white/10 bg-layer/60 px-3 py-2 text-text-secondary backdrop-blur-md transition-all hover:bg-layer/80 hover:text-text-primary shadow-sm"
         >
           <PanelLeftOpen className="h-4 w-4" />
         </button>
@@ -242,12 +242,12 @@ function SidebarButton({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 px-3 py-2 text-xs transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-carbon px-3 py-2.5 text-xs font-medium transition-all ${
         danger
           ? 'text-support-error hover:bg-support-error/10'
           : active
-            ? 'bg-interactive/10 text-interactive'
-            : 'text-text-disabled hover:bg-layer-hover hover:text-text-primary'
+            ? 'bg-interactive/10 text-interactive shadow-inner'
+            : 'text-text-secondary hover:bg-layer/60 hover:text-text-primary'
       }`}
     >
       {icon}

@@ -92,11 +92,11 @@ export default function ProviderModelSelector({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 border border-border-subtle bg-background px-2.5 py-2 text-left text-xs text-text-secondary transition-colors hover:border-border-strong"
+        className="flex w-full items-center justify-between gap-2 rounded-carbon border border-white/10 bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
       >
         <div className="flex items-center gap-2 min-w-0">
           <Cpu className="h-3.5 w-3.5 shrink-0 text-interactive" />
-          <span className="font-mono truncate">
+          <span className="font-mono truncate text-[11px]">
             {selectedItem ? `${selectedItem.providerName} / ${selectedItem.model.id}` : selected.modelId || 'Select model'}
           </span>
         </div>
@@ -104,9 +104,9 @@ export default function ProviderModelSelector({
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-80 overflow-hidden border border-border-subtle bg-layer shadow-lg">
+        <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md">
           {/* Search */}
-          <div className="border-b border-border-subtle p-2">
+          <div className="border-b border-white/5 p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
               <Search className="h-3.5 w-3.5 text-text-helper" />
               <input
