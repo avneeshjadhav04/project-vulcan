@@ -252,7 +252,7 @@ function Hero() {
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 pt-24">
       {/* Background glow effects */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/20 opacity-50 blur-[120px] mix-blend-screen" />
-      <div className="pointer-events-none absolute right-0 top-0 -z-10 h-[400px] w-[600px] rounded-full bg-pink-500/10 opacity-40 blur-[100px] mix-blend-screen" />
+      <div className="pointer-events-none absolute right-0 top-0 -z-10 h-[400px] w-[600px] rounded-full bg-orange-500/10 opacity-40 blur-[100px] mix-blend-screen" />
       
       <div className="relative mx-auto max-w-4xl text-center">
         <motion.div
@@ -262,7 +262,7 @@ function Hero() {
         >
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-white/10">
             <Sparkles className="h-3.5 w-3.5 text-interactive" />
-            <span className="bg-gradient-to-r from-interactive to-pink-500 bg-clip-text text-transparent">Multi-Provider AI Platform</span>
+            <span className="bg-gradient-to-r from-interactive to-orange-500 bg-clip-text text-transparent">Multi-Provider AI Platform</span>
           </div>
 
           <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
