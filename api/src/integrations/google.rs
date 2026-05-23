@@ -2,9 +2,26 @@ use crate::{middleware::AppState, models::IntegrationCredential, oauth};
 use serde_json::json;
 use base64::Engine;
 
-pub fn google_oauth_config(state: &AppState) -> Option<oauth::OAuthConfig> {
-    let client_id = state.config.google_client_id.clone()?;
-    let client_secret = state.config.google_client_secret.clone()?;
+pub async fn google_oauth_config(state: &AppState, user_id: &str) -> Option<oauth::OAuthConfig> {
+    let mut db_client_id = None;
+    let mut db_client_secret = None;
+
+    if let Ok(Some(config)) = sqlx::query_as::<_, crate::models::IntegrationConfig>(
+        "SELECT * FROM integration_configs WHERE user_id = ? AND provider = 'google'"
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await {
+        if let Ok(id) = oauth::decrypt_token(&config.encrypted_client_id, &state.config.master_key) {
+            db_client_id = Some(id);
+        }
+        if let Ok(secret) = oauth::decrypt_token(&config.encrypted_client_secret, &state.config.master_key) {
+            db_client_secret = Some(secret);
+        }
+    }
+
+    let client_id = db_client_id.or_else(|| state.config.google_client_id.clone())?;
+    let client_secret = db_client_secret.or_else(|| state.config.google_client_secret.clone())?;
     let redirect_uri = format!(
         "{}/api/integrations/google/callback",
         state.config.app_base_url
@@ -29,7 +46,7 @@ pub async fn get_valid_token(
     state: &AppState,
     credential: &mut IntegrationCredential,
 ) -> Result<String, String> {
-    let config = google_oauth_config(state).ok_or("Google OAuth not configured")?;
+    let config = google_oauth_config(state, &credential.user_id).await.ok_or("Google OAuth not configured")?;
 
     if oauth::is_token_expired(&credential.expires_at) {
         let refresh_token = credential

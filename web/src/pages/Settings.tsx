@@ -38,6 +38,14 @@ interface Provider {
   is_active: boolean
 }
 
+interface IntegrationInfo {
+  provider: string
+  connected: boolean
+  scopes?: string
+  expires_at?: string
+  is_configured: boolean
+}
+
 const BUILT_IN_PROVIDERS = [
   { id: 'nvidia', name: 'NVIDIA NIM', base_url: 'https://integrate.api.nvidia.com/v1' },
   { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com/v1' },
@@ -68,9 +76,15 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false)
   const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; provider_id?: string} | null>(null)
   const [validating, setValidating] = useState(false)
-  const [integrations, setIntegrations] = useState<Array<{ provider: string; connected: boolean; scopes?: string; expires_at?: string }>>([])
+  const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
   const [integrationsLoading, setIntegrationsLoading] = useState(false)
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null)
+
+  const [showConfigModal, setShowConfigModal] = useState(false)
+  const [configProvider, setConfigProvider] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [configSaving, setConfigSaving] = useState(false)
 
   useEffect(() => {
     if (saved) {
@@ -135,6 +149,30 @@ export default function Settings() {
       setSaved(true)
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect')
+    }
+  }
+
+  const handleSaveConfig = async () => {
+    if (!clientId.trim() || !clientSecret.trim()) {
+      setError('Client ID and Secret are required')
+      return
+    }
+    setError('')
+    setConfigSaving(true)
+    try {
+      await api.put(`/integrations/${configProvider}/config`, {
+        client_id: clientId.trim(),
+        client_secret: clientSecret.trim(),
+      })
+      await loadIntegrations()
+      setShowConfigModal(false)
+      setClientId('')
+      setClientSecret('')
+      setSaved(true)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to save configuration')
+    } finally {
+      setConfigSaving(false)
     }
   }
 
@@ -507,6 +545,19 @@ export default function Settings() {
                           <Unlink className="h-3 w-3" />
                           Disconnect
                         </button>
+                      ) : !int.is_configured ? (
+                        <button
+                          onClick={() => {
+                            setConfigProvider(int.provider)
+                            setClientId('')
+                            setClientSecret('')
+                            setShowConfigModal(true)
+                          }}
+                          className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
+                        >
+                          <Key className="h-4 w-4" />
+                          Configure App
+                        </button>
                       ) : (
                         <button
                           onClick={() => handleConnect(int.provider)}
@@ -628,6 +679,87 @@ export default function Settings() {
           </div>
         </div>
       </main>
+
+      {/* Configure Integration Modal */}
+      <AnimatePresence>
+        {showConfigModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4"
+            onClick={() => setShowConfigModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md border border-border-subtle bg-layer p-5 shadow-xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text-primary capitalize">
+                  Configure {configProvider} App
+                </h3>
+                <button onClick={() => setShowConfigModal(false)} className="text-text-helper hover:text-text-primary">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {error && (
+                <div className="mb-3 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <p className="text-[11px] text-text-helper">
+                  To connect {configProvider}, you need to provide your own OAuth Client ID and Secret. 
+                  These credentials will be encrypted using AES-256-GCM and stored securely in your database.
+                </p>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">Client ID</label>
+                  <input
+                    type="text"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-helper focus:border-interactive focus:outline-none"
+                    placeholder="Enter your Client ID"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">Client Secret</label>
+                  <input
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-helper focus:border-interactive focus:outline-none"
+                    placeholder="Enter your Client Secret"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowConfigModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveConfig}
+                  disabled={configSaving || !clientId.trim() || !clientSecret.trim()}
+                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                >
+                  {configSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Credentials
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Provider Modal */}
       <AnimatePresence>
