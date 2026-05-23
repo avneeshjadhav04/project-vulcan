@@ -36,7 +36,7 @@ export default function ChatInput({
   onSend,
   onStop,
   streaming,
-  effectiveChatId,
+  effectiveChatId: _effectiveChatId,
   getChatId,
   selectedModel,
   onModelChange,

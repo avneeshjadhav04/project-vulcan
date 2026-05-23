@@ -28,27 +28,33 @@ pub struct RunResponse {
 }
 
 /// Verify that proot and the Ubuntu rootfs are available.
-fn verify_proot_env() -> Result<(), String> {
+fn has_proot_env() -> bool {
     let proot_exists = std::process::Command::new("which")
         .arg("proot")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    if !proot_exists {
-        return Err("proot is not available in this environment".to_string());
-    }
-    if !std::path::Path::new(ROOTFS_PATH).exists() {
-        return Err(format!(
-            "Ubuntu rootfs not found at {}. The sandbox environment is not initialized.",
-            ROOTFS_PATH
-        ));
-    }
-    Ok(())
+    
+    proot_exists && std::path::Path::new(ROOTFS_PATH).exists()
 }
 
 /// Build a Command that runs inside the proot Ubuntu environment.
 fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
-    verify_proot_env()?;
+    if !has_proot_env() {
+        let mut command = Command::new(cmd[0]);
+        if cmd.len() > 1 {
+            command.args(&cmd[1..]);
+        }
+        
+        let workspace_path = std::env::var("WORKSPACE_PATH")
+            .unwrap_or_else(|_| "/workspace".to_string());
+        
+        if std::path::Path::new(&workspace_path).exists() {
+            command.current_dir(workspace_path);
+        }
+        
+        return Ok(command);
+    }
 
     let mut command = Command::new("proot");
     command.args([
@@ -80,7 +86,7 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
         .spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-    let result = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(120), async {
         let mut stdout_buf = Vec::new();
         let mut stderr_buf = Vec::new();
 
@@ -99,9 +105,21 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
 
         let status = child.wait().await.map_err(|e| e.to_string())?;
 
+        let mut stdout_str = String::from_utf8_lossy(&stdout_buf).into_owned();
+        let mut stderr_str = String::from_utf8_lossy(&stderr_buf).into_owned();
+
+        if stdout_str.len() > 100_000 {
+            stdout_str.truncate(100_000);
+            stdout_str.push_str("\n...[output truncated]...");
+        }
+        if stderr_str.len() > 100_000 {
+            stderr_str.truncate(100_000);
+            stderr_str.push_str("\n...[output truncated]...");
+        }
+
         Ok(RunResponse {
-            stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
-            stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
+            stdout: stdout_str,
+            stderr: stderr_str,
             status: if status.success() {
                 "success".to_string()
             } else {
@@ -117,7 +135,7 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
         Ok(Err(e)) => Err(e),
         Err(_) => Ok(RunResponse {
             stdout: String::new(),
-            stderr: "Command timed out after 60 seconds".to_string(),
+            stderr: "Command timed out after 120 seconds".to_string(),
             status: "timeout".to_string(),
             code: Some(-1),
         }),

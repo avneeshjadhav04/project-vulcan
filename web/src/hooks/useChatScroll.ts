@@ -1,10 +1,8 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 
 export function useChatScroll({
-  streamedContent,
   messages,
 }: {
-  streamedContent: string
   messages: any[]
 }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)

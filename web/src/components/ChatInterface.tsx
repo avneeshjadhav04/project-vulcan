@@ -87,7 +87,7 @@ export default function ChatInterface({
     },
   })
 
-  const scroll = useChatScroll({ streamedContent, messages: chatData?.messages || [] })
+  const scroll = useChatScroll({ messages: chatData?.messages || [] })
 
   // Sync model from loaded chat
   useEffect(() => {
