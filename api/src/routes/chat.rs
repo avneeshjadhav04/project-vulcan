@@ -722,6 +722,8 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
          **Self-Healing execution:** If a tool execution fails (e.g. returns an error or non-zero exit code), \
          carefully analyze the error output (stderr or json error) and attempt to fix the issue by running a corrected tool call. \
          You may retry autonomously before asking the user for help. \
+         **Artifacts:** When generating complex HTML, CSS, SVG, React, or Mermaid diagrams, wrap the code block in an artifact tag to render it visually for the user. \
+         Syntax: ```html artifact=\"Title of Artifact\"\n...code...\n```. \
          Be concise and helpful.",
     );
 
