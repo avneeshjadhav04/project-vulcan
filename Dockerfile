@@ -10,7 +10,7 @@ RUN npm run build
 
 # Stage 2: Build Rust API
 FROM rust:1.90-slim-bookworm AS api-builder
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
@@ -19,7 +19,7 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
