@@ -1,5 +1,8 @@
 import CodeBlock from './CodeBlock'
 
+import { Code, ExternalLink } from 'lucide-react'
+import { useArtifactStore } from '../../stores/artifactStore'
+
 export function InlineCode({ children }: { children: React.ReactNode }) {
   return (
     <code className="break-all rounded-sm bg-layer px-1 py-0.5 font-mono text-sm text-text-secondary">
@@ -8,9 +11,46 @@ export function InlineCode({ children }: { children: React.ReactNode }) {
   )
 }
 
+function ArtifactCard({ title, type, content }: { title: string, type: string, content: string }) {
+  const { setActiveArtifact } = useArtifactStore()
+  
+  return (
+    <div className="my-3 overflow-hidden rounded-md border border-border-subtle bg-layer/50">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Code className="h-4 w-4 text-interactive" />
+          <div>
+            <div className="text-sm font-medium text-text-primary">{title}</div>
+            <div className="text-[10px] text-text-helper uppercase tracking-wider">{type}</div>
+          </div>
+        </div>
+        <button
+          onClick={() => setActiveArtifact({ id: Math.random().toString(), title, type, content })}
+          className="flex items-center gap-1 rounded bg-interactive px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-interactive-hover shadow-sm"
+        >
+          <ExternalLink className="h-3 w-3" />
+          View Artifact
+        </button>
+      </div>
+      <div className="bg-[#0d1117] px-4 py-2 text-xs text-text-secondary">
+        Artifact generated. Click view to open in the side panel.
+      </div>
+    </div>
+  )
+}
+
 export const markdownComponents = {
-  code({ children, className }: { children?: React.ReactNode; className?: string }) {
+  code({ children, className, node }: any) {
     const isInline = !className
+    const meta = node?.data?.meta || ''
+    
+    const artifactMatch = meta.match(/artifact="([^"]+)"/)
+    if (artifactMatch) {
+      const title = artifactMatch[1]
+      const type = className?.replace('language-', '') || 'text'
+      return <ArtifactCard title={title} type={type} content={String(children)} />
+    }
+
     if (isInline) {
       return <InlineCode>{children}</InlineCode>
     }

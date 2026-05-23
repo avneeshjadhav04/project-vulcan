@@ -6,6 +6,7 @@ import { api } from '../lib/api'
 import Sidebar from '../components/Sidebar'
 import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
+import ArtifactViewer from '../components/chat/ArtifactViewer'
 import {
   Settings,
   LogOut,
@@ -222,6 +223,10 @@ export default function Chat() {
           )}
         </AnimatePresence>
       </main>
+
+      <AnimatePresence>
+        <ArtifactViewer />
+      </AnimatePresence>
     </div>
   )
 }
