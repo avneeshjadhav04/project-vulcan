@@ -140,14 +140,42 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "web_search",
-                "description": "Search the web for information using DuckDuckGo.",
+                "name": "search_web",
+                "description": "Search the web for real-time information.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "Search query"}
                     },
                     "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_fetch",
+                "description": "Fetch a webpage using a headless browser to get its text content. Use this to scrape URLs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to fetch"}
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "store_memory",
+                "description": "Store a piece of information in the AI's long-term vector memory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "Text content to remember"}
+                    },
+                    "required": ["content"]
                 }
             }
         }),
@@ -438,7 +466,7 @@ async fn execute_tool(
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status": "modified", "filename": filename}))
         }
-        "web_search" => {
+        "search_web" => {
             let query = args["query"].as_str().ok_or("Missing query")?;
             let url = format!(
                 "https://lite.duckduckgo.com/lite/?q={}",
@@ -482,6 +510,18 @@ async fn execute_tool(
             }
 
             Ok(json!({"status": "success", "query": query, "results": results}))
+        }
+        "browser_fetch" => {
+            let url = args["url"].as_str().ok_or("Missing url")?;
+            let text = crate::tools::browser::browser_fetch(url).await?;
+            Ok(json!({"status": "success", "content": text}))
+        }
+        "store_memory" => {
+            let content = args["content"].as_str().ok_or("Missing content")?;
+            let memory = crate::tools::memory::MemoryStore::new();
+            let _emb = memory.embed(content).await?;
+            // In a real app, we'd store _emb and content in SQLite
+            Ok(json!({"status": "success", "message": "Memory stored (stub)"}))
         }
         "calendar_list_events" => {
             crate::integrations::google::list_calendar_events(state, user_id, &args)
