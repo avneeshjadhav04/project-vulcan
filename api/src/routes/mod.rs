@@ -7,3 +7,4 @@ pub mod models;
 pub mod providers;
 pub mod templates;
 pub mod terminal;
+pub mod settings;
