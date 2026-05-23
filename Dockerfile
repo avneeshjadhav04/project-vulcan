@@ -9,8 +9,10 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Rust API
-FROM rust:1.90-slim-bookworm AS api-builder
-RUN apt-get update && apt-get install -y pkg-config libssl-dev g++ && rm -rf /var/lib/apt/lists/*
+FROM debian:trixie-slim AS api-builder
+RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
@@ -18,7 +20,7 @@ COPY db/migrations /app/db/migrations
 RUN cargo build --release
 
 # Stage 3: Runtime
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
