@@ -14,15 +14,16 @@ use tower_http::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
-mod config;
-mod db;
-mod integrations;
-mod middleware;
-mod models;
-mod oauth;
-mod providers;
-mod routes;
-mod sandbox_engine;
+pub mod config;
+pub mod db;
+pub mod integrations;
+pub mod middleware;
+pub mod models;
+pub mod oauth;
+pub mod providers;
+pub mod routes;
+pub mod sandbox_engine;
+pub mod tools;
 
 use middleware::{auth_middleware, csrf_middleware, AppState};
 
