@@ -1,5 +1,4 @@
 use headless_chrome::{Browser, LaunchOptions};
-use std::sync::Arc;
 
 pub async fn browser_fetch(url: &str) -> Result<String, String> {
     let url_copy = url.to_string();
