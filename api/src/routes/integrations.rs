@@ -78,23 +78,23 @@ async fn auth_url(
     State(state): State<AppState>,
     _claims: axum::Extension<Claims>,
     Path(provider): Path<String>,
-) -> Result<impl axum::response::IntoResponse, StatusCode> {
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let (config, state_param, challenge, _verifier) = match provider.as_str() {
         "google" => {
             let cfg = integrations::google::google_oauth_config(&state)
-                .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+                .ok_or((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) are not configured."}))))?;
             let pkce = oauth::generate_pkce_pair();
             let s = oauth::generate_state();
             (cfg, s, pkce.challenge, pkce.verifier)
         }
         "todoist" => {
             let cfg = integrations::todoist::todoist_oauth_config(&state)
-                .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+                .ok_or((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Todoist OAuth credentials (TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET) are not configured."}))))?;
             let pkce = oauth::generate_pkce_pair();
             let s = oauth::generate_state();
             (cfg, s, pkce.challenge, pkce.verifier)
         }
-        _ => return Err(StatusCode::NOT_FOUND),
+        _ => return Err((StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Provider not found"})))),
     };
 
     let url = oauth::build_auth_url(&config, &state_param, &challenge);
