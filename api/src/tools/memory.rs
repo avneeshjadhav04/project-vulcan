@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use fastembed::{TextEmbedding, InitOptions, EmbeddingModel};
+use fastembed::TextEmbedding;
 
 #[derive(Clone)]
 pub struct MemoryStore {
@@ -16,15 +16,11 @@ impl MemoryStore {
 
     pub async fn get_embedder(&self) -> Result<TextEmbedding, String> {
         // Simple initialization, downloads model on first run
-        TextEmbedding::try_new(InitOptions {
-            model_name: EmbeddingModel::AllMiniLML6V2,
-            show_download_progress: true,
-            ..Default::default()
-        }).map_err(|e| format!("Failed to load embedding model: {}", e))
+        TextEmbedding::try_new(Default::default()).map_err(|e| format!("Failed to load embedding model: {}", e))
     }
 
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>, String> {
-        let model = self.get_embedder().await?;
+        let mut model = self.get_embedder().await?;
         let embeddings = model.embed(vec![text], None).map_err(|e| e.to_string())?;
         
         if let Some(first) = embeddings.into_iter().next() {
