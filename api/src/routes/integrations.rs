@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{Json, Redirect},
-    routing::{delete, get},
+    routing::{delete, get, put},
     Router,
 };
 use serde::Deserialize;
@@ -18,6 +18,7 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/integrations", get(list_integrations))
+        .route("/integrations/:provider/config", put(save_integration_config))
         .route("/integrations/:provider/auth-url", get(auth_url))
         .route("/integrations/:provider/callback", get(oauth_callback))
         .route("/integrations/:provider", delete(disconnect))
@@ -48,17 +49,32 @@ async fn list_integrations(
         .map(|(p, s, e)| (p, (s, e)))
         .collect();
 
+    let configs: Vec<String> = sqlx::query_scalar(
+        "SELECT provider FROM integration_configs WHERE user_id = ?1",
+    )
+    .bind(&claims.sub)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
     let all_providers = vec!["google", "todoist"];
 
     let result: Vec<IntegrationInfo> = all_providers
         .into_iter()
         .map(|p| {
+            let is_configured = configs.contains(&p.to_string()) || match p {
+                "google" => state.config.google_client_id.is_some(),
+                "todoist" => state.config.todoist_client_id.is_some(),
+                _ => false,
+            };
+
             if let Some((scopes, expires_at)) = connected_providers.get(p) {
                 IntegrationInfo {
                     provider: p.to_string(),
                     connected: true,
                     scopes: scopes.clone(),
                     expires_at: expires_at.clone(),
+                    is_configured,
                 }
             } else {
                 IntegrationInfo {
@@ -66,6 +82,7 @@ async fn list_integrations(
                     connected: false,
                     scopes: None,
                     expires_at: None,
+                    is_configured,
                 }
             }
         })
@@ -76,19 +93,19 @@ async fn list_integrations(
 
 async fn auth_url(
     State(state): State<AppState>,
-    _claims: axum::Extension<Claims>,
+    claims: axum::Extension<Claims>,
     Path(provider): Path<String>,
 ) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let (config, state_param, challenge, _verifier) = match provider.as_str() {
         "google" => {
-            let cfg = integrations::google::google_oauth_config(&state)
+            let cfg = integrations::google::google_oauth_config(&state, &claims.sub).await
                 .ok_or((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Google OAuth credentials (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET) are not configured."}))))?;
             let pkce = oauth::generate_pkce_pair();
             let s = oauth::generate_state();
             (cfg, s, pkce.challenge, pkce.verifier)
         }
         "todoist" => {
-            let cfg = integrations::todoist::todoist_oauth_config(&state)
+            let cfg = integrations::todoist::todoist_oauth_config(&state, &claims.sub).await
                 .ok_or((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Todoist OAuth credentials (TODOIST_CLIENT_ID, TODOIST_CLIENT_SECRET) are not configured."}))))?;
             let pkce = oauth::generate_pkce_pair();
             let s = oauth::generate_state();
@@ -149,9 +166,9 @@ async fn oauth_callback(
     let verifier = stored_verifier.unwrap();
 
     let config = match provider.as_str() {
-        "google" => integrations::google::google_oauth_config(&state)
+        "google" => integrations::google::google_oauth_config(&state, &claims.sub).await
             .ok_or(StatusCode::SERVICE_UNAVAILABLE)?,
-        "todoist" => integrations::todoist::todoist_oauth_config(&state)
+        "todoist" => integrations::todoist::todoist_oauth_config(&state, &claims.sub).await
             .ok_or(StatusCode::SERVICE_UNAVAILABLE)?,
         _ => return Err(StatusCode::NOT_FOUND),
     };
@@ -233,4 +250,38 @@ async fn disconnect(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn save_integration_config(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(provider): Path<String>,
+    Json(payload): Json<crate::models::SaveIntegrationConfigRequest>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    if provider != "google" && provider != "todoist" {
+        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid provider"}))));
+    }
+
+    let encrypted_client_id = oauth::encrypt_token(&payload.client_id, &state.config.master_key)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Encryption failed"}))))?;
+    let encrypted_client_secret = oauth::encrypt_token(&payload.client_secret, &state.config.master_key)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Encryption failed"}))))?;
+
+    sqlx::query(
+        "INSERT INTO integration_configs (user_id, provider, encrypted_client_id, encrypted_client_secret) 
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(user_id, provider) DO UPDATE SET 
+           encrypted_client_id = excluded.encrypted_client_id,
+           encrypted_client_secret = excluded.encrypted_client_secret,
+           updated_at = datetime('now')"
+    )
+    .bind(&claims.sub)
+    .bind(&provider)
+    .bind(&encrypted_client_id)
+    .bind(&encrypted_client_secret)
+    .execute(&state.db)
+    .await
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Database error"}))))?;
+
+    Ok(StatusCode::OK)
 }
