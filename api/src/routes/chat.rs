@@ -632,6 +632,17 @@ async fn resolve_tool_calls(
     state: &AppState,
 ) -> Vec<(String, String, serde_json::Value)> {
     let mut results = Vec::with_capacity(calls.len());
+
+    let permissions: std::collections::HashMap<String, String> = sqlx::query_as::<_, (String, String)>(
+        "SELECT tool_name, permission_level FROM tool_permissions WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
+
     for call in calls {
         let func = match call["function"].as_object() {
             Some(f) => f,
@@ -643,6 +654,12 @@ async fn resolve_tool_calls(
         };
         let args_str = func["arguments"].as_str().unwrap_or("{}");
         let tool_id = call["id"].as_str().unwrap_or("call_1").to_string();
+
+        let perm = permissions.get(&name).map(|s| s.as_str()).unwrap_or("auto");
+        if perm == "deny" {
+            results.push((tool_id, name, json!({"error": "Tool execution denied by user configuration."})));
+            continue;
+        }
 
         match execute_tool(&name, args_str, chat_id, user_id, state).await {
             Ok(result) => results.push((tool_id, name, result)),
@@ -702,6 +719,9 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
         "When the user asks you to do something that requires these tools, use them proactively. \
          If you need multiple tools, call them in sequence. \
          Always explain what you're doing when using tools. \
+         **Self-Healing execution:** If a tool execution fails (e.g. returns an error or non-zero exit code), \
+         carefully analyze the error output (stderr or json error) and attempt to fix the issue by running a corrected tool call. \
+         You may retry autonomously before asking the user for help. \
          Be concise and helpful.",
     );
 

@@ -224,3 +224,19 @@ pub struct IntegrationConfig {
     pub created_at: String,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ToolPermission {
+    pub id: String,
+    pub user_id: String,
+    pub tool_name: String,
+    pub permission_level: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateToolPermissionRequest {
+    pub permission_level: String,
+}
+
