@@ -1,5 +1,6 @@
 use crate::{middleware::AppState, models::IntegrationCredential, oauth};
 use serde_json::json;
+use base64::Engine;
 
 pub fn google_oauth_config(state: &AppState) -> Option<oauth::OAuthConfig> {
     let client_id = state.config.google_client_id.clone()?;
@@ -224,7 +225,7 @@ pub async fn send_email(
         to, subject, body_text
     );
     let encoded =
-        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE, email.as_bytes());
+        base64::engine::general_purpose::URL_SAFE.encode(email.as_bytes());
 
     let gmail_body = json!({"raw": encoded});
 
@@ -375,12 +376,9 @@ fn get_header(headers: &serde_json::Value, name: &str) -> String {
 
 fn extract_email_body(payload: &serde_json::Value) -> String {
     if let Some(body_data) = payload["body"]["data"].as_str() {
-        if let Ok(decoded) = base64::Engine::decode(
-            &base64::engine::general_purpose::URL_SAFE,
-            body_data,
-        )
+        if let Ok(decoded) = base64::engine::general_purpose::URL_SAFE.decode(body_data)
         .or_else(|_| {
-            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, body_data)
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body_data)
         }) {
             if let Ok(s) = String::from_utf8(decoded) {
                 return s;

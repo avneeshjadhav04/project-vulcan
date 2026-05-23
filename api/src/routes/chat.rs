@@ -329,7 +329,12 @@ fn build_tools_def() -> Vec<serde_json::Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "code": {"type": "string", "description": "The Python code to execute"}
+                        "code": {"type": "string", "description": "The Python code to execute"},
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of pip packages to install before running"
+                        }
                     },
                     "required": ["code"]
                 }
@@ -565,6 +570,24 @@ async fn execute_tool(
         }
         "execute_python" => {
             let code = args["code"].as_str().ok_or("Missing code")?;
+            
+            let mut install_out = String::new();
+            if let Some(deps) = args["dependencies"].as_array() {
+                let mut packages = Vec::new();
+                for d in deps {
+                    if let Some(s) = d.as_str() {
+                        packages.push(s.to_string());
+                    }
+                }
+                if !packages.is_empty() {
+                    let mut pip_cmd = vec!["pip3", "install", "--user"];
+                    pip_cmd.extend(packages.iter().map(|s| s.as_str()));
+                    if let Ok(pip_res) = crate::sandbox_engine::run_command_http(&pip_cmd, &state.sandbox).await {
+                        install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
+                    }
+                }
+            }
+            
             let workspace = format!("./workspace/{}", chat_id);
             tokio::fs::create_dir_all(&workspace)
                 .await
@@ -585,7 +608,7 @@ async fn execute_tool(
             match exec_res {
                 Ok(resp) => Ok(json!({
                     "command": format!("python3 {}", guest_script_path),
-                    "stdout": resp.stdout,
+                    "stdout": format!("{}{}", install_out, resp.stdout),
                     "stderr": resp.stderr,
                     "status": resp.status,
                     "code": resp.code,
@@ -1283,6 +1306,37 @@ fn build_messages_payload(
 
     for msg in recent_messages {
         if msg.role == "tool" {
+            let tc = json!({
+                "id": msg.tool_call_id.as_deref().unwrap_or(""),
+                "type": "function",
+                "function": {
+                    "name": msg.tool_name.as_deref().unwrap_or("unknown_tool"),
+                    "arguments": "{}"
+                }
+            });
+            
+            let mut added_to_existing = false;
+            if let Some(last) = payload.last_mut() {
+                if last["role"] == "assistant" {
+                    if let Some(calls) = last.get_mut("tool_calls") {
+                        if let Some(calls_array) = calls.as_array_mut() {
+                            calls_array.push(tc.clone());
+                            added_to_existing = true;
+                        }
+                    } else {
+                        last.as_object_mut().unwrap().insert("tool_calls".to_string(), json!([tc]));
+                        added_to_existing = true;
+                    }
+                }
+            }
+            if !added_to_existing {
+                payload.push(json!({
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [tc]
+                }));
+            }
+            
             payload.push(json!({
                 "role": "tool",
                 "tool_call_id": msg.tool_call_id.as_deref().unwrap_or(""),
@@ -1583,26 +1637,16 @@ async fn send_message(
                 resolve_tool_calls(tool_calls, &chat_id, &user_id, &state_clone).await;
 
             for (tool_id, tool_name, tool_result) in &tool_results {
-                let command = if tool_name == "execute_terminal_command" {
-                    tool_result
-                        .get("command")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                } else {
-                    ""
-                };
-                let tool_event = serde_json::json!({
-                    "tool_name": tool_name,
-                    "tool_id": tool_id,
-                    "command": command,
-                    "stdout": tool_result.get("stdout").and_then(|v| v.as_str()).unwrap_or(""),
-                    "stderr": tool_result.get("stderr").and_then(|v| v.as_str()).unwrap_or(""),
-                    "status": tool_result.get("status").and_then(|v| v.as_str()).unwrap_or("success"),
-                    "filename": tool_result.get("filename").and_then(|v| v.as_str()).unwrap_or(""),
-                    "query": tool_result.get("query").and_then(|v| v.as_str()).unwrap_or(""),
-                    "results": tool_result.get("results").cloned().unwrap_or(json!([])),
-                });
-                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool_event)).await;
+                let mut event_obj = tool_result.clone();
+                if let Some(obj) = event_obj.as_object_mut() {
+                    obj.insert("tool_name".to_string(), json!(tool_name));
+                    obj.insert("tool_id".to_string(), json!(tool_id));
+                    
+                    if tool_name == "execute_terminal_command" && !obj.contains_key("command") {
+                        obj.insert("command".to_string(), json!(""));
+                    }
+                }
+                let _ = tx.send(format!("[TOOL]{}[/TOOL]", event_obj)).await;
 
                 persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result).await;
 

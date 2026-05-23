@@ -76,7 +76,7 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
     } finally {
       setUploading(false)
     }
-  }, [chatId, files, onFilesChange])
+  }, [getChatId, files, onFilesChange])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
