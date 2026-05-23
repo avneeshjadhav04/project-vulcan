@@ -84,6 +84,7 @@ fn load_or_generate_master_key() -> Result<[u8; 32]> {
 impl Config {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
+        dotenvy::from_path("../.env").ok();
 
         println!("[CONFIG] Loading environment variables...");
 

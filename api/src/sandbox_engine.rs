@@ -70,7 +70,6 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
         "/tmp:/tmp",
         "-w",
         WORKSPACE_GUEST_PATH,
-        "--",
     ]);
     command.args(cmd);
     Ok(command)
