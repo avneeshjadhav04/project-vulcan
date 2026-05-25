@@ -195,6 +195,15 @@ async fn download_file(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if let Some(f) = file {
+        // Prevent path traversal by ensuring the resolved path is within the upload directory
+        let upload_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string());
+        let abs_upload_dir = std::path::Path::new(&upload_dir).canonicalize().unwrap_or_else(|_| std::path::Path::new(&upload_dir).to_path_buf());
+        let abs_storage_path = std::path::Path::new(&f.storage_path).canonicalize().unwrap_or_else(|_| std::path::Path::new(&f.storage_path).to_path_buf());
+        if !abs_storage_path.starts_with(&abs_upload_dir) {
+            tracing::error!("Path traversal attempt blocked: {} outside {}", abs_storage_path.display(), abs_upload_dir.display());
+            return Err(StatusCode::FORBIDDEN);
+        }
+
         let data = tokio::fs::read(&f.storage_path)
             .await
             .map_err(|_| StatusCode::NOT_FOUND)?;

@@ -41,7 +41,7 @@ export default function Chat() {
       .then((res) => {
         const providers = res.data?.providers || []
         for (const p of providers) {
-          if (p.models && p.models.length > 0) {
+          if (p.models && Array.isArray(p.models) && p.models.length > 0 && p.models[0]?.id) {
             setSelectedModel({ providerId: p.provider_id, modelId: p.models[0].id })
             break
           }

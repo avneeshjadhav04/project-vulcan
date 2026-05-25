@@ -221,18 +221,29 @@ async fn run_command_inner(cmd: Vec<String>, sender: mpsc::UnboundedSender<Strin
         }
     };
 
-    tokio::join!(stdout_task, stderr_task);
+    let timeout_result = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        async {
+            tokio::join!(stdout_task, stderr_task);
+            child.wait().await
+        }
+    ).await;
 
-    match child.wait().await {
-        Ok(status) => {
+    match timeout_result {
+        Ok(Ok(status)) => {
             let code = status.code().unwrap_or(-1);
             let status_str = if status.success() { "success" } else { "error" };
             let payload = serde_json::json!({"status": status_str, "code": code}).to_string();
             let _ = sender.send(payload);
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             let payload =
                 serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+            let _ = sender.send(payload);
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let payload = serde_json::json!({"status": "timeout", "message": "Command timed out after 120 seconds"}).to_string();
             let _ = sender.send(payload);
         }
     }

@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+import type { AxiosError } from 'axios'
+import type { LucideIcon } from 'lucide-react'
 import {
   Mail,
   Lock,
@@ -20,7 +22,7 @@ import {
 } from 'lucide-react'
 
 /* Feature Item */
-function FeatureItem({ icon: Icon, text, delay }: { icon: any; text: string; delay: number }) {
+function FeatureItem({ icon: Icon, text, delay }: { icon: LucideIcon; text: string; delay: number }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: -12 }}
@@ -174,7 +176,8 @@ export default function Login() {
       await fetchMe()
       navigate(redirectTo)
     } catch (err) {
-      const data = (err as any).response?.data
+      const axiosErr = err as AxiosError<{ error?: string; message?: string }>
+      const data = axiosErr.response?.data
       setError(data?.error || data?.message || 'Authentication failed')
     } finally {
       setLoading(false)
