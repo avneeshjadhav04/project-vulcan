@@ -84,7 +84,14 @@ fn load_or_generate_master_key() -> Result<[u8; 32]> {
 impl Config {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
-        dotenvy::from_path("../.env").ok();
+        // Try multiple common locations for .env (project root, parent dir, current dir)
+        let env_paths = ["../.env", "./.env", ".env"];
+        for path in &env_paths {
+            if std::path::Path::new(path).exists() {
+                dotenvy::from_path(path).ok();
+                break;
+            }
+        }
 
         println!("[CONFIG] Loading environment variables...");
 

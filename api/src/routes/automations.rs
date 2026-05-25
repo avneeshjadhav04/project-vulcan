@@ -187,8 +187,21 @@ fn compute_next_run(expr: &str) -> String {
             .to_string()
     } else if let Some(time_part) = lower.strip_prefix("every day at ") {
         let time_part = time_part.trim();
-        let today = now.format("%Y-%m-%d").to_string();
-        format!("{}T{}:00Z", today, time_part)
+        let target = format!("{}T{}:00Z", now.format("%Y-%m-%d"), time_part);
+        let target_dt = chrono::DateTime::parse_from_rfc3339(&target)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| {
+                // If parsing fails, fall back to simple concatenation and add 1 day
+                now + chrono::Duration::days(1)
+            });
+        // If the target time has already passed today, schedule for tomorrow
+        if target_dt <= now {
+            (target_dt + chrono::Duration::days(1))
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string()
+        } else {
+            target_dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+        }
     } else if let Some(sec_str) = lower
         .strip_prefix("every ")
         .and_then(|s| s.strip_suffix(" seconds"))
@@ -259,7 +272,7 @@ pub async fn run_due_automations(state: &AppState) {
 
                 let (base_url, api_key, p_id) = if let Some(p) = provider {
                     let key =
-                        crate::oauth::decrypt_token(&p.encrypted_api_key, &state.config.master_key)
+                        crate::auth::decrypt_key(&p.encrypted_api_key, &state.config.master_key)
                             .unwrap_or_default();
                     (p.base_url, key, p.id)
                 } else {

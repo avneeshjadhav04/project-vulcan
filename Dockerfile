@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Rust API
-FROM debian:trixie-slim AS api-builder
+FROM debian:bookworm-slim AS api-builder
 RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -20,7 +20,7 @@ COPY db/migrations /app/db/migrations
 RUN cargo build --release
 
 # Stage 3: Runtime
-FROM debian:trixie-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -32,7 +32,9 @@ RUN mkdir -p /data && chmod 777 /data
 RUN mkdir -p /app/workspace && chmod 777 /app/workspace
 
 # Download and extract Ubuntu 24.04 LTS rootfs for proot sandbox
-# The exact patch version changes over time; we try the latest known release
+# The exact patch version changes over time; we try the latest known release.
+# SECURITY NOTE: In production, verify the SHA256 checksum of the downloaded tarball
+# against published Ubuntu release checksums before extracting.
 RUN wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-amd64.tar.gz \
     || wget -q -O /tmp/ubuntu-rootfs.tar.gz https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-amd64.tar.gz \
     && mkdir -p /app/ubuntu-rootfs \
