@@ -1,8 +1,9 @@
 services:
-  vulcan:
-    image: ghcr.io/avneeshjadhav04/project-vulcan:latest
+  api:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
     restart: unless-stopped
-    pull_policy: always
     environment:
       DATABASE_URL: sqlite:/data/vulcan.db
       MASTER_KEY: ${MASTER_KEY}

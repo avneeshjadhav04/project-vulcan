@@ -5,6 +5,7 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![Platforms](https://img.shields.io/badge/Platforms-linux%2Famd64%2C%20linux%2Farm64-blue)
 
 ## Features
 
@@ -26,73 +27,120 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 | **Database** | SQLite (embedded, zero-config) with FTS5 search |
 | **AI Providers** | NVIDIA NIM, OpenAI, Groq, OpenAI-compatible (BYOK) |
 
-## Quick Deploy (Render)
+## Quick Start (Docker)
 
-### Step 1: Create Web Service
+The fastest way to run Vulcan on any machine with Docker.
 
-1. Go to [Render Dashboard](https://dashboard.render.com)
-2. Click **New +** → **Web Service**
-3. Connect your GitHub repo (`avneeshjadhav04/project-vulcan`)
-4. Configure:
-   - **Name**: `project-vulcan`
-   - **Runtime**: Docker
-   - **Plan**: Starter (for disk support)
-5. Click **Create Web Service**
+### Option A: One-Liner Install
 
-### Step 2: Add Persistent Disk
-
-SQLite needs persistent storage:
-
-1. Service dashboard → **Disks** tab → **Add Disk**
-2. **Name**: `vulcan-data`
-3. **Mount Path**: `/data`
-4. **Size**: 1 GB
-5. Click **Create**
-
-> Free plan does not support disks. Use Starter plan or Docker Compose locally.
-
-### Step 3: Set Environment Variables
-
-Go to **Environment** tab:
-
-| Key | Value | Description |
-|-----|-------|-------------|
-| `MASTER_KEY` | `your-32-byte-secret-key!!!` | Random 32+ character string for encryption |
-| `NIM_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Default NVIDIA NIM endpoint |
-
-`DATABASE_URL` defaults to `sqlite:/data/vulcan.db` (uses the mounted disk).
-
-### Step 4: Deploy
-
-1. Click **Manual Deploy** → **Deploy latest commit**
-2. Wait 3–5 minutes for build
-3. Your app is live!
-
-### First Use
-
-1. Open your Render service URL
-2. Create an account via the signup page
-3. Log in and add your AI provider API key(s) in Settings
-
-> **Note:** The sandboxed terminal runs inside the API container via `proot`. No privileged mode required. Works on Render, VPS, and local Docker.
-
----
-
-## Local Development
-
-### Option A: Docker Compose (Full Features)
-
+**Linux / macOS / WSL:**
 ```bash
-# 1. Setup environment
-cp .env.example .env
-# Edit .env with secure values
-
-# 2. Launch everything
-docker compose up --build
+curl -fsSL https://raw.githubusercontent.com/avneeshjadhav04/project-vulcan/main/scripts/install.sh | bash
 ```
 
-- App: http://localhost:8080
-- Create an account at `/signup`, then log in
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/avneeshjadhav04/project-vulcan/main/scripts/install.ps1 | iex
+```
+
+This will:
+- Check for Docker and Docker Compose
+- Create `~/vulcan/` with persistent data and workspace directories
+- Generate a secure `MASTER_KEY` in `.env`
+- Pull the latest multi-arch image from GHCR
+- Start Vulcan on [http://localhost:8080](http://localhost:8080)
+- Add a `vulcan` CLI command for start/stop/update/logs/uninstall
+
+### Option B: Manual Docker Compose
+
+For users who prefer to see exactly what is running:
+
+```bash
+# 1. Create a directory
+mkdir ~/vulcan && cd ~/vulcan
+
+# 2. Download compose file
+curl -O https://raw.githubusercontent.com/avneeshjadhav04/project-vulcan/main/docker-compose.yml
+
+# 3. Generate .env with a secure master key
+if command -v openssl >/dev/null 2>&1; then
+  echo "MASTER_KEY=$(openssl rand -hex 32)" > .env
+else
+  echo "MASTER_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > .env
+fi
+
+# 4. Start
+docker compose up -d
+```
+
+### Option C: Quick Test (Ephemeral)
+
+Just want to try it for a few minutes without persistence?
+
+```bash
+docker run -p 8080:8080 \
+  -e "MASTER_KEY=$(openssl rand -hex 32)" \
+  -v vulcan_data:/data \
+  ghcr.io/avneeshjadhav04/project-vulcan:latest
+```
+
+**Note:** Data lives in a Docker volume. Fine for testing, not for long-term use.
+
+## Post-Install
+
+1. Open [http://localhost:8080](http://localhost:8080)
+2. Sign up for a new account
+3. Go to **Settings** and add your AI provider API key(s)
+4. Start chatting
+
+## CLI Commands (after install)
+
+```bash
+vulcan start       # Start Vulcan
+vulcan stop        # Stop Vulcan
+vulcan update      # Pull latest image and restart
+vulcan logs        # View logs
+vulcan status      # Check container status
+vulcan uninstall   # Remove Vulcan
+```
+
+## Updating
+
+Vulcan auto-pulls the latest image on every `vulcan start`. To force an immediate update:
+
+```bash
+vulcan update
+```
+
+Or manually:
+```bash
+cd ~/vulcan && docker compose pull && docker compose up -d
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MASTER_KEY` | Yes | auto-generated | 32+ byte key for AES-256-GCM encryption |
+| `DATABASE_URL` | No | `sqlite:/data/vulcan.db` | SQLite database path |
+| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | Default NVIDIA NIM endpoint |
+| `APP_BASE_URL` | No | `http://localhost:8080` | Base URL for OAuth callbacks |
+| `PORT` | No | `8080` | HTTP port |
+| `DISABLE_TOOLS` | No | - | Set to `1` to disable AI tool execution |
+
+> **Security Warning:** Never share or commit your `MASTER_KEY`. It is used to encrypt all stored API keys and credentials.
+
+## Development
+
+### Option A: Docker Compose (from source)
+
+```bash
+git clone https://github.com/avneeshjadhav04/project-vulcan.git
+cd project-vulcan
+cp .env.example .env
+# Edit .env with a secure MASTER_KEY
+docker compose -f docker-compose.dev.yml up --build
+```
 
 ### Option B: Without Docker
 
@@ -127,18 +175,13 @@ cd web && npm install && npm run dev
                      EXTERNAL            SANDBOX           SECURITY
 ```
 
-## Environment Variables
+## Security
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | No | `sqlite:./vulcan.db` | SQLite database path |
-| `MASTER_KEY` | Yes | - | 32+ byte key for AES-256-GCM |
-| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | Default NVIDIA NIM endpoint |
-| `JWT_SECRET_PATH` | No | - | RSA key path (falls back to HS256) |
-| `PORT` | No | `8080` | HTTP port |
-| `DISABLE_TOOLS` | No | - | Set to disable AI tool execution |
-
-> **Security Warning:** Change default credentials before deploying publicly. Never commit `.env` or `secrets/` to version control.
+- **Passwords**: Argon2id hashing
+- **API Keys**: AES-256-GCM encryption at rest
+- **Auth**: JWT via HttpOnly, SameSite=Strict cookies with CSRF tokens
+- **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
+- **JWT Fallback**: HS256 when RSA keys not available
 
 ## Project Structure
 
@@ -164,33 +207,22 @@ cd web && npm install && npm run dev
 │   │   ├── pages/          # Landing, Login, Chat, Settings
 │   │   ├── components/
 │   │   │   ├── chat/       # Chat UI sub-components
-│   │   │   │   ├── ChatHeader.tsx
-│   │   │   │   ├── ChatMessages.tsx
-│   │   │   │   ├── ChatInput.tsx
-│   │   │   │   ├── MessageBubble.tsx
-│   │   │   │   ├── StreamingMessage.tsx
-│   │   │   │   ├── CodeBlock.tsx         # Shiki syntax highlighting
-│   │   │   │   ├── ToolExecutionCard.tsx
-│   │   │   │   └── EmptyState.tsx
 │   │   │   ├── ChatInterface.tsx
 │   │   │   ├── Sidebar.tsx
 │   │   │   ├── Terminal.tsx
 │   │   │   └── ProviderModelSelector.tsx
 │   │   ├── hooks/          # Reusable logic
-│   │   │   ├── useChatStream.ts    # Streaming state machine
-│   │   │   ├── useVoiceInput.ts    # Speech recognition
-│   │   │   ├── useChatScroll.ts    # Smart auto-scroll
-│   │   │   └── useRelativeTime.ts  # Live timestamps
 │   │   ├── stores/         # Zustand auth store
 │   │   └── lib/            # API client
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── Dockerfile
 ├── db/migrations/          # SQLite schema
+├── scripts/                # Install & uninstall scripts
 ├── secrets/                # JWT RSA keys (gitignored, local only)
 ├── logos/                  # Brand assets
-├── docker-compose.yml      # Local orchestration
-├── render.yaml             # Render Blueprint
+├── docker-compose.yml      # Quickstart (GHCR image)
+├── docker-compose.dev.yml  # Development (build from source)
 ├── Dockerfile              # Unified release build
 ├── .env.example            # Environment template
 ├── .gitignore              # Git exclusions
@@ -199,18 +231,10 @@ cd web && npm install && npm run dev
 
 ## Branching Strategy
 
-- **`main`**: Production-ready code. Deployed to Render.
-- **`develop`**: Active development branch. Test here before merging to `main`.
+- **`main`**: Production-ready code.
+- **`develop`**: Active development branch.
 
 All new features and bug fixes should target `develop` first.
-
-## Security
-
-- **Passwords**: Argon2id hashing
-- **API Keys**: AES-256-GCM encryption at rest
-- **Auth**: JWT via HttpOnly, SameSite=Strict cookies with CSRF tokens
-- **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
-- **JWT Fallback**: HS256 when RSA keys not available
 
 ## Contributing
 
