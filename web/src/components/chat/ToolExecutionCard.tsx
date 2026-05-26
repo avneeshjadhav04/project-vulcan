@@ -40,7 +40,7 @@ export default function ToolExecutionCard({ tool }: { tool: ToolResult }) {
   const isError = tool.status === 'error'
   const isTerminal = tool.tool_name === 'execute_terminal_command'
   const isFile = tool.tool_name === 'create_file' || tool.tool_name === 'read_file' || tool.tool_name === 'modify_file'
-  const isSearch = tool.tool_name === 'web_search'
+  const isSearch = tool.tool_name === 'search_web'
   const isCalendar = tool.tool_name.startsWith('calendar_')
   const isEmail = tool.tool_name.startsWith('email_')
   const isTasks = tool.tool_name.startsWith('tasks_')

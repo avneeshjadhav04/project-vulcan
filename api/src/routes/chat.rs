@@ -182,6 +182,20 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "search_memory",
+                "description": "Search the AI's long-term vector memory for relevant information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "calendar_list_events",
                 "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
                 "parameters": {
@@ -410,7 +424,12 @@ async fn execute_tool(
                     .await
                     .map_err(|e| e.to_string())?;
             }
-            tokio::fs::write(&path, content)
+            // Atomic write: write to temp file then rename
+            let temp_path = format!("{}.tmp", path.display());
+            tokio::fs::write(&temp_path, content)
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::fs::rename(&temp_path, &path)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status": "created", "filename": filename, "size": content.len()}))
@@ -461,7 +480,12 @@ async fn execute_tool(
                 _ => return Err(format!("Unknown operation: {}", operation)),
             }
 
-            tokio::fs::write(&path, content)
+            // Atomic write: write to temp file then rename
+            let temp_path = format!("{}.tmp", path.display());
+            tokio::fs::write(&temp_path, content)
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::fs::rename(&temp_path, &path)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(json!({"status": "modified", "filename": filename}))
@@ -482,11 +506,11 @@ async fn execute_tool(
 
             let mut results = Vec::new();
             let link_re = regex::Regex::new(
-                r#"<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#,
+                r#"<a[^>]*class=['"]result-link['"][^>]*href=['"]([^'"]+)['"][^>]*>(.*?)</a>"#,
             )
             .unwrap();
             let snippet_re =
-                regex::Regex::new(r#"<td[^>]*class="result-snippet"[^>]*>(.*?)</td>"#).unwrap();
+                regex::Regex::new(r#"<td[^>]*class=['"]result-snippet['"][^>]*>(.*?)</td>"#).unwrap();
 
             let links: Vec<_> = link_re.captures_iter(&html).collect();
             let snippets: Vec<_> = snippet_re.captures_iter(&html).collect();
@@ -519,9 +543,48 @@ async fn execute_tool(
         "store_memory" => {
             let content = args["content"].as_str().ok_or("Missing content")?;
             let memory = crate::tools::memory::MemoryStore::new();
-            let _emb = memory.embed(content).await?;
-            // In a real app, we'd store _emb and content in SQLite
-            Ok(json!({"status": "success", "message": "Memory stored (stub)"}))
+            let emb = memory.embed(content).await?;
+            let emb_bytes = crate::tools::memory::serialize_embedding(&emb);
+            sqlx::query(
+                "INSERT INTO memory_embeddings (user_id, chat_id, content, embedding) VALUES (?1, ?2, ?3, ?4)"
+            )
+            .bind(user_id)
+            .bind(chat_id)
+            .bind(content)
+            .bind(&emb_bytes)
+            .execute(&state.db)
+            .await
+            .map_err(|e| format!("Failed to store memory: {}", e))?;
+            Ok(json!({"status": "success", "message": "Memory stored", "embedding_dims": emb.len()}))
+        }
+        "search_memory" => {
+            let query = args["query"].as_str().ok_or("Missing query")?;
+            let memory = crate::tools::memory::MemoryStore::new();
+            let query_emb = memory.embed(query).await?;
+            let memories: Vec<(String, Vec<u8>)> = sqlx::query_as(
+                "SELECT content, embedding FROM memory_embeddings WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 100"
+            )
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await
+            .map_err(|e| format!("Failed to search memory: {}", e))?;
+            
+            let mut scored: Vec<(String, f32)> = memories.into_iter()
+                .map(|(content, emb_bytes)| {
+                    let emb = crate::tools::memory::deserialize_embedding(&emb_bytes);
+                    let score = crate::tools::memory::cosine_similarity(&query_emb, &emb);
+                    (content, score)
+                })
+                .filter(|(_, score)| *score > 0.7)
+                .collect();
+            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            scored.truncate(5);
+            
+            let results: Vec<_> = scored.into_iter()
+                .map(|(content, score)| json!({"content": content, "relevance": score}))
+                .collect();
+            
+            Ok(json!({"status": "success", "query": query, "results": results, "count": results.len()}))
         }
         "calendar_list_events" => {
             crate::integrations::google::list_calendar_events(state, user_id, &args)
@@ -563,10 +626,23 @@ async fn execute_tool(
             let url = args["url"].as_str().ok_or("Missing url")?;
             let extract_mode = args["extract_mode"].as_str().unwrap_or("text");
 
+            // Validate URL to prevent SSRF
+            let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+            let scheme = parsed_url.scheme();
+            if scheme != "http" && scheme != "https" {
+                return Err(format!("Unsupported URL scheme: {}. Only http and https are allowed.", scheme));
+            }
+            let host = parsed_url.host_str().unwrap_or("");
+            let blocked_hosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+            if blocked_hosts.contains(&host) {
+                return Err("Access to internal addresses is not allowed.".to_string());
+            }
+            
             let res = state
                 .http_client
                 .get(url)
                 .header("User-Agent", "Mozilla/5.0 (compatible; ProjectVulcan/1.0)")
+                .timeout(std::time::Duration::from_secs(30))
                 .send()
                 .await
                 .map_err(|e| format!("Fetch failed: {}", e))?;
@@ -604,7 +680,7 @@ async fn execute_tool(
             Ok(json!({
                 "status": "success",
                 "url": url,
-                "content": text,
+                "page_content": text,
                 "length": text.len(),
             }))
         }
@@ -612,6 +688,7 @@ async fn execute_tool(
             let code = args["code"].as_str().ok_or("Missing code")?;
             
             let mut install_out = String::new();
+            let mut install_err = String::new();
             if let Some(deps) = args["dependencies"].as_array() {
                 let mut packages = Vec::new();
                 for d in deps {
@@ -620,10 +697,18 @@ async fn execute_tool(
                     }
                 }
                 if !packages.is_empty() {
-                    let mut pip_cmd = vec!["pip3", "install", "--user"];
+                    let mut pip_cmd = vec!["pip3", "install", "--user", "--no-cache-dir"];
                     pip_cmd.extend(packages.iter().map(|s| s.as_str()));
-                    if let Ok(pip_res) = crate::sandbox_engine::run_command_http(&pip_cmd, &state.sandbox).await {
-                        install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
+                    match crate::sandbox_engine::run_command_http(&pip_cmd, &state.sandbox).await {
+                        Ok(pip_res) => {
+                            install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
+                            if !pip_res.stderr.is_empty() {
+                                install_err = format!("Pip install stderr:\n{}\n", pip_res.stderr);
+                            }
+                        }
+                        Err(e) => {
+                            install_err = format!("Pip install failed: {}\n", e);
+                        }
                     }
                 }
             }
@@ -648,13 +733,16 @@ async fn execute_tool(
             match exec_res {
                 Ok(resp) => Ok(json!({
                     "command": format!("python3 {}", guest_script_path),
-                    "stdout": format!("{}{}", install_out, resp.stdout),
+                    "script": code,
+                    "stdout": format!("{}{}{}", install_out, install_err, resp.stdout),
                     "stderr": resp.stderr,
                     "status": resp.status,
-                    "code": resp.code,
+                    "exit_code": resp.code,
                 })),
                 Err(e) => Ok(json!({
                     "command": format!("python3 {}", guest_script_path),
+                    "script": code,
+                    "stdout": format!("{}{}", install_out, install_err),
                     "error": format!("Execution failed: {}", e),
                     "status": "error"
                 })),
@@ -698,6 +786,12 @@ async fn resolve_tool_calls(
         let perm = permissions.get(&name).map(|s| s.as_str()).unwrap_or("auto");
         if perm == "deny" {
             results.push((tool_id, name, json!({"error": "Tool execution denied by user configuration."})));
+            continue;
+        }
+        if perm == "ask" {
+            let preview_len = args_str.len().min(200);
+            let preview = &args_str[..preview_len];
+            results.push((tool_id.clone(), name.clone(), json!({"error": "Tool execution requires user approval.", "tool": name, "args_preview": preview, "approval_needed": true})));
             continue;
         }
 
@@ -1367,7 +1461,22 @@ fn build_messages_payload(
     }
 
     for msg in recent_messages {
-        if msg.role == "tool" {
+        if msg.role == "assistant" && msg.tool_name.as_deref() == Some("tool_calls_init") {
+            // This is an assistant message that initiated tool calls
+            let tool_calls: Vec<serde_json::Value> = msg.tool_call_id
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            if !tool_calls.is_empty() {
+                payload.push(json!({
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": tool_calls
+                }));
+            } else {
+                payload.push(json!({"role": "assistant", "content": msg.content}));
+            }
+        } else if msg.role == "tool" {
             let tc = json!({
                 "id": msg.tool_call_id.as_deref().unwrap_or(""),
                 "type": "function",
@@ -1693,7 +1802,20 @@ async fn send_message(
                 }));
             }
             asst_json["tool_calls"] = json!(tc_entries);
-            current_messages.push(asst_json);
+            current_messages.push(asst_json.clone());
+
+            // Persist the assistant's tool_calls message to the database
+            let asst_content = asst_json["content"].as_str().unwrap_or("");
+            let asst_tool_calls_str = serde_json::to_string(&tc_entries).unwrap_or_default();
+            let _ = sqlx::query(
+                "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'assistant', ?2, ?3, ?4)"
+            )
+            .bind(&chat_id)
+            .bind(asst_content)
+            .bind(&asst_tool_calls_str)
+            .bind("tool_calls_init")
+            .execute(&db)
+            .await;
 
             let tool_results =
                 resolve_tool_calls(tool_calls, &chat_id, &user_id, &state_clone).await;

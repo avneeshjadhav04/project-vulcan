@@ -41,19 +41,8 @@ fn has_proot_env() -> bool {
 /// Build a Command that runs inside the proot Ubuntu environment.
 fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
     if !has_proot_env() {
-        let mut command = Command::new(cmd[0]);
-        if cmd.len() > 1 {
-            command.args(&cmd[1..]);
-        }
-        
-        let workspace_path = std::env::var("WORKSPACE_PATH")
-            .unwrap_or_else(|_| "/workspace".to_string());
-        
-        if std::path::Path::new(&workspace_path).exists() {
-            command.current_dir(workspace_path);
-        }
-        
-        return Ok(command);
+        return Err("Sandbox environment (proot + Ubuntu rootfs) is not available. \
+                    Cannot execute commands safely without isolation.".to_string());
     }
 
     let mut command = Command::new("proot");
@@ -107,12 +96,21 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
         let mut stdout_str = String::from_utf8_lossy(&stdout_buf).into_owned();
         let mut stderr_str = String::from_utf8_lossy(&stderr_buf).into_owned();
 
+        // Safe UTF-8 truncation: find nearest char boundary
         if stdout_str.len() > 100_000 {
-            stdout_str.truncate(100_000);
+            let mut idx = 100_000;
+            while idx > 0 && !stdout_str.is_char_boundary(idx) {
+                idx -= 1;
+            }
+            stdout_str.truncate(idx);
             stdout_str.push_str("\n...[output truncated]...");
         }
         if stderr_str.len() > 100_000 {
-            stderr_str.truncate(100_000);
+            let mut idx = 100_000;
+            while idx > 0 && !stderr_str.is_char_boundary(idx) {
+                idx -= 1;
+            }
+            stderr_str.truncate(idx);
             stderr_str.push_str("\n...[output truncated]...");
         }
 
@@ -132,12 +130,15 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
     match result {
         Ok(Ok(resp)) => Ok(resp),
         Ok(Err(e)) => Err(e),
-        Err(_) => Ok(RunResponse {
-            stdout: String::new(),
-            stderr: "Command timed out after 120 seconds".to_string(),
-            status: "timeout".to_string(),
-            code: Some(-1),
-        }),
+        Err(_) => {
+            let _ = child.kill().await;
+            Ok(RunResponse {
+                stdout: String::new(),
+                stderr: "Command timed out after 120 seconds".to_string(),
+                status: "timeout".to_string(),
+                code: Some(-1),
+            })
+        }
     }
 }
 

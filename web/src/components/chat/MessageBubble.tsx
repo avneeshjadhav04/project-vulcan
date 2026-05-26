@@ -13,7 +13,7 @@ import {
   Cpu,
   Clock,
 } from 'lucide-react'
-import { markdownComponents } from './markdownComponents'
+import { markdownComponents, extractArtifacts, stripArtifacts, ArtifactCard } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
 
 interface MessageItem {
@@ -152,11 +152,29 @@ export default function MessageBubble({
                 </button>
               </div>
             </div>
+          ) : msg.role === 'tool' ? (
+            <div className="rounded border border-white/5 bg-background/50 px-3 py-2">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">Tool Result</p>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-text-secondary">
+                {msg.content}
+              </pre>
+            </div>
           ) : isAssistant ? (
             <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {msg.content}
-              </ReactMarkdown>
+              {(() => {
+                const artifacts = extractArtifacts(msg.content)
+                const cleanContent = stripArtifacts(msg.content)
+                return (
+                  <>
+                    {artifacts.map((artifact) => (
+                      <ArtifactCard key={artifact.title + artifact.type} title={artifact.title} type={artifact.type} content={artifact.content} />
+                    ))}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {cleanContent}
+                    </ReactMarkdown>
+                  </>
+                )
+              })()}
             </div>
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>

@@ -202,7 +202,6 @@ export function useChatStream(): [StreamState, StreamActions] {
           if (!raw.trim()) continue
 
           if (raw === '[DONE]') {
-            setToolExecution(null)
             const duration = Date.now() - startTimeRef.current
             onStreamDone?.({
               provider: selectedModel.providerId || '',
@@ -251,7 +250,7 @@ export function useChatStream(): [StreamState, StreamActions] {
                 priority: toolData.priority,
                 task_id: toolData.task_id,
                 url: toolData.url,
-                page_content: toolData.page_content,
+                page_content: toolData.page_content || toolData.content,
                 code: toolData.code,
                 language: toolData.language,
               })
