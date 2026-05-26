@@ -79,7 +79,7 @@ export default function ArtifactViewer() {
           <iframe
             title={activeArtifact.title}
             srcDoc={htmlContent}
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            sandbox="allow-scripts"
             className="h-full w-full border-none bg-white"
           />
         ) : (

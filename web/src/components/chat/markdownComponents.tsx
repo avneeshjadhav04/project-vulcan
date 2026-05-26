@@ -11,7 +11,7 @@ export function InlineCode({ children }: { children: React.ReactNode }) {
   )
 }
 
-function ArtifactCard({ title, type, content }: { title: string, type: string, content: string }) {
+export function ArtifactCard({ title, type, content }: { title: string, type: string, content: string }) {
   const { setActiveArtifact } = useArtifactStore()
   
   return (
@@ -39,18 +39,29 @@ function ArtifactCard({ title, type, content }: { title: string, type: string, c
   )
 }
 
-export const markdownComponents = {
-  code({ children, className, node }: any) {
-    const isInline = !className
-    const meta = node?.data?.meta || ''
-    
-    const artifactMatch = meta.match(/artifact="([^"]+)"/)
-    if (artifactMatch) {
-      const title = artifactMatch[1]
-      const type = className?.replace('language-', '') || 'text'
-      return <ArtifactCard title={title} type={type} content={String(children)} />
-    }
+// Extract artifacts from raw markdown string before rendering
+export function extractArtifacts(content: string): Array<{title: string, type: string, content: string}> {
+  const artifacts: Array<{title: string, type: string, content: string}> = []
+  const pattern = /```(\w+)\s+artifact="([^"]+)"\n([\s\S]*?)```/g
+  let match
+  while ((match = pattern.exec(content)) !== null) {
+    artifacts.push({
+      type: match[1],
+      title: match[2],
+      content: match[3].trimEnd()
+    })
+  }
+  return artifacts
+}
 
+// Strip artifact blocks from markdown so they don't render as code blocks too
+export function stripArtifacts(content: string): string {
+  return content.replace(/```(\w+)\s+artifact="([^"]+)"\n([\s\S]*?)```/g, '')
+}
+
+export const markdownComponents = {
+  code({ children, className }: any) {
+    const isInline = !className
     if (isInline) {
       return <InlineCode>{children}</InlineCode>
     }

@@ -21,7 +21,7 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 python3 python3-pip && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ WORKDIR /app
 RUN mkdir -p /data && chmod 777 /data
 
 # Create workspace directory for sandbox bind-mount
-RUN mkdir -p /app/workspace && chmod 777 /app/workspace
+RUN mkdir -p /app/workspace && chmod 755 /app/workspace
 
 # Download and extract Ubuntu 24.04 LTS rootfs for proot sandbox
 # TARGETARCH is automatically set by Docker buildx for multi-arch builds

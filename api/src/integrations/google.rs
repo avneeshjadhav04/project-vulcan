@@ -306,7 +306,8 @@ pub async fn list_emails(
 
     let mut results = Vec::new();
     if let Some(msgs) = messages {
-        for msg in msgs.iter().take(5) {
+        let limit = max_results.clamp(1, 50) as usize;
+        for msg in msgs.iter().take(limit) {
             if let Some(mid) = msg["id"].as_str() {
                 match state.http_client
                     .get(format!("https://gmail.googleapis.com/gmail/v1/users/me/messages/{}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date", mid))

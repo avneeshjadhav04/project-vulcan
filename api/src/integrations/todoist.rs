@@ -50,10 +50,38 @@ pub async fn get_valid_token(
     state: &AppState,
     credential: &mut IntegrationCredential,
 ) -> Result<String, String> {
-    let _config = todoist_oauth_config(state, &credential.user_id).await.ok_or("Todoist OAuth not configured")?;
-    let token = oauth::decrypt_token(&credential.encrypted_access_token, &state.config.master_key)?;
-    // Todoist tokens don't expire, but refresh if needed
-    Ok(token)
+    let config = todoist_oauth_config(state, &credential.user_id).await.ok_or("Todoist OAuth not configured")?;
+    
+    if oauth::is_token_expired(&credential.expires_at) {
+        let refresh_token = credential
+            .encrypted_refresh_token
+            .as_ref()
+            .ok_or("No refresh token available")?;
+        
+        let rt = oauth::decrypt_token(refresh_token, &state.config.master_key)?;
+        let new_token = oauth::refresh_access_token(&state.http_client, &config, &rt).await?;
+        
+        credential.encrypted_access_token =
+            oauth::encrypt_token(&new_token.access_token, &state.config.master_key)?;
+        if let Some(ref rt2) = new_token.refresh_token {
+            credential.encrypted_refresh_token =
+                Some(oauth::encrypt_token(rt2, &state.config.master_key)?);
+        }
+        credential.expires_at = oauth::compute_expiry(new_token.expires_in);
+        
+        sqlx::query(
+            "UPDATE integration_credentials SET encrypted_access_token = ?1, encrypted_refresh_token = COALESCE(?2, encrypted_refresh_token), expires_at = ?3, updated_at = datetime('now') WHERE id = ?4"
+        )
+        .bind(&credential.encrypted_access_token)
+        .bind(credential.encrypted_refresh_token.as_deref())
+        .bind(&credential.expires_at)
+        .bind(&credential.id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| format!("Failed to update token: {}", e))?;
+    }
+    
+    oauth::decrypt_token(&credential.encrypted_access_token, &state.config.master_key)
 }
 
 // ─── Task APIs ───

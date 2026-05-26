@@ -43,3 +43,17 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
     dot_product / (norm_a * norm_b)
 }
+
+/// Serialize a Vec<f32> to bytes for SQLite storage
+pub fn serialize_embedding(embedding: &[f32]) -> Vec<u8> {
+    embedding.iter()
+        .flat_map(|f| f.to_le_bytes())
+        .collect()
+}
+
+/// Deserialize bytes back to Vec<f32>
+pub fn deserialize_embedding(bytes: &[u8]) -> Vec<f32> {
+    bytes.chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
