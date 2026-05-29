@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon } from 'lucide-react'
 
@@ -32,6 +33,7 @@ interface FileUploadProps {
 }
 
 export default function FileUpload({ getChatId, files, onFilesChange }: FileUploadProps) {
+  const showError = useErrorToast();
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
 
@@ -42,7 +44,7 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
     const formData = new FormData()
     for (const file of fileList) {
       if (file.size > 50 * 1024 * 1024) {
-        alert(`File ${file.name} is too large. Max size is 50MB.`)
+        showError(`File ${file.name} is too large. Max size is 50MB.`)
         continue
       }
       formData.append('file', file)
@@ -71,8 +73,8 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
       if (data.files) {
         onFilesChange([...files, ...data.files])
       }
-    } catch (err) {
-      console.error('Upload error:', err)
+    } catch (err: any) {
+      showError(err?.message ?? 'Upload failed')
     } finally {
       setUploading(false)
     }
@@ -114,8 +116,8 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
       if (res.ok) {
         onFilesChange(files.filter(f => f.id !== fileId))
       }
-    } catch (err) {
-      console.error('Delete error:', err)
+    } catch (err: any) {
+      showError(err?.message ?? 'Delete failed')
     }
   }, [getChatId, files, onFilesChange])
 

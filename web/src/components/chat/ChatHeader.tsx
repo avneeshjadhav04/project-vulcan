@@ -22,6 +22,20 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    if (showExportMenu) {
+      const firstBtn = exportRef.current?.querySelector('button')
+      ;(firstBtn as HTMLElement)?.focus()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowExportMenu(false)
+      }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [showExportMenu])
+
   return (
     <header className="flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">

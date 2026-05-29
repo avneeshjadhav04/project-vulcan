@@ -6,6 +6,7 @@ import {
   Wrench,
   Mic,
   MicOff,
+  Loader2,
 } from 'lucide-react'
 import ProviderModelSelector, { type SelectedModel } from '../ProviderModelSelector'
 import FileUpload, { type UploadedFile } from '../FileUpload'
@@ -161,6 +162,7 @@ export default function ChatInput({
               aria-label="Stop generating"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
             >
+              <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
               <StopCircle className="h-5 w-5" aria-hidden="true" />
             </button>
           ) : (

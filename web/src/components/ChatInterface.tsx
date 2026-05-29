@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useChatStream } from '../hooks/useChatStream'
@@ -53,6 +54,7 @@ export default function ChatInterface({
   const { streaming, streamedContent, sendError, toolExecution, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
+  const showError = useErrorToast();
   const voice = useVoiceInput({
     onTranscript: (text) => {
       if (text.trim()) {
@@ -203,7 +205,9 @@ export default function ChatInterface({
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'include'
           })
-        } catch (e) {}
+        } catch (e: any) {
+            showError(e?.message ?? 'Failed to delete messages after regenerate');
+          }
       }
       handleSend(lastUserMessage.content, true)
     }
@@ -236,7 +240,7 @@ export default function ChatInterface({
       handleSend(newContent, true)
     } catch (err: any) {
       // Error is displayed via UI if needed
-      console.error('Edit message error:', err)
+      showError(err?.message ?? 'Failed to edit message')
     }
   }, [effectiveChatId, refetch, handleSend])
 
