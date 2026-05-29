@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { markdownComponents, extractArtifacts, stripArtifacts, ArtifactCard } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
+import ToolExecutionCard from './ToolExecutionCard'
 
 interface MessageItem {
   id: string
@@ -22,6 +23,8 @@ interface MessageItem {
   content: string
   created_at: string
   tokens_used?: number
+  tool_name?: string
+  tool_call_id?: string
 }
 
 interface MessageBubbleProps {
@@ -59,6 +62,28 @@ export default function MessageBubble({
     }
     setIsEditing(false)
   }, [editContent, msg.content, msg.id, onEdit])
+
+  if (msg.role === 'tool') {
+    let parsed: any = {}
+    try {
+      parsed = JSON.parse(msg.content)
+    } catch {
+      parsed = { stdout: msg.content, status: 'success' }
+    }
+    
+    const toolResult = {
+      tool_name: msg.tool_name || parsed.tool_name || 'unknown_tool',
+      tool_id: msg.tool_call_id || parsed.tool_id || '',
+      status: parsed.status || (parsed.error ? 'error' : 'success'),
+      ...parsed
+    }
+    
+    return (
+      <div className="mx-auto max-w-3xl w-full">
+        <ToolExecutionCard tool={toolResult} />
+      </div>
+    )
+  }
 
   return (
     <motion.div
@@ -151,13 +176,6 @@ export default function MessageBubble({
                   Save & Regenerate
                 </button>
               </div>
-            </div>
-          ) : msg.role === 'tool' ? (
-            <div className="rounded border border-white/5 bg-background/50 px-3 py-2">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">Tool Result</p>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-text-secondary">
-                {msg.content}
-              </pre>
             </div>
           ) : isAssistant ? (
             <div className="prose prose-invert prose-sm max-w-none">
