@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react'
 import { api } from '../lib/api'
 import type { SelectedModel } from '../components/ProviderModelSelector'
+import type { UploadedFile } from '../components/FileUpload'
 
 export interface ToolExecution {
   tool_name: string
@@ -53,7 +54,7 @@ export interface StreamOptions {
   selectedModel: SelectedModel
   setEffectiveChatId: (id: string) => void
   setOptimisticTitle: (title: string) => void
-  attachedFiles: any[]
+  attachedFiles: UploadedFile[]
   onStreamDone?: (meta: { provider: string; model: string; durationMs: number }) => void
   onStreamError?: (error: string) => void
   refetchChat: () => Promise<any>
@@ -143,7 +144,7 @@ export function useChatStream(): [StreamState, StreamActions] {
       let messageContent = text
       if (attachedFiles.length > 0) {
         const fileContexts = attachedFiles
-          .map((f: any) => {
+            .map((f) => {
             if (f.extracted_text) {
               return `[File: ${f.filename}]\n\`\`\`\n${f.extracted_text}\n\`\`\``
             }

@@ -168,8 +168,8 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "store_memory",
-                "description": "Store a piece of information in the AI's long-term vector memory.",
+                "name": "update_scratchpad",
+                "description": "Update the user's permanent scratchpad memory. Use this to remember important facts about the user.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -182,8 +182,8 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "search_memory",
-                "description": "Search the AI's long-term vector memory for relevant information.",
+                "name": "read_scratchpad",
+                "description": "Read the user's permanent scratchpad memory to recall important facts.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -540,51 +540,32 @@ async fn execute_tool(
             let text = crate::tools::browser::browser_fetch(url).await?;
             Ok(json!({"status": "success", "content": text}))
         }
-        "store_memory" => {
-            let content = args["content"].as_str().ok_or("Missing content")?;
-            let memory = crate::tools::memory::MemoryStore::new();
-            let emb = memory.embed(content).await?;
-            let emb_bytes = crate::tools::memory::serialize_embedding(&emb);
+        "update_scratchpad" => {
+            let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
             sqlx::query(
-                "INSERT INTO memory_embeddings (user_id, chat_id, content, embedding) VALUES (?1, ?2, ?3, ?4)"
+                "INSERT INTO scratchpad_memory (user_id, content, updated_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(user_id) DO UPDATE SET content = ?2, updated_at = datetime('now')"
             )
             .bind(user_id)
-            .bind(chat_id)
             .bind(content)
-            .bind(&emb_bytes)
             .execute(&state.db)
             .await
-            .map_err(|e| format!("Failed to store memory: {}", e))?;
-            Ok(json!({"status": "success", "message": "Memory stored", "embedding_dims": emb.len()}))
+            .map_err(|e| format!("Failed to update scratchpad: {}", e))?;
+            Ok(json!({"status": "success", "message": "Scratchpad updated"}))
         }
-        "search_memory" => {
-            let query = args["query"].as_str().ok_or("Missing query")?;
-            let memory = crate::tools::memory::MemoryStore::new();
-            let query_emb = memory.embed(query).await?;
-            let memories: Vec<(String, Vec<u8>)> = sqlx::query_as(
-                "SELECT content, embedding FROM memory_embeddings WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 100"
+        "read_scratchpad" => {
+            let row = sqlx::query!(
+                "SELECT content FROM scratchpad_memory WHERE user_id = ?1",
+                user_id
             )
-            .bind(user_id)
-            .fetch_all(&state.db)
+            .fetch_optional(&state.db)
             .await
-            .map_err(|e| format!("Failed to search memory: {}", e))?;
+            .map_err(|e| format!("Failed to read scratchpad: {}", e))?;
             
-            let mut scored: Vec<(String, f32)> = memories.into_iter()
-                .map(|(content, emb_bytes)| {
-                    let emb = crate::tools::memory::deserialize_embedding(&emb_bytes);
-                    let score = crate::tools::memory::cosine_similarity(&query_emb, &emb);
-                    (content, score)
-                })
-                .filter(|(_, score)| *score > 0.7)
-                .collect();
-            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-            scored.truncate(5);
-            
-            let results: Vec<_> = scored.into_iter()
-                .map(|(content, score)| json!({"content": content, "relevance": score}))
-                .collect();
-            
-            Ok(json!({"status": "success", "query": query, "results": results, "count": results.len()}))
+            if let Some(row) = row {
+                Ok(json!({"status": "success", "content": row.content}))
+            } else {
+                Ok(json!({"status": "success", "content": "Scratchpad is empty."}))
+            }
         }
         "calendar_list_events" => {
             crate::integrations::google::list_calendar_events(state, user_id, &args)
@@ -1606,10 +1587,22 @@ async fn send_message(
     let has_todoist = connected_integrations
         .iter()
         .any(|(provider,)| provider == "todoist");
-    let system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
+    let mut system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
 
     // ─── Memory / Summarization Logic ───
     let memory_enabled = user.memory_enabled == 1;
+    if memory_enabled {
+        let scratchpad = sqlx::query!("SELECT content FROM scratchpad_memory WHERE user_id = ?1", user.id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or_default()
+            .map(|r| r.content);
+        if let Some(content) = scratchpad {
+            if !content.is_empty() {
+                system_prompt.push_str(&format!("\n\n[USER SCRATCHPAD MEMORY]\n{}", content));
+            }
+        }
+    }
     let needs_summarization =
         memory_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
 
