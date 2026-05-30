@@ -16,7 +16,11 @@ pub fn router() -> Router<AppState> {
             delete(delete_file).get(download_file),
         )
         .route(
-            "/chats/:chat_id/workspace/:filename",
+            "/chats/:chat_id/workspace",
+            get(list_workspace_files),
+        )
+        .route(
+            "/chats/:chat_id/workspace/*filename",
             get(download_workspace_file),
         )
 }
@@ -255,6 +259,72 @@ fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> 
     }
 }
 
+#[derive(serde::Serialize)]
+struct WorkspaceFile {
+    name: String,
+    path: String,
+    is_dir: bool,
+    children: Option<Vec<WorkspaceFile>>,
+}
+
+fn build_file_tree(dir: &std::path::Path, base: &std::path::Path) -> std::io::Result<Vec<WorkspaceFile>> {
+    let mut files = Vec::new();
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let is_dir = path.is_dir();
+            let rel_path = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().into_owned().replace('\\', "/");
+            let children = if is_dir {
+                Some(build_file_tree(&path, base)?)
+            } else {
+                None
+            };
+            files.push(WorkspaceFile {
+                name,
+                path: rel_path,
+                is_dir,
+                children,
+            });
+        }
+    }
+    files.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+    Ok(files)
+}
+
+async fn list_workspace_files(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(chat_id): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let chat_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?1 AND user_id = ?2)")
+            .bind(&chat_id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !chat_exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let chat_workspace_dir = std::path::Path::new(&workspace_dir).join(&chat_id);
+    
+    if !chat_workspace_dir.exists() {
+        return Ok(Json(serde_json::json!({ "files": [] })));
+    }
+
+    let files = tokio::task::spawn_blocking(move || build_file_tree(&chat_workspace_dir, &chat_workspace_dir))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "files": files })))
+}
+
 async fn download_workspace_file(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
@@ -277,11 +347,10 @@ async fn download_workspace_file(
     let chat_workspace_dir = std::path::Path::new(&workspace_dir).join(&chat_id);
     
     // Prevent path traversal
-    let safe_filename = std::path::Path::new(&filename)
-        .file_name()
-        .and_then(|f| f.to_str())
-        .ok_or(StatusCode::BAD_REQUEST)?;
-
+    if filename.contains("..") {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let safe_filename = filename.trim_start_matches('/');
     let file_path = chat_workspace_dir.join(safe_filename);
 
     let data = tokio::fs::read(&file_path)
@@ -302,6 +371,8 @@ async fn download_workspace_file(
         _ => "application/octet-stream",
     };
 
+    let display_filename = std::path::Path::new(&safe_filename).file_name().and_then(|f| f.to_str()).unwrap_or(safe_filename);
+
     Ok((
         axum::http::HeaderMap::from_iter([
             (
@@ -310,7 +381,7 @@ async fn download_workspace_file(
             ),
             (
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", safe_filename)
+                format!("inline; filename=\"{}\"", display_filename)
                     .parse()
                     .unwrap(),
             ),

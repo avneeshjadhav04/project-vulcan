@@ -47,6 +47,7 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
 
     let mut command = Command::new("proot");
     command.args([
+        "-0", // Fake root privileges so apt-get works
         "-R",
         ROOTFS_PATH,
         "-b",
@@ -57,6 +58,8 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
         "/proc:/proc",
         "-b",
         "/tmp:/tmp",
+        "-b",
+        "/etc/resolv.conf:/etc/resolv.conf", // Enable DNS resolution
         "-w",
         WORKSPACE_GUEST_PATH,
     ]);
