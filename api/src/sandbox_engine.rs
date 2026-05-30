@@ -39,11 +39,16 @@ fn has_proot_env() -> bool {
 }
 
 /// Build a Command that runs inside the proot Ubuntu environment.
-fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
+fn build_proot_command(cmd: &[&str], workspace_id: &str) -> Result<Command, String> {
     if !has_proot_env() {
         return Err("Sandbox environment (proot + Ubuntu rootfs) is not available. \
                     Cannot execute commands safely without isolation.".to_string());
     }
+
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let host_workspace = std::path::Path::new(&workspace_dir).join(workspace_id);
+    let _ = std::fs::create_dir_all(&host_workspace);
+    let host_path_str = host_workspace.to_string_lossy();
 
     let mut command = Command::new("proot");
     command.args([
@@ -51,7 +56,7 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
         "-R",
         ROOTFS_PATH,
         "-b",
-        &format!("{}:{}", WORKSPACE_HOST_PATH, WORKSPACE_GUEST_PATH),
+        &format!("{}:{}", host_path_str, WORKSPACE_GUEST_PATH),
         "-b",
         "/dev:/dev",
         "-b",
@@ -68,10 +73,10 @@ fn build_proot_command(cmd: &[&str]) -> Result<Command, String> {
 }
 
 /// Execute a command and return the complete output (for AI tool calling).
-pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunResponse, String> {
+pub async fn run_command_http(cmd: &[&str], workspace_id: &str, state: &SandboxState) -> Result<RunResponse, String> {
     let _permit = state.semaphore.acquire().await.map_err(|e| e.to_string())?;
 
-    let mut child = build_proot_command(cmd)?
+    let mut child = build_proot_command(cmd, workspace_id)?
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -152,6 +157,7 @@ pub async fn run_command_http(cmd: &[&str], state: &SandboxState) -> Result<RunR
 /// - `{"status":"success|error","code":N}`
 pub async fn run_command_stream(
     cmd: Vec<String>,
+    workspace_id: String,
     state: SandboxState,
 ) -> Result<mpsc::UnboundedReceiver<String>, String> {
     let (tx, rx) = mpsc::unbounded_channel();
@@ -170,15 +176,15 @@ pub async fn run_command_stream(
             }
         };
         let _permit = permit; // hold permit for duration of command
-        run_command_inner(cmd, tx).await;
+        run_command_inner(cmd, workspace_id, tx).await;
     });
 
     Ok(rx)
 }
 
-async fn run_command_inner(cmd: Vec<String>, sender: mpsc::UnboundedSender<String>) {
+async fn run_command_inner(cmd: Vec<String>, workspace_id: String, sender: mpsc::UnboundedSender<String>) {
     let cmd_refs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
-    let mut child = match build_proot_command(&cmd_refs) {
+    let mut child = match build_proot_command(&cmd_refs, &workspace_id) {
         Ok(mut c) => match c
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())

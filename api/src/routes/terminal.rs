@@ -70,6 +70,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                 // Spawn command and get streaming receiver
                 let stream_rx = match crate::sandbox_engine::run_command_stream(
                     vec!["/bin/bash".to_string(), "-c".to_string(), command.clone()],
+                    user_id.clone(),
                     sandbox.clone(),
                 )
                 .await
