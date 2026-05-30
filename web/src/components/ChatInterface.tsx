@@ -19,6 +19,7 @@ import {
   Key,
   Settings,
   ExternalLink,
+  Paperclip,
 } from 'lucide-react'
 
 interface MessageItem {
@@ -45,6 +46,7 @@ export default function ChatInterface({
   const [modelValidation, setModelValidation] = useState<{ valid: boolean; error?: string; model_id?: string } | null>(null)
   const [validatingModel, setValidatingModel] = useState(false)
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
+  const [isGlobalDragging, setIsGlobalDragging] = useState(false)
   const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
 
   const navigate = useNavigate()
@@ -256,6 +258,33 @@ export default function ChatInterface({
     }
   }, [effectiveChatId, refetch, handleSend])
 
+  const handleGlobalDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsGlobalDragging(true)
+  }, [])
+
+  const handleGlobalDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (!e.relatedTarget || (e.relatedTarget as Element).nodeName === 'HTML') {
+      setIsGlobalDragging(false)
+    }
+  }, [])
+
+  const handleGlobalDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsGlobalDragging(false)
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      if (input) {
+        const dt = new DataTransfer()
+        for (const f of files) dt.items.add(f)
+        input.files = dt.files
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+  }, [])
+
   if (isError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-text-helper">
@@ -275,7 +304,35 @@ export default function ChatInterface({
   const messages = chatData?.messages || []
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background">
+    <div 
+      className="relative flex flex-1 flex-col overflow-hidden bg-background"
+      onDragOver={handleGlobalDragOver}
+      onDragLeave={handleGlobalDragLeave}
+      onDrop={handleGlobalDrop}
+    >
+      <AnimatePresence>
+        {isGlobalDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center border-4 border-dashed border-interactive/50 bg-background/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-layer/90 px-12 py-10 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-interactive/20">
+                <Paperclip className="h-8 w-8 text-interactive" />
+              </div>
+              <h2 className="text-xl font-bold text-text-primary">Drop files to upload</h2>
+              <p className="mt-2 text-sm text-text-helper">Files will be attached to your next message.</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ChatHeader
         title={chatData?.chat.title}
         optimisticTitle={optimisticTitle}
