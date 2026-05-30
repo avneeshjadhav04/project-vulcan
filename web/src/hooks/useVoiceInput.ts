@@ -1,6 +1,14 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 
-export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) => void }) {
+export function useVoiceInput({
+  onTranscript,
+  onInterim,
+  onStart,
+}: {
+  onTranscript: (text: string) => void
+  onInterim?: (text: string) => void
+  onStart?: () => void
+}) {
   const [isListening, setIsListening] = useState(false)
   const [voiceSupported, setVoiceSupported] = useState(false)
 
@@ -8,9 +16,14 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
   const voiceTimerRef = useRef<any>(null)
 
   const onTranscriptRef = useRef(onTranscript)
+  const onInterimRef = useRef(onInterim)
+  const onStartRef = useRef(onStart)
+
   useEffect(() => {
     onTranscriptRef.current = onTranscript
-  }, [onTranscript])
+    onInterimRef.current = onInterim
+    onStartRef.current = onStart
+  }, [onTranscript, onInterim, onStart])
 
   const checkSupport = useCallback(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -48,63 +61,72 @@ export function useVoiceInput({ onTranscript }: { onTranscript: (text: string) =
 
     const recognition = new SpeechRecognition()
     voiceRef.current = recognition
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = navigator.language || 'en-US'
 
     let finalTranscript = ''
     let retryCount = 0
+    let silenceTimer: any = null
+    let lastCombined = ''
+
+    const resetSilenceTimer = () => {
+      if (silenceTimer) clearTimeout(silenceTimer)
+      silenceTimer = setTimeout(() => {
+        if (voiceRef.current) {
+          try { voiceRef.current.stop() } catch {}
+        }
+      }, 2500) // stop after 2.5 seconds of silence
+    }
 
     recognition.onstart = () => {
       setIsListening(true)
+      resetSilenceTimer()
+      if (onStartRef.current) onStartRef.current()
     }
 
     recognition.onend = () => {
       setIsListening(false)
       voiceRef.current = null
-      if (finalTranscript.trim()) {
-        voiceTimerRef.current = setTimeout(() => {
-          onTranscriptRef.current(finalTranscript.trim())
-        }, 600)
+      if (silenceTimer) clearTimeout(silenceTimer)
+      
+      const finalResult = lastCombined.trim() || finalTranscript.trim()
+      if (finalResult) {
+        onTranscriptRef.current(finalResult)
       }
     }
 
     recognition.onerror = (e: any) => {
-      const errorMessages: Record<string, string> = {
-        network: 'Speech recognition network error. Please check your internet connection and try again.',
-        'not-allowed': 'Microphone access denied. Please allow microphone permissions in your browser.',
-        'audio-capture': 'No microphone found. Please connect a microphone and try again.',
-        'service-not-allowed': 'Speech recognition service is not allowed.',
-      }
-
       if (e.error === 'network' && retryCount < 1) {
         retryCount++
         setTimeout(() => {
-          if (!voiceRef.current) {
-            toggle()
-          }
+          if (!voiceRef.current) toggle()
         }, 500)
         return
       }
-
-      if (e.error !== 'aborted' && e.error !== 'no-speech') {
-        console.error(errorMessages[e.error] || `Voice error: ${e.error}`)
-      }
       setIsListening(false)
       voiceRef.current = null
+      if (silenceTimer) clearTimeout(silenceTimer)
     }
 
     recognition.onresult = (event: any) => {
+      resetSilenceTimer()
       let interim = ''
+      let currentFinal = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript
         if (event.results[i].isFinal) {
-          finalTranscript += transcript
+          currentFinal += transcript
         } else {
           interim += transcript
         }
       }
-      // We don't set input here; caller should handle via onTranscript
+      if (currentFinal) finalTranscript += currentFinal
+      
+      lastCombined = (finalTranscript + interim).trim()
+      if (onInterimRef.current && lastCombined) {
+        onInterimRef.current(lastCombined)
+      }
     }
 
     try {

@@ -55,10 +55,24 @@ export default function ChatInterface({
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
+  const inputRef = useRef(input)
+  useEffect(() => { inputRef.current = input }, [input])
+  const voiceInitialText = useRef('')
+
   const voice = useVoiceInput({
+    onStart: () => {
+      voiceInitialText.current = inputRef.current
+    },
+    onInterim: (text) => {
+      const prefix = voiceInitialText.current
+      setInput(prefix ? `${prefix} ${text}`.trim() : text)
+    },
     onTranscript: (text) => {
-      if (text.trim()) {
-        handleSend(text.trim())
+      const prefix = voiceInitialText.current
+      const finalText = prefix ? `${prefix} ${text}`.trim() : text
+      setInput(finalText)
+      if (finalText.trim()) {
+        handleSend(finalText.trim())
       }
     },
   })
@@ -88,9 +102,7 @@ export default function ChatInterface({
       return res.data as { has_nim_key: boolean; has_provider: boolean; tools_enabled: boolean }
     },
   })
-
-  const scroll = useChatScroll({ messages: chatData?.messages || [] })
-
+  const scroll = useChatScroll(effectiveChatId)
   // Sync model from loaded chat
   useEffect(() => {
     if (chatData?.chat.model_id) {
