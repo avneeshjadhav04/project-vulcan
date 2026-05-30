@@ -29,6 +29,7 @@ interface MessageItem {
 
 interface MessageBubbleProps {
   msg: MessageItem
+  chatId?: string
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
   messageMeta?: { provider: string; model: string; durationMs: number }
