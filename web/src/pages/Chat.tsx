@@ -6,11 +6,13 @@ import { api } from '../lib/api'
 import Sidebar from '../components/Sidebar'
 import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
+import WorkspacePanel from '../components/chat/WorkspacePanel'
 import ArtifactViewer from '../components/chat/ArtifactViewer'
 import {
   Settings,
   LogOut,
   Terminal as TerminalIcon,
+  Folder as FolderIcon,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -24,6 +26,7 @@ export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
   const navigate = useNavigate()
   const [showTerminal, setShowTerminal] = useState(false)
+  const [showWorkspace, setShowWorkspace] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
@@ -164,6 +167,12 @@ export default function Chat() {
                   active={showTerminal}
                 />
                 <SidebarButton
+                  icon={<FolderIcon className="h-4 w-4" />}
+                  label={showWorkspace ? 'Hide Workspace' : 'Workspace Files'}
+                  onClick={() => setShowWorkspace(!showWorkspace)}
+                  active={showWorkspace}
+                />
+                <SidebarButton
                   icon={<Settings className="h-4 w-4" />}
                   label="Settings"
                   onClick={() => navigate('/settings')}
@@ -202,24 +211,32 @@ export default function Chat() {
       )}
 
       {/* Main Content */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        <ChatInterface
-          chatId={chatId}
-          selectedModel={selectedModel}
-          onModelChange={handleModelChange}
-        />
+      <main className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ChatInterface
+            chatId={chatId}
+            selectedModel={selectedModel}
+            onModelChange={handleModelChange}
+          />
+
+          <AnimatePresence>
+            {showTerminal && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 300, opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden border-t border-border-subtle"
+              >
+                <Terminal />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <AnimatePresence>
-          {showTerminal && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 300, opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden border-t border-border-subtle"
-            >
-              <Terminal />
-            </motion.div>
+          {showWorkspace && (
+            <WorkspacePanel onClose={() => setShowWorkspace(false)} />
           )}
         </AnimatePresence>
       </main>

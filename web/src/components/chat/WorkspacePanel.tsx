@@ -52,25 +52,24 @@ function FileTreeNode({ node, depth = 0, onSelect }: { node: WorkspaceFile, dept
   )
 }
 
-export default function WorkspacePanel({ chatId, onClose }: { chatId: string, onClose: () => void }) {
+export default function WorkspacePanel({ onClose }: { onClose: () => void }) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
 
   const { data: fileTree, isLoading } = useQuery({
-    queryKey: ['workspace', chatId],
+    queryKey: ['workspace'],
     queryFn: async () => {
-      const res = await api.get(`/chats/${chatId}/workspace`)
+      const res = await api.get(`/workspace`)
       return res.data.files as WorkspaceFile[]
     },
     refetchInterval: 3000, // Poll every 3 seconds while open to see AI changes
   })
 
   const { data: fileContent, isLoading: isContentLoading } = useQuery({
-    queryKey: ['workspace_file', chatId, selectedFile],
+    queryKey: ['workspace_file', selectedFile],
     queryFn: async () => {
       if (!selectedFile) return null
-      // Use standard fetch to easily get text content instead of trying to read blob
-      const res = await api.get(`/chats/${chatId}/workspace/${selectedFile}`, { responseType: 'text' })
+      const res = await api.get(`/workspace/${selectedFile}?inline=true`)
       return res.data as string
     },
     enabled: !!selectedFile && viewMode === 'code',
@@ -99,7 +98,7 @@ export default function WorkspacePanel({ chatId, onClose }: { chatId: string, on
         <div className="flex items-center gap-1">
           {selectedFile && (
             <a
-              href={`/api/chats/${chatId}/workspace/${selectedFile}`}
+              href={`/api/workspace/${selectedFile}`}
               download={selectedFile.split('/').pop()}
               className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors"
               title="Download File"
@@ -160,7 +159,7 @@ export default function WorkspacePanel({ chatId, onClose }: { chatId: string, on
             <div className="flex-1 overflow-auto bg-background">
               {viewMode === 'preview' ? (
                 <iframe 
-                  src={`/api/chats/${chatId}/workspace/${selectedFile}`}
+                  src={`/api/workspace/${selectedFile}`}
                   className="w-full h-full border-none bg-white"
                   title="Live Preview"
                   sandbox="allow-scripts allow-forms allow-same-origin"
