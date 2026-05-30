@@ -553,16 +553,16 @@ async fn execute_tool(
             Ok(json!({"status": "success", "message": "Scratchpad updated"}))
         }
         "read_scratchpad" => {
-            let row = sqlx::query!(
-                "SELECT content FROM scratchpad_memory WHERE user_id = ?1",
-                user_id
+            let content = sqlx::query_scalar::<_, String>(
+                "SELECT content FROM scratchpad_memory WHERE user_id = ?1"
             )
+            .bind(user_id)
             .fetch_optional(&state.db)
             .await
             .map_err(|e| format!("Failed to read scratchpad: {}", e))?;
             
-            if let Some(row) = row {
-                Ok(json!({"status": "success", "content": row.content}))
+            if let Some(content) = content {
+                Ok(json!({"status": "success", "content": content}))
             } else {
                 Ok(json!({"status": "success", "content": "Scratchpad is empty."}))
             }
@@ -1592,11 +1592,11 @@ async fn send_message(
     // ─── Memory / Summarization Logic ───
     let memory_enabled = user.memory_enabled == 1;
     if memory_enabled {
-        let scratchpad = sqlx::query!("SELECT content FROM scratchpad_memory WHERE user_id = ?1", user.id)
+        let scratchpad = sqlx::query_scalar::<_, String>("SELECT content FROM scratchpad_memory WHERE user_id = ?1")
+            .bind(&user.id)
             .fetch_optional(&state.db)
             .await
-            .unwrap_or_default()
-            .map(|r| r.content);
+            .unwrap_or_default();
         if let Some(content) = scratchpad {
             if !content.is_empty() {
                 system_prompt.push_str(&format!("\n\n[USER SCRATCHPAD MEMORY]\n{}", content));
