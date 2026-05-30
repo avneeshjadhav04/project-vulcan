@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion } from 'framer-motion'
@@ -35,7 +35,7 @@ interface MessageBubbleProps {
   animateMount?: boolean
 }
 
-export default function MessageBubble({
+function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
@@ -153,7 +153,6 @@ export default function MessageBubble({
                     setEditContent(msg.content)
                   }
                 }}
-                onBlur={handleSave}
                 className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
                 rows={3}
                 autoFocus
@@ -252,3 +251,5 @@ export default function MessageBubble({
     </motion.div>
   )
 }
+
+export default React.memo(MessageBubble)
