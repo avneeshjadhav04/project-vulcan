@@ -23,6 +23,14 @@ pub fn router() -> Router<AppState> {
             "/chats/:chat_id/workspace/*filename",
             get(download_workspace_file),
         )
+        .route(
+            "/workspace",
+            get(list_user_workspace),
+        )
+        .route(
+            "/workspace/*filename",
+            get(download_user_workspace),
+        )
 }
 
 async fn upload_file(
@@ -325,6 +333,25 @@ async fn list_workspace_files(
     Ok(Json(serde_json::json!({ "files": files })))
 }
 
+async fn list_user_workspace(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    
+    if !user_workspace_dir.exists() {
+        return Ok(Json(serde_json::json!({ "files": [] })));
+    }
+
+    let files = tokio::task::spawn_blocking(move || build_file_tree(&user_workspace_dir, &user_workspace_dir))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "files": files })))
+}
+
 async fn download_workspace_file(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
@@ -352,6 +379,57 @@ async fn download_workspace_file(
     }
     let safe_filename = filename.trim_start_matches('/');
     let file_path = chat_workspace_dir.join(safe_filename);
+
+    let data = tokio::fs::read(&file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let mime_type = match ext {
+        "txt" | "py" | "rs" | "js" | "ts" | "go" | "c" | "cpp" | "java" | "sh" | "md" | "yml" | "yaml" => "text/plain",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "html" => "text/html",
+        "css" => "text/css",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    };
+
+    let display_filename = std::path::Path::new(&safe_filename).file_name().and_then(|f| f.to_str()).unwrap_or(safe_filename);
+
+    Ok((
+        axum::http::HeaderMap::from_iter([
+            (
+                axum::http::header::CONTENT_TYPE,
+                mime_type.parse().unwrap(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("inline; filename=\"{}\"", display_filename)
+                    .parse()
+                    .unwrap(),
+            ),
+        ]),
+        data,
+    ))
+}
+
+async fn download_user_workspace(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(filename): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    
+    if filename.contains("..") {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let safe_filename = filename.trim_start_matches('/');
+    let file_path = user_workspace_dir.join(safe_filename);
 
     let data = tokio::fs::read(&file_path)
         .await
