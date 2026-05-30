@@ -96,6 +96,7 @@ export default function ChatInput({
         >
           <FileUpload 
             getChatId={getChatId} 
+            chatId={_effectiveChatId}
             files={attachedFiles} 
             onFilesChange={onFilesChange} 
           />
