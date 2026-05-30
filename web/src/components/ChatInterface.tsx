@@ -420,10 +420,10 @@ export default function ChatInterface({
       <ChatMessages
         messages={messages}
         streaming={streaming}
-
         streamedContent={streamedContent}
         toolExecution={toolExecution}
         creatingChat={creatingChat}
+        chatId={chatId || chatData?.id}
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.scrollContainerRef}

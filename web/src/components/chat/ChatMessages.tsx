@@ -21,6 +21,7 @@ interface ChatMessagesProps {
   streamedContent: string
   toolExecution: ToolExecution | null
   creatingChat: boolean
+  chatId?: string
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
@@ -38,6 +39,7 @@ export default function ChatMessages({
   streamedContent,
   toolExecution,
   creatingChat,
+  chatId,
   messageMeta,
   showScrollBtn,
   scrollContainerRef,
@@ -82,6 +84,7 @@ export default function ChatMessages({
               return (
                 <MessageBubble
                   key={msg.id}
+                  chatId={chatId}
                   msg={msg}
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
@@ -92,7 +95,7 @@ export default function ChatMessages({
             })}
 
             {toolExecution && streaming && (
-              <ToolExecutionCard tool={toolExecution} />
+              <ToolExecutionCard tool={toolExecution} chatId={chatId} />
             )}
 
             {streamedContent && (

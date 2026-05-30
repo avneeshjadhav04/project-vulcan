@@ -15,6 +15,10 @@ pub fn router() -> Router<AppState> {
             "/chats/:chat_id/files/:file_id",
             delete(delete_file).get(download_file),
         )
+        .route(
+            "/chats/:chat_id/workspace/:filename",
+            get(download_workspace_file),
+        )
 }
 
 async fn upload_file(
@@ -249,4 +253,68 @@ fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> 
             }
         }
     }
+}
+
+async fn download_workspace_file(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path((chat_id, filename)): Path<(String, String)>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Verify chat belongs to user
+    let chat_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM chats WHERE id = ?1 AND user_id = ?2)")
+            .bind(&chat_id)
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !chat_exists {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let chat_workspace_dir = std::path::Path::new(&workspace_dir).join(&chat_id);
+    
+    // Prevent path traversal
+    let safe_filename = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let file_path = chat_workspace_dir.join(safe_filename);
+
+    let data = tokio::fs::read(&file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let mime_type = match ext {
+        "txt" | "py" | "rs" | "js" | "ts" | "go" | "c" | "cpp" | "java" | "sh" | "md" | "yml" | "yaml" => "text/plain",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "html" => "text/html",
+        "css" => "text/css",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    };
+
+    Ok((
+        axum::http::HeaderMap::from_iter([
+            (
+                axum::http::header::CONTENT_TYPE,
+                mime_type.parse().unwrap(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", safe_filename)
+                    .parse()
+                    .unwrap(),
+            ),
+        ]),
+        data,
+    ))
 }
