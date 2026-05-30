@@ -400,7 +400,7 @@ async fn execute_tool(
         "execute_terminal_command" => {
             let cmd = args["command"].as_str().ok_or("Missing command")?;
             let exec_res =
-                crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], chat_id, &state.sandbox)
+                crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], user_id, &state.sandbox)
                     .await;
             match exec_res {
                 Ok(resp) => Ok(
@@ -417,7 +417,7 @@ async fn execute_tool(
                 return Err("Invalid filename: Path traversal is not allowed".to_string());
             }
             let content = args["content"].as_str().ok_or("Missing content")?;
-            let workspace = format!("./workspace/{}", chat_id);
+            let workspace = format!("./workspace/{}", user_id);
             let path = std::path::Path::new(&workspace).join(filename);
             if let Some(parent) = path.parent() {
                 tokio::fs::create_dir_all(parent)
@@ -439,7 +439,7 @@ async fn execute_tool(
             if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
                 return Err("Invalid filename: Path traversal is not allowed".to_string());
             }
-            let workspace = format!("./workspace/{}", chat_id);
+            let workspace = format!("./workspace/{}", user_id);
             let path = std::path::Path::new(&workspace).join(filename);
             let content = tokio::fs::read_to_string(&path)
                 .await
@@ -680,7 +680,7 @@ async fn execute_tool(
                 if !packages.is_empty() {
                     let mut pip_cmd = vec!["pip3", "install", "--user", "--no-cache-dir"];
                     pip_cmd.extend(packages.iter().map(|s| s.as_str()));
-                    match crate::sandbox_engine::run_command_http(&pip_cmd, chat_id, &state.sandbox).await {
+                    match crate::sandbox_engine::run_command_http(&pip_cmd, user_id, &state.sandbox).await {
                         Ok(pip_res) => {
                             install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
                             if !pip_res.stderr.is_empty() {
@@ -706,7 +706,7 @@ async fn execute_tool(
             let script_cmd = format!("python3 {}", guest_script_path);
             let exec_res = crate::sandbox_engine::run_command_http(
                 &["/bin/bash", "-c", &script_cmd],
-                chat_id,
+                user_id,
                 &state.sandbox,
             )
             .await;
