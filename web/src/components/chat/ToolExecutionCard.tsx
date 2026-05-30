@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, XCircle, Terminal, FileText, Globe, Search, Calendar, Mail, CheckSquare, Code } from 'lucide-react'
+import { CheckCircle2, XCircle, Terminal, FileText, Globe, Search, Calendar, Mail, CheckSquare, Code, Download } from 'lucide-react'
 
 interface ToolResult {
   tool_name: string
@@ -34,7 +34,7 @@ interface ToolResult {
   language?: string
 }
 
-export default function ToolExecutionCard({ tool }: { tool: ToolResult }) {
+export default function ToolExecutionCard({ tool, chatId }: { tool: ToolResult, chatId?: string }) {
   const [expanded, setExpanded] = useState(true)
   const isSuccess = tool.status === 'success' || tool.status === 'created' || tool.status === 'modified'
   const isError = tool.status === 'error'
@@ -127,9 +127,21 @@ export default function ToolExecutionCard({ tool }: { tool: ToolResult }) {
 
               {isFile && (
                 <div className="px-3 py-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">
-                    {tool.tool_name === 'read_file' ? 'Content' : 'Status'}
-                  </p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                      {tool.tool_name === 'read_file' ? 'Content' : 'Status'}
+                    </p>
+                    {chatId && tool.filename && (tool.tool_name === 'create_file' || tool.tool_name === 'modify_file') && (
+                      <a
+                        href={`/api/chats/${chatId}/workspace/${tool.filename.split('/').pop()}`}
+                        download={tool.filename.split('/').pop()}
+                        className="flex items-center gap-1 rounded bg-interactive/10 px-2 py-0.5 text-[10px] font-medium text-interactive hover:bg-interactive hover:text-white transition-colors"
+                      >
+                        <Download className="h-3 w-3" />
+                        Download File
+                      </a>
+                    )}
+                  </div>
                   {tool.stdout && (
                     <pre className="max-h-96 overflow-auto bg-background p-2 font-mono text-[11px] text-text-secondary">
                       {tool.stdout}
