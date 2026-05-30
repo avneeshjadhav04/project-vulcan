@@ -423,7 +423,7 @@ export default function ChatInterface({
         streamedContent={streamedContent}
         toolExecution={toolExecution}
         creatingChat={creatingChat}
-        chatId={chatId || chatData?.id}
+        chatId={effectiveChatId}
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.scrollContainerRef}
