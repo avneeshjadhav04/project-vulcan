@@ -29,11 +29,12 @@ const getFileIcon = (mimeType: string) => {
 
 interface FileUploadProps {
   getChatId: () => Promise<string>
+  chatId?: string
   files: UploadedFile[]
   onFilesChange: (files: UploadedFile[]) => void
 }
 
-export default function FileUpload({ getChatId, files, onFilesChange }: FileUploadProps) {
+export default function FileUpload({ getChatId, chatId, files, onFilesChange }: FileUploadProps) {
   const showError = useErrorToast();
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -159,22 +160,40 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
           >
             {files.map((file) => {
               const Icon = getFileIcon(file.mime_type)
+              const isImage = file.mime_type.startsWith('image/')
+              
               return (
                 <motion.div
                   key={file.id}
                   initial={{ scale: 0.9, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
-                  className="flex items-center gap-1.5 border border-border-subtle bg-layer px-2 py-1"
+                  className="group relative flex items-center gap-1.5 overflow-hidden rounded-md border border-border-subtle bg-layer pr-1 shadow-sm"
                 >
-                  <Icon className="h-3 w-3 text-text-helper" />
-                  <span className="max-w-[100px] truncate text-[11px] text-text-secondary">{file.filename}</span>
-                  <span className="text-[10px] text-text-helper">{formatSize(file.size_bytes)}</span>
+                  {isImage && chatId ? (
+                    <div className="h-10 w-10 shrink-0 overflow-hidden bg-black/20">
+                      <img 
+                        src={`/api/chats/${chatId}/files/${file.id}`} 
+                        alt={file.filename}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-black/10">
+                      <Icon className="h-4 w-4 text-text-helper" />
+                    </div>
+                  )}
+                  
+                  <div className="flex flex-col py-1 pl-1 pr-2">
+                    <span className="max-w-[120px] truncate text-[11px] font-medium text-text-secondary">{file.filename}</span>
+                    <span className="text-[9px] text-text-helper">{formatSize(file.size_bytes)}</span>
+                  </div>
+                  
                   <button
                     onClick={() => removeFile(file.id)}
-                    className="ml-0.5 p-0.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-support-error"
+                    className="absolute right-1 top-1 hidden rounded bg-black/40 p-0.5 text-white backdrop-blur-sm transition-colors hover:bg-support-error group-hover:block"
                   >
-                    <X className="h-2.5 w-2.5" />
+                    <X className="h-3 w-3" />
                   </button>
                 </motion.div>
               )

@@ -5,6 +5,8 @@ import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Settings from './pages/Settings'
 
+import CommandPalette from './components/CommandPalette'
+
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuthStore()
   const location = useLocation()
@@ -15,7 +17,14 @@ function ProtectedRoute() {
       </div>
     )
   }
-  return isAuthenticated ? <Outlet /> : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+  return isAuthenticated ? (
+    <>
+      <Outlet />
+      <CommandPalette />
+    </>
+  ) : (
+    <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+  )
 }
 
 export const router = createBrowserRouter([
