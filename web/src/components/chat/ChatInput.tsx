@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect } from 'react'
+import { useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowUp,

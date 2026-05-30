@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import axios from 'axios'
 import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon } from 'lucide-react'
@@ -36,10 +37,12 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
   const showError = useErrorToast();
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const handleFiles = useCallback(async (fileList: FileList) => {
     if (!fileList.length) return
     setUploading(true)
+    setUploadProgress(0)
 
     const formData = new FormData()
     for (const file of fileList) {
@@ -58,25 +61,27 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
     try {
       const activeChatId = await getChatId()
       const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-      const res = await fetch(`/api/chats/${activeChatId}/files`, {
-        method: 'POST',
+      const res = await axios.post(`/api/chats/${activeChatId}/files`, formData, {
         headers: {
           'X-CSRF-Token': csrfToken,
         },
-        body: formData,
-        credentials: 'include',
+        withCredentials: true,
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+            setUploadProgress(percentCompleted)
+          }
+        }
       })
 
-      if (!res.ok) throw new Error('Upload failed')
-
-      const data = await res.json()
-      if (data.files) {
-        onFilesChange([...files, ...data.files])
+      if (res.data.files) {
+        onFilesChange([...files, ...res.data.files])
       }
     } catch (err: any) {
       showError(err?.message ?? 'Upload failed')
     } finally {
       setUploading(false)
+      setUploadProgress(0)
     }
   }, [getChatId, files, onFilesChange])
 
@@ -178,8 +183,8 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
         )}
       </AnimatePresence>
 
-      {/* Upload button */}
-      <div className="flex items-center gap-1">
+      {/* Upload button & Progress */}
+      <div className="relative flex items-center gap-1">
         <label className={`flex h-7 w-7 cursor-pointer items-center justify-center text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary ${uploading ? 'animate-pulse' : ''}`}>
           <Paperclip className="h-3.5 w-3.5" />
           <input
@@ -190,6 +195,27 @@ export default function FileUpload({ getChatId, files, onFilesChange }: FileUplo
             disabled={uploading}
           />
         </label>
+        <AnimatePresence>
+          {uploading && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute bottom-full left-0 mb-2 w-48 rounded-md border border-white/10 bg-layer/90 p-2.5 shadow-lg backdrop-blur-md"
+            >
+              <div className="mb-1.5 flex justify-between text-[10px] font-medium text-text-primary">
+                <span>Uploading...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10 shadow-inner">
+                <div
+                  className="h-full bg-vibrant-gradient transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

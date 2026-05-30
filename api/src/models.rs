@@ -48,6 +48,7 @@ pub struct Message {
     pub model_id: Option<String>,
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
+    pub parent_id: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -142,6 +143,7 @@ pub struct CreateChatRequest {
 pub struct SendMessageRequest {
     pub content: String,
     pub is_regenerate: Option<bool>,
+    pub parent_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

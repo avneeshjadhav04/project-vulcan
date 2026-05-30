@@ -161,7 +161,12 @@ export default function Sidebar({
   }, {} as Record<string, ChatItem[]>)
 
   const renderChatItem = (chat: ChatItem) => (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.2 }}
       key={chat.id}
       className={`group mx-2 my-0.5 flex cursor-pointer items-center gap-2 rounded-carbon px-2.5 py-2 text-sm transition-all ${
         activeChatId === chat.id
@@ -248,7 +253,7 @@ export default function Sidebar({
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
-    </div>
+    </motion.div>
   )
 
   return (
