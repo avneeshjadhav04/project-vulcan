@@ -13,6 +13,7 @@ import type { UploadedFile } from './FileUpload'
 import ChatHeader from './chat/ChatHeader'
 import ChatMessages from './chat/ChatMessages'
 import ChatInput from './chat/ChatInput'
+import WorkspacePanel from './chat/WorkspacePanel'
 
 import {
   AlertCircle,
@@ -47,6 +48,7 @@ export default function ChatInterface({
   const [validatingModel, setValidatingModel] = useState(false)
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
   const [isGlobalDragging, setIsGlobalDragging] = useState(false)
+  const [showWorkspace, setShowWorkspace] = useState(false)
   const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
 
   const navigate = useNavigate()
@@ -304,12 +306,13 @@ export default function ChatInterface({
   const messages = chatData?.messages || []
 
   return (
-    <div 
-      className="relative flex flex-1 flex-col overflow-hidden bg-background"
-      onDragOver={handleGlobalDragOver}
-      onDragLeave={handleGlobalDragLeave}
-      onDrop={handleGlobalDrop}
-    >
+    <div className="flex h-full w-full overflow-hidden">
+      <div 
+        className="relative flex flex-1 flex-col overflow-hidden bg-background"
+        onDragOver={handleGlobalDragOver}
+        onDragLeave={handleGlobalDragLeave}
+        onDrop={handleGlobalDrop}
+      >
       <AnimatePresence>
         {isGlobalDragging && (
           <motion.div
@@ -337,6 +340,8 @@ export default function ChatInterface({
         title={chatData?.chat.title}
         optimisticTitle={optimisticTitle}
         chatId={effectiveChatId}
+        onToggleWorkspace={() => setShowWorkspace(!showWorkspace)}
+        showWorkspace={showWorkspace}
       />
 
       {/* API Key Required Overlay */}
@@ -474,6 +479,16 @@ export default function ChatInterface({
         }}
         sendError={sendError}
       />
+      </div>
+
+      <AnimatePresence>
+        {showWorkspace && effectiveChatId && (
+          <WorkspacePanel 
+            chatId={effectiveChatId} 
+            onClose={() => setShowWorkspace(false)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

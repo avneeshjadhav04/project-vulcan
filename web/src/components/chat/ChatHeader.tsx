@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, FileJson, FileText } from 'lucide-react'
+import { Download, FileJson, FileText, Folder } from 'lucide-react'
 
 interface ChatHeaderProps {
   title?: string
   optimisticTitle?: string
   chatId?: string
+  onToggleWorkspace?: () => void
+  showWorkspace?: boolean
 }
 
-export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeaderProps) {
+export default function ChatHeader({ title, optimisticTitle, chatId, onToggleWorkspace, showWorkspace }: ChatHeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const exportRef = useRef<HTMLDivElement>(null)
 
@@ -44,6 +46,15 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
         </h2>
       </div>
       <div className="flex items-center gap-1">
+        {onToggleWorkspace && (
+          <button
+            onClick={onToggleWorkspace}
+            className={`mr-2 flex items-center gap-1.5 px-2 py-1.5 text-[11px] transition-colors rounded-sm focus:outline-none focus:ring-1 focus:ring-focus ${showWorkspace ? 'bg-interactive text-white' : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'}`}
+          >
+            <Folder className="h-3.5 w-3.5" aria-hidden="true" />
+            Workspace
+          </button>
+        )}
         {chatId && (
           <div className="relative" ref={exportRef}>
             <button
