@@ -400,7 +400,7 @@ async fn execute_tool(
         "execute_terminal_command" => {
             let cmd = args["command"].as_str().ok_or("Missing command")?;
             let exec_res =
-                crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], &state.sandbox)
+                crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], chat_id, &state.sandbox)
                     .await;
             match exec_res {
                 Ok(resp) => Ok(
@@ -680,7 +680,7 @@ async fn execute_tool(
                 if !packages.is_empty() {
                     let mut pip_cmd = vec!["pip3", "install", "--user", "--no-cache-dir"];
                     pip_cmd.extend(packages.iter().map(|s| s.as_str()));
-                    match crate::sandbox_engine::run_command_http(&pip_cmd, &state.sandbox).await {
+                    match crate::sandbox_engine::run_command_http(&pip_cmd, chat_id, &state.sandbox).await {
                         Ok(pip_res) => {
                             install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
                             if !pip_res.stderr.is_empty() {
@@ -703,8 +703,10 @@ async fn execute_tool(
             tokio::fs::write(&script_path, code)
                 .await
                 .map_err(|e| e.to_string())?;
+            let script_cmd = format!("python3 {}", guest_script_path);
             let exec_res = crate::sandbox_engine::run_command_http(
-                &["python3", &guest_script_path],
+                &["/bin/bash", "-c", &script_cmd],
+                chat_id,
                 &state.sandbox,
             )
             .await;
