@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import { Folder, File, ChevronRight, ChevronDown, X, ArrowLeft, Download, Code, Globe } from 'lucide-react'
+import { Folder, File, ChevronRight, ChevronDown, X, ArrowLeft, Download, Code, Globe, RefreshCw } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface WorkspaceFile {
@@ -52,17 +52,19 @@ function FileTreeNode({ node, depth = 0, onSelect }: { node: WorkspaceFile, dept
   )
 }
 
-export default function WorkspacePanel({ onClose }: { onClose: () => void }) {
+export default function WorkspacePanel({ onClose, isMobile }: { onClose: () => void; isMobile?: boolean }) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview')
 
-  const { data: fileTree, isLoading } = useQuery({
+  const [autoRefresh] = useState(true)
+  const { data: fileTree, isLoading, refetch: refetchWorkspace } = useQuery({
     queryKey: ['workspace'],
     queryFn: async () => {
       const res = await api.get(`/workspace`)
       return res.data.files as WorkspaceFile[]
     },
-    refetchInterval: 3000, // Poll every 3 seconds while open to see AI changes
+    refetchInterval: autoRefresh ? 10000 : false, // Poll every 10 seconds when enabled
+    staleTime: 5000,
   })
 
   const { data: fileContent, isLoading: isContentLoading } = useQuery({
@@ -80,9 +82,9 @@ export default function WorkspacePanel({ onClose }: { onClose: () => void }) {
   return (
     <motion.div 
       initial={{ width: 0, opacity: 0 }}
-      animate={{ width: 400, opacity: 1 }}
+      animate={{ width: isMobile ? '100%' : 400, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
-      className="h-full border-l border-border-subtle bg-layer flex flex-col overflow-hidden shrink-0"
+      className={`h-full border-l border-border-subtle bg-layer flex flex-col overflow-hidden shrink-0 ${isMobile ? 'absolute right-0 top-0 z-40' : ''}`}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-background">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
@@ -96,6 +98,15 @@ export default function WorkspacePanel({ onClose }: { onClose: () => void }) {
           {selectedFile ? selectedFile.split('/').pop() : 'Workspace Files'}
         </h3>
         <div className="flex items-center gap-1">
+          {!selectedFile && (
+            <button
+              onClick={() => refetchWorkspace()}
+              className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors"
+              title="Refresh workspace"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          )}
           {selectedFile && (
             <a
               href={`/api/workspace/${selectedFile}`}

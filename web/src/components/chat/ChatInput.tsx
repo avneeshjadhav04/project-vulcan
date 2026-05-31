@@ -7,6 +7,7 @@ import {
   Mic,
   MicOff,
   Loader2,
+  RefreshCw,
 } from 'lucide-react'
 import ProviderModelSelector, { type SelectedModel } from '../ProviderModelSelector'
 import FileUpload, { type UploadedFile } from '../FileUpload'
@@ -29,6 +30,7 @@ interface ChatInputProps {
   toolsEnabled?: boolean
   onToggleTools: () => void
   sendError: string
+  onRetry?: () => void
 }
 
 export default function ChatInput({
@@ -49,6 +51,7 @@ export default function ChatInput({
   toolsEnabled,
   onToggleTools,
   sendError,
+  onRetry,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -69,10 +72,19 @@ export default function ChatInput({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              className="mb-2 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-[11px] text-support-error"
+              className="mb-2 flex items-center justify-between gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-[11px] text-support-error"
               role="alert"
             >
-              {sendError}
+              <span className="flex-1">{sendError}</span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="flex items-center gap-1 rounded bg-support-error/20 px-2 py-1 text-[11px] font-medium text-support-error transition-colors hover:bg-support-error/30"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Retry
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -117,7 +129,7 @@ export default function ChatInput({
             className="max-h-[200px] min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
           />
 
-          <div className="w-52 shrink-0 hidden sm:block">
+          <div className="w-52 shrink-0">
             <ProviderModelSelector
               selected={selectedModel}
               onSelect={onModelChange}

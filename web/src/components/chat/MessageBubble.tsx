@@ -12,6 +12,10 @@ import {
   Hash,
   Cpu,
   Clock,
+  ThumbsUp,
+  ThumbsDown,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react'
 import { markdownComponents, extractArtifacts, stripArtifacts, ArtifactCard } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
@@ -32,16 +36,22 @@ interface MessageBubbleProps {
   chatId?: string
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
+  onReact?: (id: string, reaction: string) => void
+  onRetry?: () => void
   messageMeta?: { provider: string; model: string; durationMs: number }
   animateMount?: boolean
+  isStreamingReplacement?: boolean
 }
 
 function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
+  onReact,
+  onRetry,
   messageMeta,
   animateMount = true,
+  isStreamingReplacement = false,
 }: MessageBubbleProps) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -57,12 +67,19 @@ function MessageBubble({
     })
   }, [msg.content])
 
+  const [userReaction, setUserReaction] = useState<string | null>(null)
+
   const handleSave = useCallback(() => {
     if (editContent.trim() && editContent !== msg.content && onEdit) {
       onEdit(msg.id, editContent.trim())
     }
     setIsEditing(false)
   }, [editContent, msg.content, msg.id, onEdit])
+
+  const handleReact = useCallback((reaction: string) => {
+    setUserReaction((prev) => (prev === reaction ? null : reaction))
+    onReact?.(msg.id, reaction)
+  }, [msg.id, onReact])
 
   if (msg.role === 'tool') {
     let parsed: any = {}
@@ -136,7 +153,7 @@ function MessageBubble({
           className={`inline-block text-left shadow-sm ${
             isUser
               ? 'bg-interactive text-white rounded-2xl rounded-tr-sm px-5 py-3'
-              : 'border border-white/5 bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary'
+              : `border border-white/5 bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary ${isStreamingReplacement ? 'opacity-60' : ''}`
           }`}
         >
           {isEditing ? (
@@ -213,6 +230,12 @@ function MessageBubble({
                 <span>{(messageMeta.durationMs / 1000).toFixed(1)}s</span>
               </div>
             )}
+            {isStreamingReplacement && (
+              <span className="flex items-center gap-1 text-[10px] text-text-helper">
+                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                Updating...
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 opacity-100 transition-opacity">
             <button
@@ -232,6 +255,40 @@ function MessageBubble({
                 <RotateCcw className="h-3 w-3" />
                 Regenerate
               </button>
+            )}
+            {isAssistant && onRetry && (
+              <button
+                onClick={onRetry}
+                aria-label="Retry failed response"
+                className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:text-support-error/80 focus:outline-none focus:ring-1 focus:ring-focus"
+              >
+                <AlertTriangle className="h-3 w-3" />
+                Retry
+              </button>
+            )}
+            {isAssistant && onReact && (
+              <>
+                <button
+                  onClick={() => handleReact('thumbs_up')}
+                  aria-label="Thumbs up"
+                  aria-pressed={userReaction === 'thumbs_up'}
+                  className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
+                    userReaction === 'thumbs_up' ? 'text-support-success' : 'text-text-helper hover:text-text-primary'
+                  }`}
+                >
+                  <ThumbsUp className={`h-3 w-3 ${userReaction === 'thumbs_up' ? 'fill-support-success' : ''}`} />
+                </button>
+                <button
+                  onClick={() => handleReact('thumbs_down')}
+                  aria-label="Thumbs down"
+                  aria-pressed={userReaction === 'thumbs_down'}
+                  className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
+                    userReaction === 'thumbs_down' ? 'text-support-error' : 'text-text-helper hover:text-text-primary'
+                  }`}
+                >
+                  <ThumbsDown className={`h-3 w-3 ${userReaction === 'thumbs_down' ? 'fill-support-error' : ''}`} />
+                </button>
+              </>
             )}
             {isUser && onEdit && !isEditing && (
               <button

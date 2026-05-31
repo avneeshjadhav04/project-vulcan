@@ -16,9 +16,23 @@
     background-color: #09090b; /* matches new tailwind background */
   }
 
+  html.light {
+    background-color: #f8f9fa;
+    color: #18181b;
+  }
+
+  html.light body {
+    background-color: #f8f9fa;
+  }
+
   ::selection {
     background-color: #3f3f46;
     color: #fafafa;
+  }
+
+  html.light ::selection {
+    background-color: #0f62fe;
+    color: #ffffff;
   }
 
   ::-webkit-scrollbar {
@@ -37,6 +51,14 @@
 
   ::-webkit-scrollbar-thumb:hover {
     background: #52525b;
+  }
+
+  html.light ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+  }
+
+  html.light ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1aa;
   }
 }
 

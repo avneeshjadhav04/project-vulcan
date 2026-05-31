@@ -213,12 +213,7 @@ export default function ChatInterface({
     if (lastUserMessage) {
       if (effectiveChatId) {
         try {
-          const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-          await fetch(`/api/chats/${effectiveChatId}/messages/${lastUserMessage.id}/after`, {
-            method: 'DELETE',
-            headers: { 'X-CSRF-Token': csrfToken },
-            credentials: 'include'
-          })
+          await api.delete(`/chats/${effectiveChatId}/messages/${lastUserMessage.id}/after`)
         } catch (e: any) {
             showError(e?.message ?? 'Failed to delete messages after regenerate');
           }
@@ -229,31 +224,11 @@ export default function ChatInterface({
 
   const handleEditMessage = useCallback(async (msgId: string, newContent: string) => {
     try {
-      const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-      const patchRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken || '',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ content: newContent }),
-      })
-      if (!patchRes.ok) throw new Error('Failed to edit message')
-
-      const deleteRes = await fetch(`/api/chats/${effectiveChatId}/messages/${msgId}/after`, {
-        method: 'DELETE',
-        headers: {
-          'X-CSRF-Token': csrfToken || '',
-        },
-        credentials: 'include',
-      })
-      if (!deleteRes.ok) throw new Error('Failed to clear subsequent messages')
-
+      await api.patch(`/chats/${effectiveChatId}/messages/${msgId}`, { content: newContent })
+      await api.delete(`/chats/${effectiveChatId}/messages/${msgId}/after`)
       await refetch()
       handleSend(newContent, true)
     } catch (err: any) {
-      // Error is displayed via UI if needed
       showError(err?.message ?? 'Failed to edit message')
     }
   }, [effectiveChatId, refetch, handleSend])
@@ -474,6 +449,7 @@ export default function ChatInterface({
           }
         }}
         sendError={sendError}
+        onRetry={handleRegenerate}
       />
       </div>
     </div>
