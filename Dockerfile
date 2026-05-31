@@ -41,6 +41,20 @@ RUN ARCH=${TARGETARCH:-amd64} \
     && tar -xzf /tmp/ubuntu-rootfs.tar.gz -C /app/ubuntu-rootfs \
     && rm /tmp/ubuntu-rootfs.tar.gz
 
+# Pre-install common dev tools into the rootfs so AI agents don't have to apt-get every time
+RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bash -c '\
+    export DEBIAN_FRONTEND=noninteractive; \
+    sed -i "s/Components: main/Components: main universe/" /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || sed -i "s/main restricted/main restricted universe/" /etc/apt/sources.list 2>/dev/null || true; \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-venv \
+        nodejs npm \
+        git curl wget ca-certificates \
+        build-essential gcc g++ make \
+        libffi-dev libssl-dev python3-dev zlib1g-dev \
+        file unzip xz-utils \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
+
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 

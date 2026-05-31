@@ -817,7 +817,8 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
          - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
          - File operations: Create, read, and modify files in the workspace.\n\
          - Web search: Search the web for current information.\n\
-         - Package Management: You have root access in the Ubuntu sandbox. Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` to install any software (e.g. nodejs, curl, nmap, gcc) before using it.\n\n",
+         - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
+           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n",
     );
 
     if has_google {
