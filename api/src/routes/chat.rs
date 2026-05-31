@@ -849,6 +849,39 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
     prompt
 }
 
+async fn get_scratchpad(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let content = sqlx::query_scalar::<_, String>(
+        "SELECT content FROM scratchpad_memory WHERE user_id = ?1"
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({"content": content.unwrap_or_default()})))
+}
+
+async fn update_scratchpad_endpoint(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<serde_json::Value>,
+) -> Result<StatusCode, StatusCode> {
+    let content = req["content"].as_str().unwrap_or("");
+    sqlx::query(
+        "INSERT INTO scratchpad_memory (user_id, content, updated_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(user_id) DO UPDATE SET content = ?2, updated_at = datetime('now')"
+    )
+    .bind(&claims.sub)
+    .bind(content)
+    .execute(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
@@ -874,6 +907,7 @@ pub fn router() -> Router<AppState> {
         .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
         .route("/me/tools", post(update_tools_config))
+        .route("/me/scratchpad", get(get_scratchpad).post(update_scratchpad_endpoint))
 }
 
 async fn get_me(

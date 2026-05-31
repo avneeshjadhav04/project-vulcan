@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+import { useThemeStore } from '../stores/themeStore'
+import ToolPermissionsPanel from '../components/ToolPermissionsPanel'
 import {
   ArrowLeft,
   Key,
@@ -28,6 +30,10 @@ import {
   Wrench,
   Mail,
   ListTodo,
+  BarChart3,
+  Sun,
+  Moon,
+  Notebook,
 } from 'lucide-react'
 
 interface Provider {
@@ -86,6 +92,18 @@ export default function Settings() {
   const [clientSecret, setClientSecret] = useState('')
   const [configSaving, setConfigSaving] = useState(false)
 
+  // Scratchpad state
+  const [scratchpad, setScratchpad] = useState('')
+  const [scratchpadLoading, setScratchpadLoading] = useState(false)
+  const [scratchpadSaving, setScratchpadSaving] = useState(false)
+
+  // Provider validation cache
+  const [providerValidations, setProviderValidations] = useState<Record<string, { valid: boolean; error?: string }>>({})
+
+  // Theme
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
+
   useEffect(() => {
     if (saved) {
       const timer = setTimeout(() => setSaved(false), 3000)
@@ -96,6 +114,7 @@ export default function Settings() {
   useEffect(() => {
     loadProviders()
     loadIntegrations()
+    loadScratchpad()
     const params = new URLSearchParams(window.location.search)
     const justConnected = params.get('status')
     if (justConnected === 'connected') {
@@ -231,10 +250,35 @@ export default function Settings() {
     try {
       const res = await api.post(`/providers/${id}/validate`)
       setValidationResult(res.data)
+      setProviderValidations((prev) => ({ ...prev, [id]: res.data }))
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to validate provider')
     } finally {
       setValidating(false)
+    }
+  }
+
+  const loadScratchpad = async () => {
+    setScratchpadLoading(true)
+    try {
+      const res = await api.get('/me/scratchpad')
+      setScratchpad(res.data?.content || '')
+    } catch {
+      setScratchpad('')
+    } finally {
+      setScratchpadLoading(false)
+    }
+  }
+
+  const saveScratchpad = async () => {
+    setScratchpadSaving(true)
+    try {
+      await api.post('/me/scratchpad', { content: scratchpad })
+      setSaved(true)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to save scratchpad')
+    } finally {
+      setScratchpadSaving(false)
     }
   }
 
@@ -384,40 +428,48 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-2">
-              {providers.map((p) => (
-                <div key={p.id} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`flex h-6 w-6 items-center justify-center ${p.is_active ? 'bg-interactive/10' : 'bg-border-subtle'}`}>
-                      <Key className={`h-3 w-3 ${p.is_active ? 'text-interactive' : 'text-text-helper'}`} />
+              {providers.map((p) => {
+                const pv = providerValidations[p.id]
+                return (
+                  <div key={p.id} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`flex h-6 w-6 items-center justify-center ${p.is_active ? 'bg-interactive/10' : 'bg-border-subtle'}`}>
+                        <Key className={`h-3 w-3 ${p.is_active ? 'text-interactive' : 'text-text-helper'}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
+                          {pv && (
+                            <span className={`inline-flex h-2 w-2 rounded-full ${pv.valid ? 'bg-support-success' : 'bg-support-error'}`} title={pv.valid ? 'Valid' : pv.error || 'Invalid'} />
+                          )}
+                        </div>
+                        <p className="text-[10px] font-mono text-text-helper truncate">{p.base_url}</p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
-                      <p className="text-[10px] font-mono text-text-helper truncate">{p.base_url}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleValidateProvider(p.id)}
+                        disabled={validating}
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                      >
+                        {validating ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <TestTube className="h-3 w-3" />
+                        )}
+                        Test
+                      </button>
+                      <button
+                        onClick={() => handleRemoveProvider(p.id)}
+                        className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Remove
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => handleValidateProvider(p.id)}
-                      disabled={validating}
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                    >
-                      {validating ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <TestTube className="h-3 w-3" />
-                      )}
-                      Test
-                    </button>
-                    <button
-                      onClick={() => handleRemoveProvider(p.id)}
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -653,6 +705,85 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Scratchpad Memory */}
+        <div className="border border-border-subtle bg-layer p-5">
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                <Notebook className="h-4 w-4" />
+                Scratchpad Memory
+              </h2>
+              <p className="mt-1 text-xs text-text-helper">
+                Persistent notes the AI can read and update. Edit directly or let the AI manage it through conversations.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <textarea
+              value={scratchpad}
+              onChange={(e) => setScratchpad(e.target.value)}
+              placeholder="Your scratchpad is empty..."
+              rows={4}
+              className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-text-helper">
+                {scratchpadLoading ? 'Loading...' : `${scratchpad.length} characters`}
+              </span>
+              <button
+                onClick={saveScratchpad}
+                disabled={scratchpadSaving}
+                className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+              >
+                {scratchpadSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                Save Scratchpad
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Theme */}
+        <div className="border border-border-subtle bg-layer p-5">
+          <div className="mb-4 flex items-start justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                Appearance
+              </h2>
+              <p className="mt-1 text-xs text-text-helper">
+                Choose your preferred theme. Light mode is experimental.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+            <div className="flex items-center gap-3">
+              {theme === 'light' ? <Sun className="h-4 w-4 text-support-warning" /> : <Moon className="h-4 w-4 text-interactive" />}
+              <div>
+                <p className="text-sm font-medium text-text-primary">Theme</p>
+                <p className="text-[11px] text-text-helper capitalize">{theme}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {(['dark', 'light', 'system'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTheme(t)}
+                  className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
+                    theme === t
+                      ? 'bg-interactive text-white'
+                      : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Tool Permissions */}
+        <ToolPermissionsPanel />
+
         {/* Security Info */}
         <div className="border border-border-subtle bg-layer p-5">
           <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
@@ -676,6 +807,26 @@ export default function Settings() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Usage Dashboard Link */}
+        <div className="border border-border-subtle bg-layer p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="h-4 w-4 text-interactive" />
+              <div>
+                <p className="text-sm font-medium text-text-primary">Usage Dashboard</p>
+                <p className="text-[11px] text-text-helper">View your message and token usage statistics.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/usage')}
+              className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
+            >
+              <BarChart3 className="h-3 w-3" />
+              Open Dashboard
+            </button>
           </div>
         </div>
       </main>

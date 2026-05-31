@@ -77,10 +77,8 @@ export default function ChatMessages({
         ) : (
           <>
             {messages.map((msg, index) => {
-              // Skip rendering the last assistant message while streamed content is still being handoff-ed
-              if (streamedContent && msg.role === 'assistant' && index === messages.length - 1) {
-                return null
-              }
+              const isLastAssistant = msg.role === 'assistant' && index === messages.length - 1
+              // When streaming replaces the last assistant message, animate it in once streaming ends
               return (
                 <MessageBubble
                   key={msg.id}
@@ -89,7 +87,8 @@ export default function ChatMessages({
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(msg.role === 'assistant' && index === lastAssistantIndex)}
+                  animateMount={!(isLastAssistant && !streamedContent)}
+                  isStreamingReplacement={isLastAssistant && !!streamedContent}
                 />
               )
             })}

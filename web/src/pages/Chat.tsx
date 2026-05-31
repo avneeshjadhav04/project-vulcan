@@ -30,6 +30,7 @@ export default function Chat() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({
     providerId: '',
     modelId: 'meta/llama-3.1-8b-instruct',
@@ -57,16 +58,7 @@ export default function Chat() {
     setSelectedModel(sel)
     if (chatId) {
       try {
-        const csrf = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
-        await fetch(`/api/chats/${chatId}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrf,
-          },
-          credentials: 'include',
-          body: JSON.stringify({ model_id: sel.modelId, provider_id: sel.providerId }),
-        })
+        await api.patch(`/chats/${chatId}`, { model_id: sel.modelId, provider_id: sel.providerId })
       } catch (e) {
         console.error('Failed to update chat model:', e)
       }
@@ -76,6 +68,20 @@ export default function Chat() {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [chatId])
+
+  // Mobile detection and auto-collapse sidebar
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (mobile && sidebarOpen) {
+        setSidebarOpen(false)
+      }
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [sidebarOpen])
 
   const activeChatId = chatId || null
 
@@ -236,7 +242,7 @@ export default function Chat() {
 
         <AnimatePresence>
           {showWorkspace && (
-            <WorkspacePanel onClose={() => setShowWorkspace(false)} />
+            <WorkspacePanel onClose={() => setShowWorkspace(false)} isMobile={isMobile} />
           )}
         </AnimatePresence>
       </main>

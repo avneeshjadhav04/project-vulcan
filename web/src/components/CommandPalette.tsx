@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { Search, MessageSquare, Plus, X } from 'lucide-react'
-import axios from 'axios'
+import { api } from '../lib/api'
 
 interface Chat {
   id: string
@@ -15,13 +15,15 @@ interface Chat {
 export default function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
   const { data: chats } = useQuery<Chat[]>({
     queryKey: ['chats'],
     queryFn: async () => {
-      const res = await axios.get('/api/chats', { withCredentials: true })
+      const res = await api.get('/chats')
       return res.data
     },
     enabled: isOpen,
@@ -46,6 +48,7 @@ export default function CommandPalette() {
       setTimeout(() => inputRef.current?.focus(), 100)
     } else {
       setQuery('')
+      setSelectedIndex(0)
     }
   }, [isOpen])
 
@@ -53,6 +56,47 @@ export default function CommandPalette() {
     chat.title.toLowerCase().includes(query.toLowerCase()) || 
     chat.folder.toLowerCase().includes(query.toLowerCase())
   ) || []
+
+  const items = [
+    ...(query.length === 0 ? [{ type: 'action' as const, label: 'New Chat', id: 'new-chat' }] : []),
+    ...filteredChats.map(chat => ({ type: 'chat' as const, ...chat })),
+  ]
+
+  const handleSelect = useCallback((item: typeof items[number]) => {
+    if (item.type === 'action' && item.id === 'new-chat') {
+      navigate('/chat')
+    } else if (item.type === 'chat') {
+      navigate(`/chat/${item.id}`)
+    }
+    setIsOpen(false)
+  }, [navigate])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev + 1) % items.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev - 1 + items.length) % items.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const item = items[selectedIndex]
+      if (item) handleSelect(item)
+    }
+  }, [items, selectedIndex, handleSelect])
+
+  useEffect(() => {
+    setSelectedIndex(0)
+  }, [query])
+
+  useEffect(() => {
+    if (listRef.current && selectedIndex >= 0) {
+      const el = listRef.current.children[selectedIndex] as HTMLElement
+      if (el) {
+        el.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [selectedIndex])
 
   if (!isOpen) return null
 
@@ -79,8 +123,12 @@ export default function CommandPalette() {
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Search chats or type a command..."
               className="flex-1 bg-transparent text-lg text-text-primary placeholder:text-text-helper outline-none"
+              aria-label="Search chats"
+              aria-controls="command-palette-list"
+              aria-activedescendant={items[selectedIndex] ? `cmd-item-${selectedIndex}` : undefined}
             />
             <button 
               onClick={() => setIsOpen(false)}
@@ -90,7 +138,13 @@ export default function CommandPalette() {
             </button>
           </div>
 
-          <div className="max-h-[60vh] overflow-y-auto p-2">
+          <div 
+            id="command-palette-list"
+            ref={listRef}
+            className="max-h-[60vh] overflow-y-auto p-2"
+            role="listbox"
+            aria-label="Search results"
+          >
             {query.length === 0 && (
               <div className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-wider text-text-helper">
                 Quick Actions
@@ -99,11 +153,14 @@ export default function CommandPalette() {
             
             {query.length === 0 && (
               <button
-                onClick={() => {
-                  navigate('/chat')
-                  setIsOpen(false)
-                }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-text-secondary transition-colors hover:bg-interactive/10 hover:text-interactive"
+                id="cmd-item-0"
+                role="option"
+                aria-selected={selectedIndex === 0}
+                onClick={() => handleSelect(items[0])}
+                onMouseEnter={() => setSelectedIndex(0)}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+                  selectedIndex === 0 ? 'bg-interactive/10 text-interactive' : 'text-text-secondary hover:bg-interactive/10 hover:text-interactive'
+                }`}
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-md bg-interactive/10 text-interactive">
                   <Plus className="h-4 w-4" />
@@ -119,28 +176,34 @@ export default function CommandPalette() {
             )}
 
             <div className="flex flex-col gap-1">
-              {filteredChats.map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() => {
-                    navigate(`/chat/${chat.id}`)
-                    setIsOpen(false)
-                  }}
-                  className="group flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-layer-hover"
-                >
-                  <div className="flex items-center gap-3">
-                    <MessageSquare className="h-4 w-4 text-text-helper group-hover:text-text-primary" />
-                    <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary">
-                      {chat.title}
-                    </span>
-                  </div>
-                  {chat.folder !== 'General' && (
-                    <span className="rounded-full border border-border-subtle bg-layer px-2 py-0.5 text-[10px] text-text-helper">
-                      {chat.folder}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {filteredChats.map((chat, idx) => {
+                const itemIndex = query.length === 0 ? idx + 1 : idx
+                return (
+                  <button
+                    key={chat.id}
+                    id={`cmd-item-${itemIndex}`}
+                    role="option"
+                    aria-selected={selectedIndex === itemIndex}
+                    onClick={() => handleSelect({ type: 'chat', ...chat })}
+                    onMouseEnter={() => setSelectedIndex(itemIndex)}
+                    className={`group flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition-colors ${
+                      selectedIndex === itemIndex ? 'bg-layer-hover' : 'hover:bg-layer-hover'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className={`h-4 w-4 ${selectedIndex === itemIndex ? 'text-text-primary' : 'text-text-helper group-hover:text-text-primary'}`} />
+                      <span className={`text-sm font-medium ${selectedIndex === itemIndex ? 'text-text-primary' : 'text-text-secondary group-hover:text-text-primary'}`}>
+                        {chat.title}
+                      </span>
+                    </div>
+                    {chat.folder !== 'General' && (
+                      <span className="rounded-full border border-border-subtle bg-layer px-2 py-0.5 text-[10px] text-text-helper">
+                        {chat.folder}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
 
               {query.length > 0 && filteredChats.length === 0 && (
                 <div className="py-8 text-center text-sm text-text-helper">
