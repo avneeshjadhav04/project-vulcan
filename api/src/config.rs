@@ -12,6 +12,11 @@ pub struct Config {
     pub bind_addr: String,
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
+    pub app_base_url: String,
+    pub google_client_id: Option<String>,
+    pub google_client_secret: Option<String>,
+    pub todoist_client_id: Option<String>,
+    pub todoist_client_secret: Option<String>,
 }
 
 fn load_or_generate_master_key() -> Result<[u8; 32]> {
@@ -29,7 +34,8 @@ fn load_or_generate_master_key() -> Result<[u8; 32]> {
     let key_path = env::var("DATABASE_URL")
         .ok()
         .and_then(|url| {
-            let path = url.strip_prefix("sqlite:///")
+            let path = url
+                .strip_prefix("sqlite:///")
                 .or_else(|| url.strip_prefix("sqlite:"))?;
             Path::new(path).parent().map(|p| p.join(".master_key"))
         })
@@ -68,13 +74,24 @@ fn load_or_generate_master_key() -> Result<[u8; 32]> {
         let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
     }
 
-    println!("[CONFIG] MASTER_KEY auto-generated and saved to {}", key_path.display());
+    println!(
+        "[CONFIG] MASTER_KEY auto-generated and saved to {}",
+        key_path.display()
+    );
     Ok(derive_key(&new_key))
 }
 
 impl Config {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
+        // Try multiple common locations for .env (project root, parent dir, current dir)
+        let env_paths = ["../.env", "./.env", ".env"];
+        for path in &env_paths {
+            if std::path::Path::new(path).exists() {
+                dotenvy::from_path(path).ok();
+                break;
+            }
+        }
 
         println!("[CONFIG] Loading environment variables...");
 
@@ -123,7 +140,7 @@ impl Config {
         if let Some(ref origin) = cors_origin {
             println!("[CONFIG] CORS restricted to: {}", origin);
         } else {
-            println!("[CONFIG] CORS using mirror_request (dev mode)");
+            println!("[CONFIG] CORS restricted to predefined development origins");
         }
 
         Ok(Self {
@@ -136,6 +153,12 @@ impl Config {
             bind_addr,
             cookie_secure,
             cors_origin,
+            app_base_url: env::var("APP_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            google_client_id: env::var("GOOGLE_CLIENT_ID").ok(),
+            google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
+            todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
+            todoist_client_secret: env::var("TODOIST_CLIENT_SECRET").ok(),
         })
     }
 }

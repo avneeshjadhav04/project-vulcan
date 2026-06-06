@@ -14,13 +14,16 @@ use tower_http::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
-mod config;
-mod db;
-mod middleware;
-mod models;
-mod providers;
-mod routes;
-mod sandbox_engine;
+pub mod config;
+pub mod db;
+pub mod integrations;
+pub mod middleware;
+pub mod models;
+pub mod oauth;
+pub mod providers;
+pub mod routes;
+pub mod sandbox_engine;
+pub mod tools;
 
 use middleware::{auth_middleware, csrf_middleware, AppState};
 
@@ -74,7 +77,7 @@ async fn run() -> anyhow::Result<()> {
     });
 
     let http_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(600))
         .build()?;
 
     let state = AppState {
@@ -84,6 +87,7 @@ async fn run() -> anyhow::Result<()> {
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
     };
+    let bg_state = state.clone();
 
     let cors = if let Some(ref origin) = config.cors_origin {
         CorsLayer::new()
@@ -103,7 +107,10 @@ async fn run() -> anyhow::Result<()> {
             .allow_credentials(true)
     } else {
         CorsLayer::new()
-            .allow_origin(AllowOrigin::mirror_request())
+            .allow_origin(tower_http::cors::AllowOrigin::list(vec![
+                "http://localhost:5173".parse()?,
+                "http://localhost:8080".parse()?,
+            ]))
             .allow_methods([
                 axum::http::Method::GET,
                 axum::http::Method::POST,
@@ -124,31 +131,26 @@ async fn run() -> anyhow::Result<()> {
         .route("/live", get(live_check))
         .route("/ready", get(ready_check))
         .merge(routes::auth::router())
+        .merge(routes::chat::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::models::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
-            routes::chat::router()
+            routes::providers::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(
+            routes::templates::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::integrations::router()
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::models::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::automations::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::providers::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
-        .merge(
-            routes::terminal::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::files::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::templates::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
         .layer(cors)
@@ -158,9 +160,10 @@ async fn run() -> anyhow::Result<()> {
     // Serve static files if dist/ exists (production mode)
     let app = if std::path::Path::new("./dist").exists() {
         println!("[INIT] Serving static frontend from ./dist");
-        Router::new()
-            .nest("/api", api_routes)
-            .nest_service("/", ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")))
+        Router::new().nest("/api", api_routes).nest_service(
+            "/",
+            ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
+        )
     } else {
         println!("[INIT] Running in API-only mode (no dist/ found)");
         api_routes
@@ -171,6 +174,16 @@ async fn run() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("[INIT] Server starting...");
+
+    // Start background automation runner
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            routes::automations::run_due_automations(&bg_state).await;
+        }
+    });
+
     axum::serve(listener, app).await?;
 
     Ok(())

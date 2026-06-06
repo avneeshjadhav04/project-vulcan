@@ -28,109 +28,125 @@ pub struct RunResponse {
 }
 
 /// Verify that proot and the Ubuntu rootfs are available.
-fn verify_proot_env() -> Result<(), String> {
+fn has_proot_env() -> bool {
     let proot_exists = std::process::Command::new("which")
         .arg("proot")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    if !proot_exists {
-        return Err("proot is not available in this environment".to_string());
-    }
-    if !std::path::Path::new(ROOTFS_PATH).exists() {
-        return Err(format!(
-            "Ubuntu rootfs not found at {}. The sandbox environment is not initialized.",
-            ROOTFS_PATH
-        ));
-    }
-    Ok(())
+    
+    proot_exists && std::path::Path::new(ROOTFS_PATH).exists()
 }
 
 /// Build a Command that runs inside the proot Ubuntu environment.
-fn build_proot_command(cmd: &str) -> Result<Command, String> {
-    verify_proot_env()?;
+fn build_proot_command(cmd: &[&str], workspace_id: &str) -> Result<Command, String> {
+    if !has_proot_env() {
+        return Err("Sandbox environment (proot + Ubuntu rootfs) is not available. \
+                    Cannot execute commands safely without isolation.".to_string());
+    }
+
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let host_workspace = std::path::Path::new(&workspace_dir).join(workspace_id);
+    let _ = std::fs::create_dir_all(&host_workspace);
+    let host_path_str = host_workspace.to_string_lossy();
 
     let mut command = Command::new("proot");
     command.args([
+        "-0", // Fake root privileges so apt-get works
         "-R",
         ROOTFS_PATH,
         "-b",
-        &format!("{}:{}", WORKSPACE_HOST_PATH, WORKSPACE_GUEST_PATH),
+        &format!("{}:{}", host_path_str, WORKSPACE_GUEST_PATH),
         "-b",
         "/dev:/dev",
         "-b",
         "/proc:/proc",
         "-b",
         "/tmp:/tmp",
+        "-b",
+        "/etc/resolv.conf:/etc/resolv.conf", // Enable DNS resolution
         "-w",
         WORKSPACE_GUEST_PATH,
-        "/bin/bash",
-        "-c",
-        cmd,
     ]);
+    command.args(cmd);
     Ok(command)
 }
 
 /// Execute a command and return the complete output (for AI tool calling).
-pub async fn run_command_http(cmd: &str, state: &SandboxState) -> Result<RunResponse, String> {
-    let _permit = state
-        .semaphore
-        .acquire()
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn run_command_http(cmd: &[&str], workspace_id: &str, state: &SandboxState) -> Result<RunResponse, String> {
+    let _permit = state.semaphore.acquire().await.map_err(|e| e.to_string())?;
 
-    let mut child = build_proot_command(cmd)?
+    let mut child = build_proot_command(cmd, workspace_id)?
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to spawn command: {}", e))?;
 
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        async {
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        let mut stdout_buf = Vec::new();
+        let mut stderr_buf = Vec::new();
 
-            let mut stdout_reader =
-                tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
-            let mut stderr_reader =
-                tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
+        let mut stdout_reader =
+            tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
+        let mut stderr_reader =
+            tokio::io::BufReader::new(child.stderr.take().expect("stderr piped"));
 
-            let stdout_fut =
-                tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
-            let stderr_fut =
-                tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
+        let stdout_fut = tokio::io::AsyncReadExt::read_to_end(&mut stdout_reader, &mut stdout_buf);
+        let stderr_fut = tokio::io::AsyncReadExt::read_to_end(&mut stderr_reader, &mut stderr_buf);
 
-            let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
-            if stdout_res.is_err() || stderr_res.is_err() {
-                return Err("Failed to read output".to_string());
+        let (stdout_res, stderr_res) = tokio::join!(stdout_fut, stderr_fut);
+        if stdout_res.is_err() || stderr_res.is_err() {
+            return Err("Failed to read output".to_string());
+        }
+
+        let status = child.wait().await.map_err(|e| e.to_string())?;
+
+        let mut stdout_str = String::from_utf8_lossy(&stdout_buf).into_owned();
+        let mut stderr_str = String::from_utf8_lossy(&stderr_buf).into_owned();
+
+        // Safe UTF-8 truncation: find nearest char boundary
+        if stdout_str.len() > 100_000 {
+            let mut idx = 100_000;
+            while idx > 0 && !stdout_str.is_char_boundary(idx) {
+                idx -= 1;
             }
+            stdout_str.truncate(idx);
+            stdout_str.push_str("\n...[output truncated]...");
+        }
+        if stderr_str.len() > 100_000 {
+            let mut idx = 100_000;
+            while idx > 0 && !stderr_str.is_char_boundary(idx) {
+                idx -= 1;
+            }
+            stderr_str.truncate(idx);
+            stderr_str.push_str("\n...[output truncated]...");
+        }
 
-            let status = child.wait().await.map_err(|e| e.to_string())?;
-
-            Ok(RunResponse {
-                stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
-                stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
-                status: if status.success() {
-                    "success".to_string()
-                } else {
-                    "error".to_string()
-                },
-                code: status.code(),
-            })
-        },
-    )
+        Ok(RunResponse {
+            stdout: stdout_str,
+            stderr: stderr_str,
+            status: if status.success() {
+                "success".to_string()
+            } else {
+                "error".to_string()
+            },
+            code: status.code(),
+        })
+    })
     .await;
 
     match result {
         Ok(Ok(resp)) => Ok(resp),
         Ok(Err(e)) => Err(e),
-        Err(_) => Ok(RunResponse {
-            stdout: String::new(),
-            stderr: "Command timed out after 60 seconds".to_string(),
-            status: "timeout".to_string(),
-            code: Some(-1),
-        }),
+        Err(_) => {
+            let _ = child.kill().await;
+            Ok(RunResponse {
+                stdout: String::new(),
+                stderr: "Command timed out after 120 seconds".to_string(),
+                status: "timeout".to_string(),
+                code: Some(-1),
+            })
+        }
     }
 }
 
@@ -140,7 +156,8 @@ pub async fn run_command_http(cmd: &str, state: &SandboxState) -> Result<RunResp
 /// - `{"type":"stderr","data":"..."}`
 /// - `{"status":"success|error","code":N}`
 pub async fn run_command_stream(
-    cmd: String,
+    cmd: Vec<String>,
+    workspace_id: String,
     state: SandboxState,
 ) -> Result<mpsc::UnboundedReceiver<String>, String> {
     let (tx, rx) = mpsc::unbounded_channel();
@@ -159,14 +176,15 @@ pub async fn run_command_stream(
             }
         };
         let _permit = permit; // hold permit for duration of command
-        run_command_inner(&cmd, tx).await;
+        run_command_inner(cmd, workspace_id, tx).await;
     });
 
     Ok(rx)
 }
 
-async fn run_command_inner(cmd: &str, sender: mpsc::UnboundedSender<String>) {
-    let mut child = match build_proot_command(cmd) {
+async fn run_command_inner(cmd: Vec<String>, workspace_id: String, sender: mpsc::UnboundedSender<String>) {
+    let cmd_refs: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+    let mut child = match build_proot_command(&cmd_refs, &workspace_id) {
         Ok(mut c) => match c
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -175,16 +193,13 @@ async fn run_command_inner(cmd: &str, sender: mpsc::UnboundedSender<String>) {
             Ok(c) => c,
             Err(e) => {
                 let _ = sender.send(
-                    serde_json::json!({"status": "error", "message": e.to_string()})
-                        .to_string(),
+                    serde_json::json!({"status": "error", "message": e.to_string()}).to_string(),
                 );
                 return;
             }
         },
         Err(e) => {
-            let _ = sender.send(
-                serde_json::json!({"status": "error", "message": e}).to_string(),
-            );
+            let _ = sender.send(serde_json::json!({"status": "error", "message": e}).to_string());
             return;
         }
     };
@@ -216,18 +231,29 @@ async fn run_command_inner(cmd: &str, sender: mpsc::UnboundedSender<String>) {
         }
     };
 
-    tokio::join!(stdout_task, stderr_task);
+    let timeout_result = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        async {
+            tokio::join!(stdout_task, stderr_task);
+            child.wait().await
+        }
+    ).await;
 
-    match child.wait().await {
-        Ok(status) => {
+    match timeout_result {
+        Ok(Ok(status)) => {
             let code = status.code().unwrap_or(-1);
             let status_str = if status.success() { "success" } else { "error" };
             let payload = serde_json::json!({"status": status_str, "code": code}).to_string();
             let _ = sender.send(payload);
         }
-        Err(e) => {
-            let payload = serde_json::json!({"status": "error", "message": e.to_string()})
-                .to_string();
+        Ok(Err(e)) => {
+            let payload =
+                serde_json::json!({"status": "error", "message": e.to_string()}).to_string();
+            let _ = sender.send(payload);
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            let payload = serde_json::json!({"status": "timeout", "message": "Command timed out after 120 seconds"}).to_string();
             let _ = sender.send(payload);
         }
     }

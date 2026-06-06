@@ -26,19 +26,16 @@ pub async fn auth_middleware(
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok());
 
-    let token = cookie_header
-        .and_then(|cookies| {
-            cookies.split(';').find_map(|c| {
-                let mut parts = c.trim().splitn(2, '=');
-                let name = parts.next()?;
-                let value = parts.next()?;
-                if name == "token" {
-                    Some(value.to_string())
-                } else {
-                    None
-                }
-            })
-        });
+    let token = cookie_header.and_then(|cookies| {
+        cookies.split(';').find_map(|c| {
+            let (name, value) = c.trim().split_once('=')?;
+            if name == "token" {
+                Some(value.to_string())
+            } else {
+                None
+            }
+        })
+    });
 
     let claims = match token {
         Some(t) => crate::auth::verify_token(&t, &state).map_err(|e| {
@@ -52,37 +49,28 @@ pub async fn auth_middleware(
     Ok(next.run(request).await)
 }
 
-pub async fn csrf_middleware(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    let path = request.uri().path();
-    // Skip CSRF for login and signup - users don't have a CSRF token yet
-    if path == "/auth/login" || path == "/auth/signup" {
-        return Ok(next.run(request).await);
-    }
-
+pub async fn csrf_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
     let method = request.method().clone();
     // Only check CSRF for state-changing methods
-    if method != axum::http::Method::GET && method != axum::http::Method::HEAD && method != axum::http::Method::OPTIONS {
+    if method != axum::http::Method::GET
+        && method != axum::http::Method::HEAD
+        && method != axum::http::Method::OPTIONS
+    {
         let cookie_header = request
             .headers()
             .get(axum::http::header::COOKIE)
             .and_then(|v| v.to_str().ok());
 
-        let csrf_cookie = cookie_header
-            .and_then(|cookies| {
-                cookies.split(';').find_map(|c| {
-                    let mut parts = c.trim().splitn(2, '=');
-                    let name = parts.next()?;
-                    let value = parts.next()?;
-                    if name == "csrf_token" {
-                        Some(value.to_string())
-                    } else {
-                        None
-                    }
-                })
-            });
+        let csrf_cookie = cookie_header.and_then(|cookies| {
+            cookies.split(';').find_map(|c| {
+                let (name, value) = c.trim().split_once('=')?;
+                if name == "csrf_token" {
+                    Some(value.to_string())
+                } else {
+                    None
+                }
+            })
+        });
 
         let csrf_header = request
             .headers()
@@ -90,7 +78,7 @@ pub async fn csrf_middleware(
             .and_then(|v| v.to_str().ok());
 
         match (csrf_cookie, csrf_header) {
-            (Some(cookie), Some(header)) if cookie == header => {},
+            (Some(cookie), Some(header)) if cookie == header => {}
             _ => {
                 tracing::warn!("CSRF validation failed: method={}", method);
                 return Err(StatusCode::FORBIDDEN);

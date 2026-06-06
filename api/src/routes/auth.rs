@@ -7,15 +7,24 @@ use axum::{
 };
 
 use crate::{
-    auth::{create_token, hash_password, normalize_email, validate_email, validate_password, verify_password, generate_csrf_token},
+    auth::{
+        create_token, generate_csrf_token, hash_password, normalize_email, validate_email,
+        validate_password, verify_password,
+    },
     middleware::AppState,
     models::{LoginRequest, SignupRequest, User},
 };
 
-fn build_cookie(name: &str, value: &str, max_age: i64, http_only: bool, secure: bool) -> Result<axum::http::HeaderValue, StatusCode> {
+fn build_cookie(
+    name: &str,
+    value: &str,
+    max_age: i64,
+    http_only: bool,
+    secure: bool,
+) -> Result<axum::http::HeaderValue, StatusCode> {
     let mut parts = vec![
         format!("{}={}", name, value),
-        "SameSite=Strict".to_string(),
+        "SameSite=Lax".to_string(),
         "Path=/".to_string(),
     ];
     if http_only {
@@ -47,11 +56,17 @@ async fn signup(
 ) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
     let email = normalize_email(&req.email);
     if let Err(e) = validate_email(&email) {
-        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e.to_string() }))));
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ));
     }
 
     if let Err(e) = validate_password(&req.password) {
-        return Ok((StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e.to_string() }))));
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ));
     }
 
     let hash = hash_password(&req.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -63,13 +78,20 @@ async fn signup(
         .await;
 
     match result {
-        Ok(_) => Ok((StatusCode::CREATED, Json(serde_json::json!({ "message": "Account created successfully" })))),
-        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            Ok((StatusCode::CONFLICT, Json(serde_json::json!({ "error": "Email already registered" }))))
-        }
+        Ok(_) => Ok((
+            StatusCode::CREATED,
+            Json(serde_json::json!({ "message": "Account created successfully" })),
+        )),
+        Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "Email already registered" })),
+        )),
         Err(e) => {
             tracing::error!("Signup error: {}", e);
-            Ok((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))))
+            Ok((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Internal server error" })),
+            ))
         }
     }
 }
@@ -94,19 +116,28 @@ async fn login(
         None => {
             // Timing attack mitigation: perform dummy password verification
             let _ = verify_password(&req.password, "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            return Ok((StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid email or password" }))).into_response());
+            return Ok((
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "error": "Invalid email or password" })),
+            )
+                .into_response());
         }
     };
 
-    if !verify_password(&req.password, &user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
-        return Ok((StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Invalid email or password" }))).into_response());
+    if !verify_password(&req.password, &user.password_hash)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        return Ok((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "error": "Invalid email or password" })),
+        )
+            .into_response());
     }
 
-    let token = create_token(&user.id, &user.email, &user.role, &state)
-        .map_err(|e| {
-            tracing::error!("Token creation error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let token = create_token(&user.id, &user.email, &user.role, &state).map_err(|e| {
+        tracing::error!("Token creation error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let csrf = generate_csrf_token();
     let secure = state.config.cookie_secure;
@@ -118,16 +149,22 @@ async fn login(
     headers.append(axum::http::header::SET_COOKIE, auth_cookie);
     headers.append(axum::http::header::SET_COOKIE, csrf_cookie);
 
-    Ok((headers, Json(serde_json::json!({
-        "id": user.id,
-        "email": user.email,
-        "role": user.role,
-        "has_nim_key": user.encrypted_nim_key.is_some(),
-        "csrf_token": csrf,
-    }))).into_response())
+    Ok((
+        headers,
+        Json(serde_json::json!({
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "has_nim_key": user.encrypted_nim_key.is_some(),
+            "csrf_token": csrf,
+        })),
+    )
+        .into_response())
 }
 
-async fn logout(State(state): State<AppState>) -> Result<(axum::http::HeaderMap, StatusCode), StatusCode> {
+async fn logout(
+    State(state): State<AppState>,
+) -> Result<(axum::http::HeaderMap, StatusCode), StatusCode> {
     let secure = state.config.cookie_secure;
     let auth_cookie = build_cookie("token", "", -1, true, secure)?;
     let csrf_cookie = build_cookie("csrf_token", "", -1, false, secure)?;
@@ -137,7 +174,9 @@ async fn logout(State(state): State<AppState>) -> Result<(axum::http::HeaderMap,
     Ok((headers, StatusCode::OK))
 }
 
-async fn csrf_token(State(state): State<AppState>) -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
+async fn csrf_token(
+    State(state): State<AppState>,
+) -> Result<(axum::http::HeaderMap, Json<serde_json::Value>), StatusCode> {
     let csrf = generate_csrf_token();
     let secure = state.config.cookie_secure;
     let csrf_cookie = build_cookie("csrf_token", &csrf, 86400, false, secure)?;

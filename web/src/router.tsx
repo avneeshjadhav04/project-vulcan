@@ -4,6 +4,10 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Settings from './pages/Settings'
+import UsageDashboard from './pages/UsageDashboard'
+
+import CommandPalette from './components/CommandPalette'
+import GlobalSearch from './components/GlobalSearch'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuthStore()
@@ -15,7 +19,15 @@ function ProtectedRoute() {
       </div>
     )
   }
-  return isAuthenticated ? <Outlet /> : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+  return isAuthenticated ? (
+    <>
+      <Outlet />
+      <CommandPalette />
+      <GlobalSearch />
+    </>
+  ) : (
+    <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+  )
 }
 
 export const router = createBrowserRouter([
@@ -41,6 +53,10 @@ export const router = createBrowserRouter([
       {
         path: '/settings',
         element: <Settings />,
+      },
+      {
+        path: '/usage',
+        element: <UsageDashboard />,
       },
     ],
   },

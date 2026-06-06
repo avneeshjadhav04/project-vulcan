@@ -1,7 +1,10 @@
 pub mod auth;
+pub mod automations;
 pub mod chat;
 pub mod files;
+pub mod integrations;
 pub mod models;
 pub mod providers;
 pub mod templates;
 pub mod terminal;
+pub mod settings;

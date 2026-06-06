@@ -161,12 +161,17 @@ export default function Sidebar({
   }, {} as Record<string, ChatItem[]>)
 
   const renderChatItem = (chat: ChatItem) => (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.2 }}
       key={chat.id}
-      className={`group flex cursor-pointer items-center gap-2 px-2.5 py-2 text-sm transition-colors ${
+      className={`group mx-2 my-0.5 flex cursor-pointer items-center gap-2 rounded-carbon px-2.5 py-2 text-sm transition-all ${
         activeChatId === chat.id
-          ? 'bg-interactive/10 border-l-2 border-interactive'
-          : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
+          ? 'bg-interactive/10 shadow-sm'
+          : 'text-text-helper hover:bg-layer/60 hover:text-text-primary hover:shadow-sm'
       }`}
       onClick={() => navigate(`/chat/${chat.id}`)}
     >
@@ -248,7 +253,7 @@ export default function Sidebar({
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
-    </div>
+    </motion.div>
   )
 
   return (
@@ -279,7 +284,7 @@ export default function Sidebar({
           createChat.mutate(selectedModel)
         }}
         disabled={createChat.isPending}
-        className="flex w-full items-center justify-center gap-2 border border-border-subtle bg-layer py-2 text-sm text-text-primary transition-colors hover:border-border-strong hover:bg-layer-hover disabled:opacity-50"
+        className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-carbon border border-white/10 bg-layer/50 py-2.5 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer/80 hover:shadow-md disabled:opacity-50"
       >
         <Plus className="h-4 w-4 text-interactive" />
         New Chat

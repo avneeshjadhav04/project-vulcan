@@ -1,5 +1,8 @@
 use axum::{
-    extract::{ws::{Message as WsMessage, WebSocket, WebSocketUpgrade}, State},
+    extract::{
+        ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
+        State,
+    },
     response::Response,
     routing::get,
     Router,
@@ -65,7 +68,13 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                 .await;
 
                 // Spawn command and get streaming receiver
-                let stream_rx = match crate::sandbox_engine::run_command_stream(command.clone(), sandbox.clone()).await {
+                let stream_rx = match crate::sandbox_engine::run_command_stream(
+                    vec!["/bin/bash".to_string(), "-c".to_string(), command.clone()],
+                    user_id.clone(),
+                    sandbox.clone(),
+                )
+                .await
+                {
                     Ok(rx) => rx,
                     Err(e) => {
                         let err = serde_json::json!({"type": "stderr", "data": e}).to_string();
@@ -88,20 +97,27 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                     }
                 }
 
-                // Update DB with final status
+                // Update DB with final status — identify by the latest running session for this user
                 let db_status = match final_status.as_deref() {
                     Some("success") => "success",
                     Some("error") => "error",
                     Some("timeout") => "timeout",
                     _ => "killed",
                 };
-                let _ = sqlx::query(
-                    "UPDATE terminal_sessions SET status = ?1, ended_at = datetime('now') WHERE user_id = ?2 AND status = 'running' ORDER BY started_at DESC LIMIT 1"
+                if let Ok(Some((session_id,))) = sqlx::query_as::<_, (String,)>(
+                    "SELECT id FROM terminal_sessions WHERE user_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1"
                 )
-                .bind(db_status)
                 .bind(&user_id2)
-                .execute(&db2)
-                .await;
+                .fetch_optional(&db2)
+                .await {
+                    let _ = sqlx::query(
+                        "UPDATE terminal_sessions SET status = ?1, ended_at = datetime('now') WHERE id = ?2"
+                    )
+                    .bind(db_status)
+                    .bind(&session_id)
+                    .execute(&db2)
+                    .await;
+                }
             }
             Ok(WsMessage::Close(_)) => break,
             Ok(_) => continue,

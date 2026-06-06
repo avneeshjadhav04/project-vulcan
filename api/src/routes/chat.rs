@@ -1,3 +1,11 @@
+use crate::{
+    auth::decrypt_key,
+    middleware::AppState,
+    models::{
+        Chat, Claims, CreateChatRequest, Message, Provider, SendMessageRequest,
+        UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User,
+    },
+};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -10,11 +18,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use tokio::sync::mpsc;
-use crate::{
-    auth::decrypt_key,
-    middleware::AppState,
-    models::{Chat, Claims, CreateChatRequest, Message, Provider, SendMessageRequest, UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User},
-};
 
 struct ResolvedProvider {
     id: String,
@@ -28,12 +31,13 @@ async fn resolve_chat_provider(
     user: &User,
 ) -> Result<ResolvedProvider, StatusCode> {
     if let Some(ref provider_id) = chat.provider_id {
-        let provider: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
-            .bind(provider_id)
-            .bind(&user.id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| StatusCode::NOT_FOUND)?;
+        let provider: Provider =
+            sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+                .bind(provider_id)
+                .bind(&user.id)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| StatusCode::NOT_FOUND)?;
 
         if provider.is_active == 0 {
             return Err(StatusCode::PRECONDITION_FAILED);
@@ -50,7 +54,9 @@ async fn resolve_chat_provider(
     } else {
         // Legacy fallback: use user's NIM key + global NIM base URL
         let nim_key = match user.encrypted_nim_key.clone() {
-            Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
+            Some(enc) => {
+                decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?
+            }
             None => return Err(StatusCode::PRECONDITION_FAILED),
         };
 
@@ -68,7 +74,7 @@ const MAX_API_KEY_LENGTH: usize = 512;
 
 // Memory summarization settings
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
-const MEMORY_RECENT_WINDOW: usize = 6;        // Always keep last 6 messages
+const MEMORY_RECENT_WINDOW: usize = 6; // Always keep last 6 messages
 
 /// Build the full tools definition array for LLM requests.
 fn build_tools_def() -> Vec<serde_json::Value> {
@@ -134,14 +140,245 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "web_search",
-                "description": "Search the web for information using DuckDuckGo.",
+                "name": "search_web",
+                "description": "Search the web for real-time information.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {"type": "string", "description": "Search query"}
                     },
                     "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_fetch",
+                "description": "Fetch a webpage using a headless browser to get its text content. Use this to scrape URLs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to fetch"}
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "update_scratchpad",
+                "description": "Update the user's permanent scratchpad memory. Use this to remember important facts about the user.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "Text content to remember"}
+                    },
+                    "required": ["content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "read_scratchpad",
+                "description": "Read the user's permanent scratchpad memory to recall important facts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_list_events",
+                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
+                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
+                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_create_event",
+                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string", "description": "Event title/summary"},
+                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
+                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
+                        "description": {"type": "string", "description": "Event description"},
+                        "location": {"type": "string", "description": "Event location"},
+                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
+                    },
+                    "required": ["summary", "start_time", "end_time"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_delete_event",
+                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "event_id": {"type": "string", "description": "ID of the event to delete"}
+                    },
+                    "required": ["event_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_send",
+                "description": "Send an email. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "to": {"type": "string", "description": "Recipient email address"},
+                        "subject": {"type": "string", "description": "Email subject"},
+                        "body": {"type": "string", "description": "Email body text"}
+                    },
+                    "required": ["to", "subject", "body"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_list",
+                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
+                        "query": {"type": "string", "description": "Search query for emails"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "email_read",
+                "description": "Read a specific email by ID. Requires Gmail connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email_id": {"type": "string", "description": "ID of the email to read"}
+                    },
+                    "required": ["email_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_list",
+                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_create",
+                "description": "Create a new task in Todoist. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "Task content/name"},
+                        "description": {"type": "string", "description": "Task description"},
+                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
+                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
+                    },
+                    "required": ["content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_update",
+                "description": "Update an existing Todoist task. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to update"},
+                        "content": {"type": "string", "description": "New task content"},
+                        "due_string": {"type": "string", "description": "New due date"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_complete",
+                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to complete"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "fetch_webpage",
+                "description": "Fetch and extract the text content of a webpage. Use this to read articles, documentation, or any web page.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "The URL of the webpage to fetch"},
+                        "extract_mode": {"type": "string", "enum": ["text", "html"], "description": "Extract clean readable text (default) or raw HTML"}
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "execute_python",
+                "description": "Execute Python code in the sandboxed environment. The code runs in an isolated Ubuntu container with Python 3 installed.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string", "description": "The Python code to execute"},
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of pip packages to install before running"
+                        }
+                    },
+                    "required": ["code"]
                 }
             }
         }),
@@ -153,48 +390,82 @@ async fn execute_tool(
     name: &str,
     args_str: &str,
     chat_id: &str,
+    user_id: &str,
     state: &AppState,
 ) -> Result<serde_json::Value, String> {
-    let args: serde_json::Value = serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
+    let args: serde_json::Value =
+        serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
 
     match name {
         "execute_terminal_command" => {
             let cmd = args["command"].as_str().ok_or("Missing command")?;
-            let exec_res = crate::sandbox_engine::run_command_http(cmd, &state.sandbox).await;
+            let exec_res =
+                crate::sandbox_engine::run_command_http(&["/bin/bash", "-c", cmd], user_id, &state.sandbox)
+                    .await;
             match exec_res {
-                Ok(resp) => Ok(json!({"stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code})),
-                Err(e) => Ok(json!({"error": format!("Execution failed: {}", e), "status": "error"})),
+                Ok(resp) => Ok(
+                    json!({"command": cmd, "stdout": resp.stdout, "stderr": resp.stderr, "status": resp.status, "code": resp.code}),
+                ),
+                Err(e) => Ok(
+                    json!({"command": cmd, "error": format!("Execution failed: {}", e), "status": "error"}),
+                ),
             }
         }
         "create_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
             let content = args["content"].as_str().ok_or("Missing content")?;
-            let workspace = format!("./workspace/{}", chat_id);
-            tokio::fs::create_dir_all(&workspace).await.map_err(|e| e.to_string())?;
+            let workspace = format!("./workspace/{}", user_id);
             let path = std::path::Path::new(&workspace).join(filename);
-            tokio::fs::write(&path, content).await.map_err(|e| e.to_string())?;
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            // Atomic write: write to temp file then rename
+            let temp_path = format!("{}.tmp", path.display());
+            tokio::fs::write(&temp_path, content)
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::fs::rename(&temp_path, &path)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(json!({"status": "created", "filename": filename, "size": content.len()}))
         }
         "read_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
-            let workspace = format!("./workspace/{}", chat_id);
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
+            let workspace = format!("./workspace/{}", user_id);
             let path = std::path::Path::new(&workspace).join(filename);
-            let content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+            let content = tokio::fs::read_to_string(&path)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(json!({"status": "success", "filename": filename, "content": content}))
         }
         "modify_file" => {
             let filename = args["filename"].as_str().ok_or("Missing filename")?;
+            if filename.contains("..") || filename.contains('\\') || filename.starts_with('/') {
+                return Err("Invalid filename: Path traversal is not allowed".to_string());
+            }
             let operation = args["operation"].as_str().ok_or("Missing operation")?;
             let new_content = args["new_content"].as_str().ok_or("Missing new_content")?;
             let workspace = format!("./workspace/{}", chat_id);
             let path = std::path::Path::new(&workspace).join(filename);
-            let mut content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+            let mut content = tokio::fs::read_to_string(&path)
+                .await
+                .map_err(|e| e.to_string())?;
 
             match operation {
                 "replace" => {
                     let old = args["old_content"].as_str().ok_or("Missing old_content")?;
                     if !content.contains(old) {
-                        return Ok(json!({"status": "error", "message": "old_content not found in file"}));
+                        return Ok(
+                            json!({"status": "error", "message": "old_content not found in file"}),
+                        );
                     }
                     content = content.replace(old, new_content);
                 }
@@ -209,19 +480,37 @@ async fn execute_tool(
                 _ => return Err(format!("Unknown operation: {}", operation)),
             }
 
-            tokio::fs::write(&path, content).await.map_err(|e| e.to_string())?;
+            // Atomic write: write to temp file then rename
+            let temp_path = format!("{}.tmp", path.display());
+            tokio::fs::write(&temp_path, content)
+                .await
+                .map_err(|e| e.to_string())?;
+            tokio::fs::rename(&temp_path, &path)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(json!({"status": "modified", "filename": filename}))
         }
-        "web_search" => {
+        "search_web" => {
             let query = args["query"].as_str().ok_or("Missing query")?;
-            let url = format!("https://lite.duckduckgo.com/lite/?q={}", urlencoding::encode(query));
-            let res = state.http_client.get(&url).send().await.map_err(|e| e.to_string())?;
+            let url = format!(
+                "https://lite.duckduckgo.com/lite/?q={}",
+                urlencoding::encode(query)
+            );
+            let res = state
+                .http_client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
             let html = res.text().await.map_err(|e| e.to_string())?;
 
-            // Simple HTML parsing to extract results
             let mut results = Vec::new();
-            let link_re = regex::Regex::new(r#"<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap();
-            let snippet_re = regex::Regex::new(r#"<td[^>]*class="result-snippet"[^>]*>(.*?)</td>"#).unwrap();
+            let link_re = regex::Regex::new(
+                r#"<a[^>]*class=['"]result-link['"][^>]*href=['"]([^'"]+)['"][^>]*>(.*?)</a>"#,
+            )
+            .unwrap();
+            let snippet_re =
+                regex::Regex::new(r#"<td[^>]*class=['"]result-snippet['"][^>]*>(.*?)</td>"#).unwrap();
 
             let links: Vec<_> = link_re.captures_iter(&html).collect();
             let snippets: Vec<_> = snippet_re.captures_iter(&html).collect();
@@ -231,9 +520,11 @@ async fn execute_tool(
                 let href = link_cap.get(1).map(|m| m.as_str()).unwrap_or("");
                 let title_raw = link_cap.get(2).map(|m| m.as_str()).unwrap_or("");
                 let title = tag_re.replace_all(title_raw, "").to_string();
-                let snippet = snippets.get(i).and_then(|s| s.get(1)).map(|m| {
-                    tag_re.replace_all(m.as_str(), "").to_string()
-                }).unwrap_or_default();
+                let snippet = snippets
+                    .get(i)
+                    .and_then(|s| s.get(1))
+                    .map(|m| tag_re.replace_all(m.as_str(), "").to_string())
+                    .unwrap_or_default();
 
                 results.push(json!({
                     "title": title.trim(),
@@ -244,35 +535,370 @@ async fn execute_tool(
 
             Ok(json!({"status": "success", "query": query, "results": results}))
         }
+        "browser_fetch" => {
+            let url = args["url"].as_str().ok_or("Missing url")?;
+            let text = crate::tools::browser::browser_fetch(url).await?;
+            Ok(json!({"status": "success", "content": text}))
+        }
+        "update_scratchpad" => {
+            let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            sqlx::query(
+                "INSERT INTO scratchpad_memory (user_id, content, updated_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(user_id) DO UPDATE SET content = ?2, updated_at = datetime('now')"
+            )
+            .bind(user_id)
+            .bind(content)
+            .execute(&state.db)
+            .await
+            .map_err(|e| format!("Failed to update scratchpad: {}", e))?;
+            Ok(json!({"status": "success", "message": "Scratchpad updated"}))
+        }
+        "read_scratchpad" => {
+            let content = sqlx::query_scalar::<_, String>(
+                "SELECT content FROM scratchpad_memory WHERE user_id = ?1"
+            )
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|e| format!("Failed to read scratchpad: {}", e))?;
+            
+            if let Some(content) = content {
+                Ok(json!({"status": "success", "content": content}))
+            } else {
+                Ok(json!({"status": "success", "content": "Scratchpad is empty."}))
+            }
+        }
+        "calendar_list_events" => {
+            crate::integrations::google::list_calendar_events(state, user_id, &args)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "calendar_create_event" => {
+            crate::integrations::google::create_calendar_event(state, user_id, &args)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "calendar_delete_event" => {
+            crate::integrations::google::delete_calendar_event(state, user_id, &args)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "email_send" => crate::integrations::google::send_email(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "email_list" => crate::integrations::google::list_emails(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "email_read" => crate::integrations::google::read_email(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "tasks_list" => crate::integrations::todoist::list_tasks(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "tasks_create" => crate::integrations::todoist::create_task(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "tasks_update" => crate::integrations::todoist::update_task(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "tasks_complete" => crate::integrations::todoist::complete_task(state, user_id, &args)
+            .await
+            .map_err(|e| e.to_string()),
+        "fetch_webpage" => {
+            let url = args["url"].as_str().ok_or("Missing url")?;
+            let extract_mode = args["extract_mode"].as_str().unwrap_or("text");
+
+            // Validate URL to prevent SSRF
+            let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+            let scheme = parsed_url.scheme();
+            if scheme != "http" && scheme != "https" {
+                return Err(format!("Unsupported URL scheme: {}. Only http and https are allowed.", scheme));
+            }
+            let host = parsed_url.host_str().unwrap_or("");
+            let blocked_hosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+            if blocked_hosts.contains(&host) {
+                return Err("Access to internal addresses is not allowed.".to_string());
+            }
+            
+            let res = state
+                .http_client
+                .get(url)
+                .header("User-Agent", "Mozilla/5.0 (compatible; ProjectVulcan/1.0)")
+                .timeout(std::time::Duration::from_secs(30))
+                .send()
+                .await
+                .map_err(|e| format!("Fetch failed: {}", e))?;
+
+            if !res.status().is_success() {
+                return Err(format!("HTTP {}", res.status()));
+            }
+
+            let html = res.text().await.map_err(|e| e.to_string())?;
+
+            if extract_mode == "html" {
+                return Ok(
+                    json!({"status": "success", "url": url, "content": html, "length": html.len()}),
+                );
+            }
+
+            let document = scraper::Html::parse_document(&html);
+
+            let mut text = String::new();
+            for node in document.root_element().text() {
+                let trimmed = node.trim();
+                if !trimmed.is_empty() {
+                    if !text.is_empty() {
+                        text.push('\n');
+                    }
+                    text.push_str(trimmed);
+                }
+            }
+
+            if text.len() > 50000 {
+                text = text[..50000].to_string();
+                text.push_str("\n\n[Content truncated at 50000 characters]");
+            }
+
+            Ok(json!({
+                "status": "success",
+                "url": url,
+                "page_content": text,
+                "length": text.len(),
+            }))
+        }
+        "execute_python" => {
+            let code = args["code"].as_str().ok_or("Missing code")?;
+            
+            let mut install_out = String::new();
+            let mut install_err = String::new();
+            if let Some(deps) = args["dependencies"].as_array() {
+                let mut packages = Vec::new();
+                for d in deps {
+                    if let Some(s) = d.as_str() {
+                        packages.push(s.to_string());
+                    }
+                }
+                if !packages.is_empty() {
+                    let mut pip_cmd = vec!["pip3", "install", "--user", "--no-cache-dir"];
+                    pip_cmd.extend(packages.iter().map(|s| s.as_str()));
+                    match crate::sandbox_engine::run_command_http(&pip_cmd, user_id, &state.sandbox).await {
+                        Ok(pip_res) => {
+                            install_out = format!("Pip install output:\n{}\n", pip_res.stdout);
+                            if !pip_res.stderr.is_empty() {
+                                install_err = format!("Pip install stderr:\n{}\n", pip_res.stderr);
+                            }
+                        }
+                        Err(e) => {
+                            install_err = format!("Pip install failed: {}\n", e);
+                        }
+                    }
+                }
+            }
+            
+            let workspace = format!("./workspace/{}", chat_id);
+            tokio::fs::create_dir_all(&workspace)
+                .await
+                .map_err(|e| e.to_string())?;
+            let script_path = format!("{}/__temp_script.py", workspace);
+            let guest_script_path = format!("/workspace/{}/__temp_script.py", chat_id);
+            tokio::fs::write(&script_path, code)
+                .await
+                .map_err(|e| e.to_string())?;
+            let script_cmd = format!("python3 {}", guest_script_path);
+            let exec_res = crate::sandbox_engine::run_command_http(
+                &["/bin/bash", "-c", &script_cmd],
+                user_id,
+                &state.sandbox,
+            )
+            .await;
+
+            let _ = tokio::fs::remove_file(&script_path).await;
+
+            match exec_res {
+                Ok(resp) => Ok(json!({
+                    "command": format!("python3 {}", guest_script_path),
+                    "script": code,
+                    "stdout": format!("{}{}{}", install_out, install_err, resp.stdout),
+                    "stderr": resp.stderr,
+                    "status": resp.status,
+                    "exit_code": resp.code,
+                })),
+                Err(e) => Ok(json!({
+                    "command": format!("python3 {}", guest_script_path),
+                    "script": code,
+                    "stdout": format!("{}{}", install_out, install_err),
+                    "error": format!("Execution failed: {}", e),
+                    "status": "error"
+                })),
+            }
+        }
         _ => Err(format!("Unknown tool: {}", name)),
     }
 }
 
-/// Resolve a tool call from the LLM response and return the tool result.
-async fn resolve_tool_call(
-    call: &serde_json::Value,
+/// Resolve all tool calls from the LLM response concurrently.
+async fn resolve_tool_calls(
+    calls: &[serde_json::Value],
     chat_id: &str,
+    user_id: &str,
     state: &AppState,
-) -> Option<(String, String, serde_json::Value)> {
-    let func = call["function"].as_object()?;
-    let name = func["name"].as_str()?;
-    let args_str = func["arguments"].as_str().unwrap_or("{}");
-    let tool_id = call["id"].as_str().unwrap_or("call_1");
+) -> Vec<(String, String, serde_json::Value)> {
+    let mut results = Vec::with_capacity(calls.len());
 
-    match execute_tool(name, args_str, chat_id, state).await {
-        Ok(result) => Some((tool_id.to_string(), name.to_string(), result)),
-        Err(e) => Some((tool_id.to_string(), name.to_string(), json!({"error": e}))),
+    let permissions: std::collections::HashMap<String, String> = sqlx::query_as::<_, (String, String)>(
+        "SELECT tool_name, permission_level FROM tool_permissions WHERE user_id = ?1",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
+
+    for call in calls {
+        let func = match call["function"].as_object() {
+            Some(f) => f,
+            None => continue,
+        };
+        let name = match func["name"].as_str() {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let args_str = func["arguments"].as_str().unwrap_or("{}");
+        let tool_id = call["id"].as_str().unwrap_or("call_1").to_string();
+
+        let perm = permissions.get(&name).map(|s| s.as_str()).unwrap_or("auto");
+        if perm == "deny" {
+            results.push((tool_id, name, json!({"error": "Tool execution denied by user configuration."})));
+            continue;
+        }
+        if perm == "ask" {
+            let preview_len = args_str.len().min(200);
+            let preview = &args_str[..preview_len];
+            results.push((tool_id.clone(), name.clone(), json!({"error": "Tool execution requires user approval.", "tool": name, "args_preview": preview, "approval_needed": true})));
+            continue;
+        }
+
+        match execute_tool(&name, args_str, chat_id, user_id, state).await {
+            Ok(result) => results.push((tool_id, name, result)),
+            Err(e) => results.push((tool_id, name, json!({"error": e}))),
+        }
     }
+    results
+}
+
+/// Persist a tool execution result as a message in the database.
+async fn persist_tool_message(
+    db: &sqlx::SqlitePool,
+    chat_id: &str,
+    tool_call_id: &str,
+    tool_name: &str,
+    result: &serde_json::Value,
+) {
+    let content = serde_json::to_string(result).unwrap_or_default();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'tool', ?2, ?3, ?4)"
+    )
+    .bind(chat_id)
+    .bind(content)
+    .bind(tool_call_id)
+    .bind(tool_name)
+    .execute(db)
+    .await
+    {
+        tracing::error!("Failed to persist tool message: {}", e);
+    }
+}
+
+/// Build a dynamic system prompt based on available integrations and current context.
+fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
+    let mut prompt = String::from(
+        "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform.\n\n\
+         You have access to the following capabilities:\n\
+         - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
+         - File operations: Create, read, and modify files in the workspace.\n\
+         - Web search: Search the web for current information.\n\
+         - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
+           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n",
+    );
+
+    if has_google {
+        prompt.push_str(
+            "- Google Calendar: You can list, create, and manage calendar events on the user's behalf.\n\
+             - Gmail: You can read, search, and send emails for the user.\n\n"
+        );
+    }
+
+    if has_todoist {
+        prompt.push_str(
+            "- Todoist: You can list, create, update, and complete tasks on the user's behalf.\n\n",
+        );
+    }
+
+    prompt.push_str(
+        "When the user asks you to do something that requires these tools, use them proactively. \
+         If you need multiple tools, call them in sequence. \
+         Always explain what you're doing when using tools. \
+         **Self-Healing execution:** If a tool execution fails (e.g. returns an error or non-zero exit code), \
+         carefully analyze the error output (stderr or json error) and attempt to fix the issue by running a corrected tool call. \
+         You may retry autonomously before asking the user for help. \
+         **Artifacts:** When generating complex HTML, CSS, SVG, React, or Mermaid diagrams, wrap the code block in an artifact tag to render it visually for the user. \
+         Syntax: ```html artifact=\"Title of Artifact\"\n...code...\n```. \
+         Be concise and helpful.",
+    );
+
+    prompt
+}
+
+async fn get_scratchpad(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let content = sqlx::query_scalar::<_, String>(
+        "SELECT content FROM scratchpad_memory WHERE user_id = ?1"
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({"content": content.unwrap_or_default()})))
+}
+
+async fn update_scratchpad_endpoint(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<serde_json::Value>,
+) -> Result<StatusCode, StatusCode> {
+    let content = req["content"].as_str().unwrap_or("");
+    sqlx::query(
+        "INSERT INTO scratchpad_memory (user_id, content, updated_at) VALUES (?1, ?2, datetime('now')) ON CONFLICT(user_id) DO UPDATE SET content = ?2, updated_at = datetime('now')"
+    )
+    .bind(&claims.sub)
+    .bind(content)
+    .execute(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
 }
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
-        .route("/chats/:id", get(get_chat).patch(rename_chat).delete(delete_chat))
+        .route(
+            "/chats/:id",
+            get(get_chat).patch(rename_chat).delete(delete_chat),
+        )
         .route("/chats/:id/message", post(send_message))
         .route("/chats/:id/messages/:msg_id", patch(edit_message))
-        .route("/chats/:id/messages/:msg_id/after", delete(delete_messages_after))
-        .route("/chats/:id/messages/:msg_id/react", post(add_reaction).delete(remove_reaction))
+        .route(
+            "/chats/:id/messages/:msg_id/after",
+            delete(delete_messages_after),
+        )
+        .route(
+            "/chats/:id/messages/:msg_id/react",
+            post(add_reaction).delete(remove_reaction),
+        )
         .route("/chats/:id/export", get(export_chat))
         .route("/search", get(search_chats))
         .route("/usage", get(get_usage))
@@ -281,6 +907,7 @@ pub fn router() -> Router<AppState> {
         .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
         .route("/me/tools", post(update_tools_config))
+        .route("/me/scratchpad", get(get_scratchpad).post(update_scratchpad_endpoint))
 }
 
 async fn get_me(
@@ -293,11 +920,12 @@ async fn get_me(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let provider_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE user_id = ?1 AND is_active = 1")
-        .bind(&claims.sub)
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
+    let provider_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM providers WHERE user_id = ?1 AND is_active = 1")
+            .bind(&claims.sub)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
 
     Ok(Json(json!({
         "id": user.id,
@@ -308,6 +936,7 @@ async fn get_me(
         "provider_count": provider_count,
         "memory_enabled": user.memory_enabled == 1,
         "tools_enabled": user.tools_enabled == 1,
+        "max_agent_steps": user.max_agent_steps,
     })))
 }
 
@@ -324,14 +953,12 @@ async fn update_tools_config(
 
     let tools_enabled = req.tools_enabled.map(|v| if v { 1 } else { 0 });
 
-    sqlx::query(
-        "UPDATE users SET tools_enabled = COALESCE(?1, tools_enabled) WHERE id = ?2"
-    )
-    .bind(tools_enabled)
-    .bind(claims.sub.clone())
-    .execute(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    sqlx::query("UPDATE users SET tools_enabled = COALESCE(?1, tools_enabled) WHERE id = ?2")
+        .bind(tools_enabled)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(json!({
         "tools_enabled": tools_enabled.unwrap_or(user.tools_enabled) == 1,
@@ -380,10 +1007,11 @@ async fn update_nim_key(
             .execute(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let _ = sqlx::query("DELETE FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia'")
-            .bind(&claims.sub)
-            .execute(&state.db)
-            .await;
+        let _ =
+            sqlx::query("DELETE FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia'")
+                .bind(&claims.sub)
+                .execute(&state.db)
+                .await;
     } else {
         let encrypted = crate::auth::encrypt_key(trimmed, &state.config.master_key)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -397,11 +1025,13 @@ async fn update_nim_key(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Upsert nvidia provider
-        let existing: Option<(String,)> = sqlx::query_as("SELECT id FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1")
-            .bind(&claims.sub)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let existing: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1",
+        )
+        .bind(&claims.sub)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if let Some((id,)) = existing {
             sqlx::query("UPDATE providers SET encrypted_api_key = ?1, updated_at = datetime('now') WHERE id = ?2")
@@ -429,14 +1059,17 @@ async fn validate_nim_key(
     claims: axum::Extension<Claims>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     // Legacy endpoint: validate the user's nvidia provider or legacy nim key
-    let provider: Option<Provider> = sqlx::query_as("SELECT * FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1")
-        .bind(&claims.sub)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let provider: Option<Provider> = sqlx::query_as(
+        "SELECT * FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1",
+    )
+    .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let (base_url, api_key) = if let Some(p) = provider {
-        let key = decrypt_key(&p.encrypted_api_key, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?;
+        let key = decrypt_key(&p.encrypted_api_key, &state.config.master_key)
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
         (p.base_url, key)
     } else {
         let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
@@ -445,13 +1078,20 @@ async fn validate_nim_key(
             .await
             .map_err(|_| StatusCode::NOT_FOUND)?;
         let nim_key = match user.encrypted_nim_key {
-            Some(enc) => decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?,
-            None => return Ok(Json(json!({"valid": false, "error": "No API key configured"}))),
+            Some(enc) => {
+                decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?
+            }
+            None => {
+                return Ok(Json(
+                    json!({"valid": false, "error": "No API key configured"}),
+                ))
+            }
         };
         (state.config.nim_base_url.clone(), nim_key)
     };
 
-    let test_res = state.http_client
+    let test_res = state
+        .http_client
         .get(format!("{}/models", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .send()
@@ -518,13 +1158,12 @@ async fn list_chats(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<Json<Vec<Chat>>, StatusCode> {
-    let chats: Vec<Chat> = sqlx::query_as(
-        "SELECT * FROM chats WHERE user_id = ?1 ORDER BY updated_at DESC"
-    )
-    .bind(claims.sub.clone())
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let chats: Vec<Chat> =
+        sqlx::query_as("SELECT * FROM chats WHERE user_id = ?1 ORDER BY updated_at DESC")
+            .bind(claims.sub.clone())
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(chats))
 }
@@ -541,13 +1180,12 @@ async fn get_chat(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let messages: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
-    )
-    .bind(id.clone())
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let messages: Vec<Message> =
+        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
+            .bind(id.clone())
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(json!({
         "chat": chat,
@@ -568,7 +1206,9 @@ async fn rename_chat(
         }
     }
 
-    let tags_json = req.tags.map(|t| serde_json::to_string(&t).unwrap_or_else(|_| "[]".to_string()));
+    let tags_json = req
+        .tags
+        .map(|t| serde_json::to_string(&t).unwrap_or_else(|_| "[]".to_string()));
 
     let chat: Chat = sqlx::query_as(
         "UPDATE chats SET
@@ -581,7 +1221,7 @@ async fn rename_chat(
             is_archived = COALESCE(?7, is_archived),
             updated_at = datetime('now')
          WHERE id = ?8 AND user_id = ?9
-         RETURNING *"
+         RETURNING *",
     )
     .bind(req.title.as_deref())
     .bind(req.model_id.as_deref())
@@ -638,7 +1278,7 @@ async fn edit_message(
     let result = sqlx::query(
         "UPDATE messages SET content = ?1 WHERE id = ?2 AND chat_id = ?3 AND role = 'user' AND EXISTS (SELECT 1 FROM chats WHERE id = ?3 AND user_id = ?4)"
     )
-    .bind(&content)
+    .bind(content)
     .bind(&msg_id)
     .bind(&chat_id)
     .bind(&claims.sub)
@@ -705,20 +1345,26 @@ async fn export_chat(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let messages: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
-    )
-    .bind(id.clone())
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let messages: Vec<Message> =
+        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
+            .bind(id.clone())
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let format = params.get("format").map(|s| s.as_str()).unwrap_or("markdown");
+    let format = params
+        .get("format")
+        .map(|s| s.as_str())
+        .unwrap_or("markdown");
 
     let (content, content_type, filename) = match format {
         "json" => {
             let data = json!({"chat": chat, "messages": messages});
-            (data.to_string(), "application/json", format!("{}.json", chat.title))
+            (
+                data.to_string(),
+                "application/json",
+                format!("{}.json", chat.title),
+            )
         }
         _ => {
             let mut md = format!("# {}\n\n", chat.title);
@@ -726,10 +1372,14 @@ async fn export_chat(
             md.push_str(&format!("Created: {}\n\n", chat.created_at));
             md.push_str("---\n\n");
             for msg in messages {
-                let role_label = if msg.role == "assistant" { "Project Vulcan" } else { "User" };
+                let role_label = if msg.role == "assistant" {
+                    "Project Vulcan"
+                } else {
+                    "User"
+                };
                 md.push_str(&format!("## {}\n\n{}", role_label, msg.content));
-                if msg.tokens_used.is_some() {
-                    md.push_str(&format!("\n\n*Tokens: {}*", msg.tokens_used.unwrap()));
+                if let Some(tokens_used) = msg.tokens_used {
+                    md.push_str(&format!("\n\n*Tokens: {}*", tokens_used));
                 }
                 md.push_str("\n\n---\n\n");
             }
@@ -738,10 +1388,15 @@ async fn export_chat(
     };
 
     let mut headers = axum::http::HeaderMap::new();
-    headers.insert(axum::http::header::CONTENT_TYPE, content_type.parse().unwrap());
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        content_type.parse().unwrap(),
+    );
     headers.insert(
         axum::http::header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", filename.replace('"', "\\\"")).parse().unwrap(),
+        format!("attachment; filename=\"{}\"", filename.replace('"', "\\\""))
+            .parse()
+            .unwrap(),
     );
 
     Ok((headers, content))
@@ -780,7 +1435,8 @@ async fn summarize_conversation(
         "temperature": 0.3,
     });
 
-    let res = state.http_client
+    let res = state
+        .http_client
         .post(format!("{}/chat/completions", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
@@ -793,7 +1449,10 @@ async fn summarize_conversation(
         return Err(format!("Summary request returned {}", res.status()));
     }
 
-    let data: serde_json::Value = res.json().await.map_err(|e| format!("Failed to parse summary: {}", e))?;
+    let data: serde_json::Value = res
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse summary: {}", e))?;
     let summary = data["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or("")
@@ -821,7 +1480,61 @@ fn build_messages_payload(
     }
 
     for msg in recent_messages {
-        payload.push(json!({"role": msg.role, "content": msg.content}));
+        if msg.role == "assistant" && msg.tool_name.as_deref() == Some("tool_calls_init") {
+            // This is an assistant message that initiated tool calls
+            let tool_calls: Vec<serde_json::Value> = msg.tool_call_id
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+            if !tool_calls.is_empty() {
+                payload.push(json!({
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": tool_calls
+                }));
+            } else {
+                payload.push(json!({"role": "assistant", "content": msg.content}));
+            }
+        } else if msg.role == "tool" {
+            let tc = json!({
+                "id": msg.tool_call_id.as_deref().unwrap_or(""),
+                "type": "function",
+                "function": {
+                    "name": msg.tool_name.as_deref().unwrap_or("unknown_tool"),
+                    "arguments": "{}"
+                }
+            });
+            
+            let mut added_to_existing = false;
+            if let Some(last) = payload.last_mut() {
+                if last["role"] == "assistant" {
+                    if let Some(calls) = last.get_mut("tool_calls") {
+                        if let Some(calls_array) = calls.as_array_mut() {
+                            calls_array.push(tc.clone());
+                            added_to_existing = true;
+                        }
+                    } else {
+                        last.as_object_mut().unwrap().insert("tool_calls".to_string(), json!([tc]));
+                        added_to_existing = true;
+                    }
+                }
+            }
+            if !added_to_existing {
+                payload.push(json!({
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [tc]
+                }));
+            }
+            
+            payload.push(json!({
+                "role": "tool",
+                "tool_call_id": msg.tool_call_id.as_deref().unwrap_or(""),
+                "content": msg.content
+            }));
+        } else {
+            payload.push(json!({"role": msg.role, "content": msg.content}));
+        }
     }
 
     payload
@@ -832,7 +1545,10 @@ async fn send_message(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
     Json(req): Json<SendMessageRequest>,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
+) -> Result<
+    Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>,
+    StatusCode,
+> {
     let content = req.content.trim();
     if content.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
@@ -856,29 +1572,77 @@ async fn send_message(
 
     let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
-    sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
-        .bind(id.clone())
-        .bind(&content)
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let is_regenerate = req.is_regenerate.unwrap_or(false);
+    if !is_regenerate {
+        sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
+            .bind(id.clone())
+            .bind(content)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    } else {
+        // Optionally, we could delete the last assistant message here if we want to be thorough,
+        // but the frontend will also call DELETE on the specific message it wants to replace.
+        // It's safer to rely on the frontend deleting the exact message and its descendants.
+    }
+
+    // Auto-update title on first user message if still "New Chat"
+    if chat.title == "New Chat" {
+        let new_title = if content.len() > 50 {
+            &content[..50]
+        } else {
+            content
+        };
+        let _ = sqlx::query("UPDATE chats SET title = ?1 WHERE id = ?2")
+            .bind(new_title)
+            .bind(id.clone())
+            .execute(&state.db)
+            .await;
+    }
 
     let _ = sqlx::query("UPDATE chats SET updated_at = datetime('now') WHERE id = ?1")
         .bind(id.clone())
         .execute(&state.db)
         .await;
 
-    let history: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC"
+    let history: Vec<Message> =
+        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
+            .bind(id.clone())
+            .fetch_all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let connected_integrations: Vec<(String,)> = sqlx::query_as(
+        "SELECT provider FROM integration_credentials WHERE user_id = ?1 AND provider IN ('google', 'todoist')"
     )
-    .bind(id.clone())
+    .bind(&claims.sub)
     .fetch_all(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .unwrap_or_default();
+    let has_google = connected_integrations
+        .iter()
+        .any(|(provider,)| provider == "google");
+    let has_todoist = connected_integrations
+        .iter()
+        .any(|(provider,)| provider == "todoist");
+    let mut system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
 
     // ─── Memory / Summarization Logic ───
     let memory_enabled = user.memory_enabled == 1;
-    let needs_summarization = memory_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
+    if memory_enabled {
+        let scratchpad = sqlx::query_scalar::<_, String>("SELECT content FROM scratchpad_memory WHERE user_id = ?1")
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await
+            .unwrap_or_default();
+        if let Some(content) = scratchpad {
+            if !content.is_empty() {
+                system_prompt.push_str(&format!("\n\n[USER SCRATCHPAD MEMORY]\n{}", content));
+            }
+        }
+    }
+    let needs_summarization =
+        memory_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
 
     let messages_payload = if needs_summarization {
         // Split into older messages (to summarize) and recent messages (to keep verbatim)
@@ -886,11 +1650,20 @@ async fn send_message(
         let older = &history[..split_at];
         let recent = &history[split_at..];
 
-        // Use existing summary if available and up-to-date
-        let use_existing_summary = chat.summary.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+        let latest_summarized_message_at = older.last().map(|msg| msg.created_at);
+        let use_existing_summary = chat
+            .summary
+            .as_ref()
+            .is_some_and(|summary| !summary.is_empty())
+            && match (chat.summary_updated_at, latest_summarized_message_at) {
+                (Some(summary_updated_at), Some(latest_message_at)) => {
+                    summary_updated_at >= latest_message_at
+                }
+                _ => false,
+            };
 
         let summary_text = if use_existing_summary {
-            chat.summary.clone().unwrap()
+            chat.summary.clone().unwrap_or_default()
         } else {
             // Generate summary in background (don't block response)
             let state_clone = state.clone();
@@ -901,7 +1674,15 @@ async fn send_message(
             let older_msgs: Vec<Message> = older.to_vec();
 
             tokio::spawn(async move {
-                match summarize_conversation(&state_clone, &base_url_clone, &api_key_clone, &model_id_clone, &older_msgs).await {
+                match summarize_conversation(
+                    &state_clone,
+                    &base_url_clone,
+                    &api_key_clone,
+                    &model_id_clone,
+                    &older_msgs,
+                )
+                .await
+                {
                     Ok(summary) => {
                         let _ = sqlx::query(
                             "UPDATE chats SET summary = ?1, summary_updated_at = datetime('now') WHERE id = ?2"
@@ -910,10 +1691,18 @@ async fn send_message(
                         .bind(&chat_id_clone)
                         .execute(&state_clone.db)
                         .await;
-                        tracing::info!("Generated summary for chat {} ({} chars)", chat_id_clone, summary.len());
+                        tracing::info!(
+                            "Generated summary for chat {} ({} chars)",
+                            chat_id_clone,
+                            summary.len()
+                        );
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to generate summary for chat {}: {}", chat_id_clone, e);
+                        tracing::warn!(
+                            "Failed to generate summary for chat {}: {}",
+                            chat_id_clone,
+                            e
+                        );
                     }
                 }
             });
@@ -922,99 +1711,216 @@ async fn send_message(
             "(Generating summary of earlier conversation...)".to_string()
         };
 
-        build_messages_payload(
-            "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations.",
-            Some(&summary_text),
-            recent,
-        )
+        build_messages_payload(&system_prompt, Some(&summary_text), recent)
     } else {
-        // Memory disabled or chat is short: send all messages
-        let mut payload = vec![json!({
-            "role": "system",
-            "content": "You are a helpful AI assistant running on a personal SaaS platform. You can execute sandboxed terminal commands when the user asks you to run code or system operations."
-        })];
-        for msg in &history {
-            payload.push(json!({"role": msg.role, "content": msg.content}));
-        }
-        payload
+        build_messages_payload(&system_prompt, None, &history)
     };
 
     let should_use_tools = std::env::var("DISABLE_TOOLS").is_err() && user.tools_enabled == 1;
 
-    if should_use_tools {
-        let tools = build_tools_def();
-
-        let tool_body = json!({
-            "model": chat.model_id,
-            "messages": messages_payload.clone(),
-            "tools": tools,
-            "tool_choice": "auto",
-            "max_tokens": 2048,
-        });
-
-        match state.http_client
-            .post(format!("{}/chat/completions", resolved.base_url))
-            .header("Authorization", format!("Bearer {}", resolved.api_key))
-            .header("Content-Type", "application/json")
-            .json(&tool_body)
-            .send()
-            .await
-        {
-            Ok(tool_res) => {
-                if tool_res.status().is_success() {
-                    if let Ok(tool_data) = tool_res.json::<serde_json::Value>().await {
-                        if let Some(calls) = tool_data["choices"][0]["message"]["tool_calls"].as_array() {
-                            if !calls.is_empty() {
-                                if let Some(call) = calls.first() {
-                                    if let Some((tool_id, tool_name, tool_result)) = resolve_tool_call(call, &id, &state).await {
-                                        tracing::info!("AI executing tool: {} -> {}", tool_name, tool_result);
-                                        let mut tool_messages = messages_payload.clone();
-                                        tool_messages.push(json!({"role": "assistant", "content": null, "tool_calls": [{"id": tool_id, "type": "function", "function": {"name": tool_name, "arguments": call["function"]["arguments"].as_str().unwrap_or("{}")}}]}));
-                                        tool_messages.push(json!({"role": "tool", "tool_call_id": tool_id, "content": serde_json::to_string(&tool_result).unwrap_or_default()}));
-                                        let db = state.db.clone();
-                                        let cmd = if tool_name == "execute_terminal_command" {
-                                            serde_json::from_str::<serde_json::Value>(call["function"]["arguments"].as_str().unwrap_or("{}"))
-                                                .ok()
-                                                .and_then(|a| a["command"].as_str().map(|s| s.to_string()))
-                                        } else { None };
-                                        return stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, tool_messages, id, db, cmd, tool_result).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    let status = tool_res.status();
-                    let body_text = tool_res.text().await.unwrap_or_default();
-                    tracing::warn!("Tool request returned non-success status: {} body: {}. Falling back to normal streaming.", status, body_text);
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Tool request failed: {}. Falling back to normal streaming.", e);
-            }
-        }
-    }
-
-    let db = state.db.clone();
-    stream_final_response(state, resolved.base_url, resolved.api_key, chat.model_id, resolved.id, messages_payload, id, db, None, json!({})).await
-}
-
-async fn stream_final_response(
-    state: AppState,
-    base_url: String,
-    api_key: String,
-    model_id: String,
-    provider_id: String,
-    messages: Vec<serde_json::Value>,
-    chat_id: String,
-    db: sqlx::SqlitePool,
-    tool_command: Option<String>,
-    tool_result: serde_json::Value,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
-    let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
     let (tx, rx) = mpsc::channel::<String>(64);
 
-    let provider_response = state.http_client
+    let db = state.db.clone();
+    let chat_id = id.clone();
+    let model = chat.model_id.clone();
+    let provider = resolved.id.clone();
+    let url = resolved.base_url.clone();
+    let key = resolved.api_key.clone();
+    let max_steps = user.max_agent_steps as usize;
+    let state_clone = state.clone();
+    let user_id = claims.sub.clone();
+
+    tokio::spawn(async move {
+        if !should_use_tools {
+            run_llm_stream(LlmStreamContext {
+                state: &state_clone,
+                base_url: &url,
+                api_key: &key,
+                model_id: &model,
+                provider_id: &provider,
+                messages: &messages_payload,
+                chat_id: &chat_id,
+                db: &db,
+                tx: &tx,
+            })
+            .await;
+            return;
+        }
+
+        let mut current_messages = messages_payload;
+        let tools = build_tools_def();
+        let mut total_steps = 0;
+
+        loop {
+            if total_steps >= max_steps {
+                tracing::info!(
+                    "Agent max steps ({}) reached, streaming final response",
+                    max_steps
+                );
+                break;
+            }
+            total_steps += 1;
+
+            let tool_body = json!({
+                "model": model,
+                "messages": current_messages,
+                "tools": tools,
+                "tool_choice": "auto",
+                "max_tokens": 2048,
+            });
+
+            let tool_res = match state_clone
+                .http_client
+                .post(format!("{}/chat/completions", url))
+                .header("Authorization", format!("Bearer {}", key))
+                .header("Content-Type", "application/json")
+                .json(&tool_body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("Tool request failed: {}. Falling back to streaming.", e);
+                    break;
+                }
+            };
+
+            if !tool_res.status().is_success() {
+                let status = tool_res.status();
+                let body_len = tool_res.text().await.map(|t| t.len()).unwrap_or(0);
+                tracing::warn!(
+                    "Tool request returned {} ({} bytes). Falling back to streaming.",
+                    status,
+                    body_len
+                );
+                break;
+            }
+
+            let tool_data: serde_json::Value = match tool_res.json().await {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!("Failed to parse tool response: {}", e);
+                    break;
+                }
+            };
+
+            let choice = match tool_data["choices"][0].as_object() {
+                Some(c) => c,
+                None => break,
+            };
+
+            let assistant_msg = &choice["message"];
+            let tool_calls = match assistant_msg["tool_calls"].as_array() {
+                Some(calls) if !calls.is_empty() => calls,
+                _ => break,
+            };
+
+            let mut asst_json = json!({"role": "assistant", "content": null, "tool_calls": []});
+            if let Some(text) = assistant_msg["content"].as_str() {
+                if !text.is_empty() {
+                    asst_json["content"] = json!(text);
+                }
+            }
+            let mut tc_entries = Vec::new();
+            for call in tool_calls {
+                let tid = call["id"].as_str().unwrap_or("call_1");
+                let tname = call["function"]["name"].as_str().unwrap_or("unknown");
+                let targs = call["function"]["arguments"].as_str().unwrap_or("{}");
+                tc_entries.push(json!({
+                    "id": tid,
+                    "type": "function",
+                    "function": {"name": tname, "arguments": targs}
+                }));
+            }
+            asst_json["tool_calls"] = json!(tc_entries);
+            current_messages.push(asst_json.clone());
+
+            // Persist the assistant's tool_calls message to the database
+            let asst_content = asst_json["content"].as_str().unwrap_or("");
+            let asst_tool_calls_str = serde_json::to_string(&tc_entries).unwrap_or_default();
+            let _ = sqlx::query(
+                "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'assistant', ?2, ?3, ?4)"
+            )
+            .bind(&chat_id)
+            .bind(asst_content)
+            .bind(&asst_tool_calls_str)
+            .bind("tool_calls_init")
+            .execute(&db)
+            .await;
+
+            let tool_results =
+                resolve_tool_calls(tool_calls, &chat_id, &user_id, &state_clone).await;
+
+            for (tool_id, tool_name, tool_result) in &tool_results {
+                let mut event_obj = tool_result.clone();
+                if let Some(obj) = event_obj.as_object_mut() {
+                    obj.insert("tool_name".to_string(), json!(tool_name));
+                    obj.insert("tool_id".to_string(), json!(tool_id));
+                    
+                    if tool_name == "execute_terminal_command" && !obj.contains_key("command") {
+                        obj.insert("command".to_string(), json!(""));
+                    }
+                }
+                let _ = tx.send(format!("[TOOL]{}[/TOOL]", event_obj)).await;
+
+                persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result).await;
+
+                current_messages.push(json!({
+                    "role": "tool",
+                    "tool_call_id": tool_id,
+                    "content": serde_json::to_string(tool_result).unwrap_or_default(),
+                }));
+            }
+        }
+
+        run_llm_stream(LlmStreamContext {
+            state: &state_clone,
+            base_url: &url,
+            api_key: &key,
+            model_id: &model,
+            provider_id: &provider,
+            messages: &current_messages,
+            chat_id: &chat_id,
+            db: &db,
+            tx: &tx,
+        })
+        .await;
+    });
+
+    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|text| Ok::<_, Infallible>(axum::response::sse::Event::default().data(text)));
+
+    Ok(Sse::new(sse_stream))
+}
+
+struct LlmStreamContext<'a> {
+    state: &'a AppState,
+    base_url: &'a str,
+    api_key: &'a str,
+    model_id: &'a str,
+    provider_id: &'a str,
+    messages: &'a [serde_json::Value],
+    chat_id: &'a str,
+    db: &'a sqlx::SqlitePool,
+    tx: &'a mpsc::Sender<String>,
+}
+
+async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
+    let LlmStreamContext {
+        state,
+        base_url,
+        api_key,
+        model_id,
+        provider_id,
+        messages,
+        chat_id,
+        db,
+        tx,
+    } = ctx;
+    let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
+
+    let provider_response = state
+        .http_client
         .post(format!("{}/chat/completions", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
@@ -1029,9 +1935,15 @@ async fn stream_final_response(
             if !res.status().is_success() {
                 let status = res.status();
                 let body_text = res.text().await.unwrap_or_default();
-                tracing::error!("Provider returned error status: {} body: {} model={}", status, body_text, model_id);
+                tracing::error!(
+                    "Provider returned error status: {} body: {} model={}",
+                    status,
+                    body_text,
+                    model_id
+                );
                 let user_msg = if status == 404 {
-                    let models_res = state.http_client
+                    let models_res = state
+                        .http_client
                         .get(format!("{}/models", base_url))
                         .header("Authorization", format!("Bearer {}", api_key))
                         .send()
@@ -1039,19 +1951,29 @@ async fn stream_final_response(
                     let suggestion = match models_res {
                         Ok(mres) if mres.status().is_success() => {
                             if let Ok(data) = mres.json::<serde_json::Value>().await {
-                                data["data"].as_array().and_then(|arr| arr.first()).and_then(|m| m["id"].as_str()).map(|s| s.to_string())
-                            } else { None }
+                                data["data"]
+                                    .as_array()
+                                    .and_then(|arr| arr.first())
+                                    .and_then(|m| m["id"].as_str())
+                                    .map(|s| s.to_string())
+                            } else {
+                                None
+                            }
                         }
-                        _ => None
+                        _ => None,
                     };
                     let base_msg = format!("[ERR]Model '{}' not found (404). The model may be unavailable or your API key doesn't have access to it.", model_id);
                     if let Some(suggested) = suggestion {
                         format!("{} Try using '{}' instead, or select a different model from the dropdown.[/ERR]", base_msg, suggested)
                     } else {
-                        format!("{} Try selecting a different model from the dropdown.[/ERR]", base_msg)
+                        format!(
+                            "{} Try selecting a different model from the dropdown.[/ERR]",
+                            base_msg
+                        )
                     }
                 } else if status == 401 {
-                    "[ERR]Invalid API key (401). Please check your API key in Settings.[/ERR]".to_string()
+                    "[ERR]Invalid API key (401). Please check your API key in Settings.[/ERR]"
+                        .to_string()
                 } else {
                     format!("[ERR]AI provider returned error {}: {}. Please check your API key and try again.[/ERR]", status, body_text.chars().take(200).collect::<String>())
                 };
@@ -1069,74 +1991,78 @@ async fn stream_final_response(
     }
 
     if let Some(mut stream) = stream_opt {
-        tokio::spawn(async move {
-            if let Some(cmd) = tool_command {
-                let tool_json = serde_json::json!({"command": cmd, "stdout": tool_result["stdout"].as_str().unwrap_or(""), "stderr": tool_result["stderr"].as_str().unwrap_or(""), "status": tool_result["status"].as_str().unwrap_or("error")});
-                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool_json.to_string())).await;
-            }
+        let mut buffer = String::new();
+        let mut full_content = String::new();
+        let chat_id = chat_id.to_string();
+        let provider_id = provider_id.to_string();
+        let model_id = model_id.to_string();
+        let db = db.clone();
 
-            let mut buffer = String::new();
-            let mut full_content = String::new();
-            const MAX_BUFFER_SIZE: usize = MAX_MESSAGE_LENGTH * 2;
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(bytes) => {
-                        buffer.push_str(&String::from_utf8_lossy(&bytes));
-                        if buffer.len() > MAX_BUFFER_SIZE {
-                            tracing::error!("SSE buffer exceeded max size, aborting stream");
-                            break;
-                        }
-                        while let Some(pos) = buffer.find("\n\n") {
-                            let frame = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
-                            for line in frame.lines() {
-                                if line.starts_with("data: ") {
-                                    let data = &line[6..];
-                                    if data == "[DONE]" {
-                                        let _ = tx.send("[DONE]".to_string()).await;
-                                        let estimated_tokens = (full_content.len() / 4) as i32;
-                                        if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                                            .bind(chat_id.clone()).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
-                                            .execute(&db).await {
-                                            tracing::error!("Failed to persist assistant message: {}", e);
-                                        }
-                                        return;
+        while let Some(chunk_result) = stream.next().await {
+            match chunk_result {
+                Ok(bytes) => {
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    if buffer.len() > MAX_MESSAGE_LENGTH * 2 {
+                        tracing::error!("SSE buffer exceeded max size, aborting stream");
+                        break;
+                    }
+                    while let Some(pos) = buffer.find("\n\n") {
+                        let frame = buffer[..pos].to_string();
+                        buffer = buffer[pos + 2..].to_string();
+                        for line in frame.lines() {
+                            if let Some(data) = line.strip_prefix("data: ") {
+                                if data == "[DONE]" {
+                                    let _ = tx.send("[DONE]".to_string()).await;
+                                    let estimated_tokens = (full_content.len() / 4) as i32;
+                                    if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                        .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                        .execute(&db).await {
+                                        tracing::error!("Failed to persist assistant message: {}", e);
                                     }
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                                        if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                                            full_content.push_str(content);
-                                            let _ = tx.send(content.to_string()).await;
+                                    return;
+                                }
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data)
+                                {
+                                    if let Some(content) =
+                                        parsed["choices"][0]["delta"]["content"].as_str()
+                                    {
+                                        full_content.push_str(content);
+                                        let _ = tx.send(content.to_string()).await;
+                                        if full_content.len() > MAX_MESSAGE_LENGTH {
+                                            tracing::error!(
+                                                "Full content exceeded max size, aborting stream"
+                                            );
+                                            let _ = tx.send("[DONE]".to_string()).await;
+                                            let estimated_tokens = (full_content.len() / 4) as i32;
+                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                                .execute(&db).await;
+                                            return;
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("Stream chunk error: {}", e);
-                        break;
-                    }
+                }
+                Err(e) => {
+                    tracing::error!("Stream chunk error: {}", e);
+                    break;
                 }
             }
+        }
 
-            let _ = tx.send("[DONE]".to_string()).await;
-            if !full_content.is_empty() {
-                let estimated_tokens = (full_content.len() / 4) as i32;
-                if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                    .bind(chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
-                    .execute(&db).await {
-                    tracing::error!("Failed to persist assistant message: {}", e);
-                }
+        let _ = tx.send("[DONE]".to_string()).await;
+        if !full_content.is_empty() {
+            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
+                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id)
+                .execute(&db).await {
+                tracing::error!("Failed to persist assistant message: {}", e);
             }
-        });
+        }
+    } else {
+        let _ = tx.send("[DONE]".to_string()).await;
     }
-
-    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|text| {
-        Ok::<_, Infallible>(axum::response::sse::Event::default().data(text))
-    });
-
-    Ok(Sse::new(sse_stream))
 }
 
 // ─── Reactions ───
@@ -1160,7 +2086,7 @@ async fn add_reaction(
     let result = sqlx::query(
         "INSERT INTO message_reactions (message_id, user_id, reaction) 
          SELECT ?1, ?2, ?3 FROM messages m JOIN chats c ON m.chat_id = c.id 
-         WHERE m.id = ?1 AND c.id = ?4 AND c.user_id = ?2"
+         WHERE m.id = ?1 AND c.id = ?4 AND c.user_id = ?2",
     )
     .bind(&msg_id)
     .bind(&claims.sub)
@@ -1172,9 +2098,14 @@ async fn add_reaction(
     match result {
         Ok(_) => Ok(StatusCode::CREATED),
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
-            let _ = sqlx::query("UPDATE message_reactions SET reaction = ?1 WHERE message_id = ?2 AND user_id = ?3")
-                .bind(&reaction).bind(&msg_id).bind(&claims.sub)
-                .execute(&state.db).await;
+            let _ = sqlx::query(
+                "UPDATE message_reactions SET reaction = ?1 WHERE message_id = ?2 AND user_id = ?3",
+            )
+            .bind(&reaction)
+            .bind(&msg_id)
+            .bind(&claims.sub)
+            .execute(&state.db)
+            .await;
             Ok(StatusCode::OK)
         }
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
@@ -1186,12 +2117,13 @@ async fn remove_reaction(
     claims: axum::Extension<Claims>,
     Path((_chat_id, msg_id)): Path<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    let result = sqlx::query("DELETE FROM message_reactions WHERE message_id = ?1 AND user_id = ?2")
-        .bind(&msg_id)
-        .bind(&claims.sub)
-        .execute(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let result =
+        sqlx::query("DELETE FROM message_reactions WHERE message_id = ?1 AND user_id = ?2")
+            .bind(&msg_id)
+            .bind(&claims.sub)
+            .execute(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
@@ -1227,7 +2159,7 @@ async fn search_chats(
          JOIN messages m ON m.rowid = fts.rowid
          JOIN chats c ON m.chat_id = c.id
          WHERE fts.content MATCH ?1 AND c.user_id = ?2
-         ORDER BY m.created_at DESC LIMIT 20"
+         ORDER BY m.created_at DESC LIMIT 20",
     )
     .bind(&q)
     .bind(&claims.sub)
@@ -1235,16 +2167,19 @@ async fn search_chats(
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let chat_results: Vec<_> = chats.into_iter().map(|(id, title)| {
-        json!({ "id": id, "title": title, "type": "chat" })
-    }).collect();
+    let chat_results: Vec<_> = chats
+        .into_iter()
+        .map(|(id, title)| json!({ "id": id, "title": title, "type": "chat" }))
+        .collect();
 
     let message_results: Vec<_> = messages.into_iter().map(|(id, chat_id, content, chat_title)| {
         let preview = if content.len() > 120 { format!("{}...", &content[..120]) } else { content };
         json!({ "id": id, "chat_id": chat_id, "preview": preview, "chat_title": chat_title, "type": "message" })
     }).collect();
 
-    Ok(Json(json!({ "chats": chat_results, "messages": message_results })))
+    Ok(Json(
+        json!({ "chats": chat_results, "messages": message_results }),
+    ))
 }
 
 // ─── Usage Stats ───
@@ -1255,7 +2190,7 @@ async fn get_usage(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let totals: (i64, Option<i64>) = sqlx::query_as(
         "SELECT COUNT(*), SUM(tokens_used) FROM messages m 
-         JOIN chats c ON m.chat_id = c.id WHERE c.user_id = ?1 AND m.role = 'assistant'"
+         JOIN chats c ON m.chat_id = c.id WHERE c.user_id = ?1 AND m.role = 'assistant'",
     )
     .bind(&claims.sub)
     .fetch_one(&state.db)

@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test": "vitest",
+    "test:watch": "vitest --watch",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
@@ -11,13 +13,16 @@
   "dependencies": {
     "@tanstack/react-query": "^5.51",
     "axios": "^1.7",
+    "dompurify": "^3.4.5",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.414",
     "react": "^18.3",
     "react-dom": "^18.3",
+    "react-intersection-observer": "^10.0.3",
     "react-markdown": "^9.0",
     "react-router-dom": "^6.25",
     "remark-gfm": "^4.0",
+    "shiki": "^4.1.0",
     "xterm": "^5.3",
     "xterm-addon-fit": "^0.8",
     "xterm-addon-web-links": "^0.9",
@@ -25,6 +30,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5",
+    "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3",
     "@types/react-dom": "^18.3",
     "@vitejs/plugin-react": "^4.3",
@@ -32,6 +38,10 @@
     "postcss": "^8.4",
     "tailwindcss": "^3.4",
     "typescript": "^5.5",
-    "vite": "^5.3"
+    "vite": "^5.3",
+    "vitest": "^1.6.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.2.0",
+    "@testing-library/user-event": "^14.4.3"
   }
 }

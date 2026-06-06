@@ -5,39 +5,44 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Carbon Gray 100 (Dark) Palette
-        background: '#161616',
-        layer: '#262626',
-        'layer-hover': '#353535',
-        'layer-active': '#525252',
-        'layer-selected': '#393939',
-        'border-subtle': '#393939',
-        'border-strong': '#525252',
-        'text-primary': '#f4f4f4',
-        'text-secondary': '#c6c6c6',
-        'text-placeholder': '#6f6f6f',
-        'text-helper': '#8d8d8d',
-        'text-disabled': '#525252',
-        'icon-primary': '#f4f4f4',
-        'icon-secondary': '#c6c6c6',
-        'icon-disabled': '#525252',
-        interactive: '#0f62fe',
+        // Modern Dark Palette with vibrant accents
+        background: '#09090b',
+        layer: '#18181b',
+        'layer-hover': '#27272a',
+        'layer-active': '#3f3f46',
+        'layer-selected': '#27272a',
+        'border-subtle': '#27272a',
+        'border-strong': '#3f3f46',
+        'text-primary': '#fafafa',
+        'text-secondary': '#a1a1aa',
+        'text-placeholder': '#71717a',
+        'text-helper': '#a1a1aa',
+        'text-disabled': '#52525b',
+        'icon-primary': '#fafafa',
+        'icon-secondary': '#a1a1aa',
+        'icon-disabled': '#52525b',
+        interactive: '#0f62fe', // Blue
         'interactive-hover': '#0353e9',
-        'link-primary': '#78a9ff',
-        'link-hover': '#a6c8ff',
-        'support-error': '#fa4d56',
-        'support-success': '#42be65',
-        'support-warning': '#f1c21b',
-        'support-info': '#4589ff',
-        focus: '#ffffff',
+        'link-primary': '#0f62fe',
+        'link-hover': '#78a9ff',
+        'support-error': '#ef4444',
+        'support-success': '#22c55e',
+        'support-warning': '#f97316', // Orange
+        'support-info': '#3b82f6',
+        focus: '#60a5fa',
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans"', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'monospace'],
+        sans: ['"Inter"', 'sans-serif'],
+        mono: ['"Fira Code"', 'monospace'],
       },
       borderRadius: {
-        'carbon-sm': '2px',
-        'carbon': '4px',
+        'carbon-sm': '0.375rem', // 6px
+        'carbon': '0.5rem', // 8px
+        'glass': '1rem', // 16px
+      },
+      backgroundImage: {
+        'glass-gradient': 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%)',
+        'vibrant-gradient': 'linear-gradient(135deg, #0f62fe 0%, #0f62fe 100%)',
       },
     },
   },

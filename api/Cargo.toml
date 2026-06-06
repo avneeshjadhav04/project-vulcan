@@ -32,13 +32,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 dotenvy = "0.15"
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 
 rand = "0.8"
 base64 = "0.22"
 sha2 = "0.10"
 regex = "1"
 urlencoding = "2"
+hex = "0.4"
+scraper = "0.20"
+headless_chrome = "1.0.21"
 
 [dev-dependencies]
 tokio-test = "0.4"

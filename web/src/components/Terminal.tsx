@@ -78,7 +78,6 @@ export default function Terminal() {
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit()
-        term.focus()
       } catch {}
     })
     resizeObserver.observe(containerRef.current)
