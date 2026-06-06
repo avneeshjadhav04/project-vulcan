@@ -2,7 +2,7 @@ use axum::{
     extract::{Multipart, Path, State},
     http::StatusCode,
     response::{IntoResponse, Json},
-    routing::{delete, post, get},
+    routing::{delete, get, post},
     Router,
 };
 
@@ -23,13 +23,15 @@ pub fn router() -> Router<AppState> {
             "/chats/:chat_id/workspace/*filename",
             get(download_workspace_file),
         )
-        .route(
-            "/workspace",
-            get(list_user_workspace),
-        )
+        .route("/workspace", get(list_user_workspace))
+        .route("/workspace/folder", post(create_folder))
+        .route("/workspace/file", post(create_file))
         .route(
             "/workspace/*filename",
-            get(download_user_workspace),
+            get(download_user_workspace)
+                .put(save_user_workspace)
+                .delete(delete_user_workspace)
+                .patch(rename_user_workspace),
         )
 }
 
@@ -267,6 +269,148 @@ fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> 
     }
 }
 
+// ─── Workspace CRUD helpers ───
+
+fn is_safe_path(path: &str) -> bool {
+    if path.is_empty() || path.starts_with('/') {
+        return false;
+    }
+    !path.split('/').any(|c| c == "..")
+}
+
+fn resolve_workspace_path(workspace_dir: &std::path::Path, relative_path: &str) -> std::path::PathBuf {
+    let safe = relative_path.trim_start_matches('/');
+    workspace_dir.join(safe)
+}
+
+#[derive(serde::Deserialize)]
+struct CreateFolderRequest {
+    path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct CreateFileRequest {
+    path: String,
+}
+
+#[derive(serde::Deserialize)]
+struct SaveFileRequest {
+    content: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RenameRequest {
+    new_path: String,
+}
+
+async fn create_folder(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<CreateFolderRequest>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_safe_path(&req.path) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    tokio::fs::create_dir_all(&user_workspace_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let target_path = resolve_workspace_path(&user_workspace_dir, &req.path);
+    tokio::fs::create_dir_all(&target_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::CREATED)
+}
+
+async fn create_file(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<CreateFileRequest>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_safe_path(&req.path) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    tokio::fs::create_dir_all(&user_workspace_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let target_path = resolve_workspace_path(&user_workspace_dir, &req.path);
+    if let Some(parent) = target_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+    tokio::fs::write(&target_path, "")
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::CREATED)
+}
+
+async fn save_user_workspace(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(filename): Path<String>,
+    Json(req): Json<SaveFileRequest>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_safe_path(&filename) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    let file_path = resolve_workspace_path(&user_workspace_dir, &filename);
+    tokio::fs::write(&file_path, &req.content)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::OK)
+}
+
+async fn delete_user_workspace(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(filename): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_safe_path(&filename) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    let target_path = resolve_workspace_path(&user_workspace_dir, &filename);
+    let metadata = tokio::fs::metadata(&target_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    if metadata.is_dir() {
+        tokio::fs::remove_dir_all(&target_path)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    } else {
+        tokio::fs::remove_file(&target_path)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn rename_user_workspace(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(filename): Path<String>,
+    Json(req): Json<RenameRequest>,
+) -> Result<StatusCode, StatusCode> {
+    if !is_safe_path(&filename) || !is_safe_path(&req.new_path) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    let old_path = resolve_workspace_path(&user_workspace_dir, &filename);
+    let new_path = resolve_workspace_path(&user_workspace_dir, &req.new_path);
+    tokio::fs::rename(&old_path, &new_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::OK)
+}
+
 #[derive(serde::Serialize)]
 struct WorkspaceFile {
     name: String,
@@ -334,7 +478,7 @@ async fn list_workspace_files(
 }
 
 async fn list_user_workspace(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     claims: axum::Extension<Claims>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
@@ -418,7 +562,7 @@ async fn download_workspace_file(
 }
 
 async fn download_user_workspace(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     claims: axum::Extension<Claims>,
     Path(filename): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
