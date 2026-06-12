@@ -10,7 +10,7 @@ RUN npm run build
 
 # Stage 2: Build Rust API
 FROM ubuntu:24.04 AS api-builder
-RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ unzip \
+RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ unzip wget \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
