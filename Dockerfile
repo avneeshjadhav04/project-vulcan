@@ -30,6 +30,9 @@ RUN if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
         && rm -rf vosk-linux-aarch64-0.3.45*; \
     fi
 
+# Ensure linker can find libvosk during compilation
+ENV LIBRARY_PATH=/usr/local/lib:$LIBRARY_PATH
+
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
