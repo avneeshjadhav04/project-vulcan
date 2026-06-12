@@ -34,6 +34,7 @@ import {
   Settings2,
   MemoryStick,
   Puzzle,
+  LogOut,
 } from 'lucide-react'
 
 interface Provider {
@@ -76,6 +77,7 @@ const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 export default function Settings() {
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
+  const logout = useAuthStore((s) => s.logout)
   const [providers, setProviders] = useState<Provider[]>([])
   const [providersLoading, setProvidersLoading] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -476,6 +478,26 @@ export default function Settings() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                {/* Sign Out */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <LogOut className="h-4 w-4 text-support-error" />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Sign Out</p>
+                        <p className="text-[11px] text-text-helper">Log out of your account.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={logout}
+                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
+                    >
+                      <LogOut className="h-3 w-3" />
+                      Sign Out
+                    </button>
                   </div>
                 </div>
               </motion.div>
