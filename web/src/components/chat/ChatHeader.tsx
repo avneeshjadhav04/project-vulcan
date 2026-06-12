@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, FileJson, FileText } from 'lucide-react'
+import { Download, FileJson, FileText, Loader2 } from 'lucide-react'
 
 interface ChatHeaderProps {
   title?: string
@@ -10,6 +10,7 @@ interface ChatHeaderProps {
 
 export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -36,6 +37,49 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
     return () => document.removeEventListener('keydown', handleKey)
   }, [showExportMenu])
 
+  const handleExport = async (format: string) => {
+    if (!chatId) return
+    setExporting(format)
+    setShowExportMenu(false)
+
+    try {
+      const res = await fetch(`/api/chats/${chatId}/export?format=${format}`, {
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        throw new Error(`Export failed: ${res.status}`)
+      }
+
+      const blob = await res.blob()
+      const contentType = res.headers.get('content-type') || 'text/plain'
+      const contentDisposition = res.headers.get('content-disposition')
+      let filename = `chat-export.${format === 'json' ? 'json' : 'md'}`
+
+      // Extract filename from Content-Disposition header if present
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="([^"]+)"/)
+        if (match) {
+          filename = match[1]
+        }
+      }
+
+      const url = window.URL.createObjectURL(new Blob([blob], { type: contentType }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export failed:', err)
+      alert('Export failed. Please try again.')
+    } finally {
+      setExporting(null)
+    }
+  }
+
   return (
     <header className="flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
@@ -48,12 +92,17 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
           <div className="relative" ref={exportRef}>
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={!!exporting}
               aria-label="Export chat"
               aria-expanded={showExportMenu}
-              className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-40"
             >
-              <Download className="h-3.5 w-3.5" aria-hidden="true" />
-              Export
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              ) : (
+                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              {exporting ? 'Exporting...' : 'Export'}
             </button>
             <AnimatePresence>
               {showExportMenu && (
@@ -64,24 +113,20 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
                   className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
                 >
                   <button
-                    onClick={() => {
-                      window.open(`/api/chats/${chatId}/export?format=markdown`, '_blank')
-                      setShowExportMenu(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                    onClick={() => handleExport('markdown')}
+                    disabled={exporting === 'markdown'}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-40"
                   >
                     <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                    Markdown
+                    {exporting === 'markdown' ? 'Exporting...' : 'Markdown'}
                   </button>
                   <button
-                    onClick={() => {
-                      window.open(`/api/chats/${chatId}/export?format=json`, '_blank')
-                      setShowExportMenu(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                    onClick={() => handleExport('json')}
+                    disabled={exporting === 'json'}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-40"
                   >
                     <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
-                    JSON
+                    {exporting === 'json' ? 'Exporting...' : 'JSON'}
                   </button>
                 </motion.div>
               )}

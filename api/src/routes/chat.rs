@@ -1379,13 +1379,16 @@ async fn export_chat(
         .map(|s| s.as_str())
         .unwrap_or("markdown");
 
+    // Sanitize chat title for use as a filename
+    let safe_title = chat.title.replace(|c: char| c.is_ascii_control() || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|', "_");
+
     let (content, content_type, filename) = match format {
         "json" => {
             let data = json!({"chat": chat, "messages": messages});
             (
                 data.to_string(),
                 "application/json",
-                format!("{}.json", chat.title),
+                format!("{}.json", safe_title),
             )
         }
         _ => {
@@ -1405,7 +1408,7 @@ async fn export_chat(
                 }
                 md.push_str("\n\n---\n\n");
             }
-            (md, "text/markdown", format!("{}.md", chat.title))
+            (md, "text/markdown", format!("{}.md", safe_title))
         }
     };
 
