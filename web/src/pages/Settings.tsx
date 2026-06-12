@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
@@ -83,7 +83,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<SettingsTab>('profile')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations']
+  const initialTab = validTabs.includes(searchParams.get('tab') as SettingsTab) ? (searchParams.get('tab') as SettingsTab) : 'profile'
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
 
   // Add provider form state
   const [selectedType, setSelectedType] = useState('nvidia')
@@ -143,6 +146,13 @@ export default function Settings() {
       setAgentSteps(user.max_agent_steps)
     }
   }, [user?.max_agent_steps])
+
+  // Sync active tab to URL
+  useEffect(() => {
+    if (activeTab !== searchParams.get('tab')) {
+      setSearchParams({ tab: activeTab }, { replace: true })
+    }
+  }, [activeTab])
 
   const loadProviders = async () => {
     setProvidersLoading(true)
