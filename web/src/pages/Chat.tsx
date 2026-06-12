@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
@@ -22,6 +22,10 @@ const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
 const DEFAULT_SIDEBAR_WIDTH = 280
 
+const MIN_TERMINAL_HEIGHT = 150
+const MAX_TERMINAL_HEIGHT = 600
+const DEFAULT_TERMINAL_HEIGHT = 300
+
 export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
   const navigate = useNavigate()
@@ -31,6 +35,9 @@ export default function Chat() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [terminalHeight, setTerminalHeight] = useState(DEFAULT_TERMINAL_HEIGHT)
+  const [isResizingTerminal, setIsResizingTerminal] = useState(false)
+  const mainRef = useRef<HTMLDivElement>(null)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({
     providerId: '',
     modelId: 'meta/llama-3.1-8b-instruct',
@@ -97,6 +104,22 @@ export default function Chat() {
     [isResizing]
   )
 
+  const startResizeTerminal = useCallback(() => setIsResizingTerminal(true), [])
+  const stopResizeTerminal = useCallback(() => setIsResizingTerminal(false), [])
+
+  const resizeTerminal = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizingTerminal || !mainRef.current) return
+      const rect = mainRef.current.getBoundingClientRect()
+      const newHeight = Math.max(
+        MIN_TERMINAL_HEIGHT,
+        Math.min(MAX_TERMINAL_HEIGHT, rect.bottom - e.clientY)
+      )
+      setTerminalHeight(newHeight)
+    },
+    [isResizingTerminal]
+  )
+
   useEffect(() => {
     if (isResizing) {
       document.addEventListener('mousemove', resize)
@@ -116,6 +139,26 @@ export default function Chat() {
       document.body.style.userSelect = ''
     }
   }, [isResizing, resize, stopResize])
+
+  useEffect(() => {
+    if (isResizingTerminal) {
+      document.addEventListener('mousemove', resizeTerminal)
+      document.addEventListener('mouseup', stopResizeTerminal)
+      document.body.style.cursor = 'row-resize'
+      document.body.style.userSelect = 'none'
+    } else {
+      document.removeEventListener('mousemove', resizeTerminal)
+      document.removeEventListener('mouseup', stopResizeTerminal)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    return () => {
+      document.removeEventListener('mousemove', resizeTerminal)
+      document.removeEventListener('mouseup', stopResizeTerminal)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizingTerminal, resizeTerminal, stopResizeTerminal])
 
   return (
     <div className="flex h-screen bg-background">
@@ -218,7 +261,7 @@ export default function Chat() {
 
       {/* Main Content */}
       <main className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div ref={mainRef} className="flex flex-1 flex-col overflow-hidden">
           <ChatInterface
             chatId={chatId}
             selectedModel={selectedModel}
@@ -227,15 +270,25 @@ export default function Chat() {
 
           <AnimatePresence>
             {showTerminal && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 300, opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="overflow-hidden border-t border-border-subtle"
-              >
-                <Terminal />
-              </motion.div>
+              <>
+                {/* Terminal resize handle */}
+                <div
+                  onMouseDown={startResizeTerminal}
+                  className={`relative z-20 h-1 shrink-0 cursor-row-resize transition-colors ${
+                    isResizingTerminal ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
+                  }`}
+                />
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: terminalHeight, opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden border-t border-border-subtle"
+                  style={{ height: terminalHeight }}
+                >
+                  <Terminal />
+                </motion.div>
+              </>
             )}
           </AnimatePresence>
         </div>
