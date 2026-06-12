@@ -25,7 +25,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
 
   useEffect(() => {
     if (showExportMenu) {
-      const firstBtn = exportRef.current?.querySelector('button')
+      const firstBtn = exportRef.current?.querySelector('[role="menuitem"]')
       ;(firstBtn as HTMLElement)?.focus()
     }
     const handleKey = (e: KeyboardEvent) => {
@@ -81,7 +81,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
   }
 
   return (
-    <header className="flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
+    <header className="relative z-10 flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
         <h2 className="truncate text-xs font-semibold text-text-primary">
           {title || optimisticTitle || 'New Chat'}
@@ -110,11 +110,13 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
+                  role="menu"
                   className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
                 >
                   <button
                     onClick={() => handleExport('markdown')}
                     disabled={exporting === 'markdown'}
+                    role="menuitem"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-40"
                   >
                     <FileText className="h-3.5 w-3.5" aria-hidden="true" />
@@ -123,6 +125,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
                   <button
                     onClick={() => handleExport('json')}
                     disabled={exporting === 'json'}
+                    role="menuitem"
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-40"
                   >
                     <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
