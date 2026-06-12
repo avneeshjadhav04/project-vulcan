@@ -5,7 +5,7 @@ import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useChatStream } from '../hooks/useChatStream'
-import { useVoiceInput } from '../hooks/useVoiceInput'
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder'
 import { useChatScroll } from '../hooks/useChatScroll'
 import type { SelectedModel } from './ProviderModelSelector'
 import type { UploadedFile } from './FileUpload'
@@ -57,27 +57,8 @@ export default function ChatInterface({
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
-  const inputRef = useRef(input)
-  useEffect(() => { inputRef.current = input }, [input])
-  const voiceInitialText = useRef('')
 
-  const voice = useVoiceInput({
-    onStart: () => {
-      voiceInitialText.current = inputRef.current
-    },
-    onInterim: (text) => {
-      const prefix = voiceInitialText.current
-      setInput(prefix ? `${prefix} ${text}`.trim() : text)
-    },
-    onTranscript: (text) => {
-      const prefix = voiceInitialText.current
-      const finalText = prefix ? `${prefix} ${text}`.trim() : text
-      setInput(finalText)
-      if (finalText.trim()) {
-        handleSend(finalText.trim())
-      }
-    },
-  })
+  const voice = useVoiceRecorder()
 
   useEffect(() => {
     setEffectiveChatId(chatId)
@@ -436,9 +417,13 @@ export default function ChatInterface({
         onModelChange={onModelChange || (() => {})}
         attachedFiles={attachedFiles}
         onFilesChange={setAttachedFiles}
-        voiceSupported={voice.voiceSupported}
-        isListening={voice.isListening}
-        onToggleVoice={voice.toggle}
+        voiceState={voice.state}
+        voiceRecordingTime={voice.recordingTime}
+        voiceTranscript={voice.transcript}
+        onStartVoice={voice.startRecording}
+        onStopVoice={voice.stopRecording}
+        onCancelVoice={voice.cancelRecording}
+        onVoiceTranscript={voice.reset}
         toolsEnabled={userData?.tools_enabled}
         onToggleTools={async () => {
           try {

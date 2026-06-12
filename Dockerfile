@@ -55,6 +55,15 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         file unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
 
+# Download Vosk model (40MB small English model)
+RUN mkdir -p /models/vosk \
+    && wget -q -O /tmp/vosk-model.zip \
+       https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+    && unzip -q /tmp/vosk-model.zip -d /tmp \
+    && mv /tmp/vosk-model-small-en-us-0.15/* /models/vosk/ \
+    && rm -rf /tmp/vosk-model.zip /tmp/vosk-model-small-en-us-0.15 \
+    && echo "Vosk model installed at /models/vosk"
+
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api
 

@@ -17,6 +17,7 @@ pub struct Config {
     pub google_client_secret: Option<String>,
     pub todoist_client_id: Option<String>,
     pub todoist_client_secret: Option<String>,
+    pub vosk_model_dir: String,
 }
 
 fn load_or_generate_master_key() -> Result<[u8; 32]> {
@@ -143,6 +144,10 @@ impl Config {
             println!("[CONFIG] CORS restricted to predefined development origins");
         }
 
+        let vosk_model_dir = env::var("VOSK_MODEL_DIR")
+            .unwrap_or_else(|_| "/models/vosk".to_string());
+        println!("[CONFIG] VOSK_MODEL_DIR={}", vosk_model_dir);
+
         Ok(Self {
             database_url,
             jwt_secret_path,
@@ -159,6 +164,7 @@ impl Config {
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
             todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
             todoist_client_secret: env::var("TODOIST_CLIENT_SECRET").ok(),
+            vosk_model_dir,
         })
     }
 }
