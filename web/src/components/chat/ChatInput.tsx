@@ -118,10 +118,10 @@ export default function ChatInput({
               }
             }}
             placeholder="Message AI..."
-            rows={3}
+            rows={2}
             disabled={streaming}
             aria-label="Message input"
-            className="max-h-[320px] min-h-[80px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
+            className="max-h-[320px] min-h-[64px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
           />
 
           {/* Bottom area: controls */}
