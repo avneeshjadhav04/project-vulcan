@@ -10,7 +10,6 @@ import WorkspacePanel from '../components/chat/WorkspacePanel'
 import ArtifactViewer from '../components/chat/ArtifactViewer'
 import {
   Settings,
-  LogOut,
   Terminal as TerminalIcon,
   Folder as FolderIcon,
   PanelLeftClose,
@@ -42,7 +41,6 @@ export default function Chat() {
     providerId: '',
     modelId: 'meta/llama-3.1-8b-instruct',
   })
-  const logout = useAuthStore((s) => s.logout)
   const user = useAuthStore((s) => s.user)
 
   // Auto-select first available model when providers load
@@ -225,13 +223,6 @@ export default function Chat() {
                   icon={<Settings className="h-4 w-4" />}
                   label="Settings"
                   onClick={() => navigate('/settings')}
-                />
-
-                <SidebarButton
-                  icon={<LogOut className="h-4 w-4" />}
-                  label="Sign out"
-                  onClick={logout}
-                  danger
                 />
               </div>
             </div>
