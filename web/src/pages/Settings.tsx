@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
@@ -16,8 +16,6 @@ import {
   EyeOff,
   Trash2,
   User,
-  Fingerprint,
-  Lock,
   CheckCircle2,
   Brain,
   Plus,
@@ -30,10 +28,13 @@ import {
   Wrench,
   Mail,
   ListTodo,
-  BarChart3,
   Sun,
   Moon,
   Notebook,
+  Settings2,
+  MemoryStick,
+  Puzzle,
+  LogOut,
 } from 'lucide-react'
 
 interface Provider {
@@ -63,9 +64,21 @@ const BUILT_IN_PROVIDERS = [
   { id: 'custom', name: 'Custom Provider', base_url: '' },
 ]
 
+type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'signout'
+
+const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
+  { id: 'providers', label: 'AI Providers', icon: <Server className="h-4 w-4" /> },
+  { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
+  { id: 'memory', label: 'Memory', icon: <MemoryStick className="h-4 w-4" /> },
+  { id: 'integrations', label: 'Integrations', icon: <Puzzle className="h-4 w-4" /> },
+  { id: 'signout', label: 'Sign Out', icon: <LogOut className="h-4 w-4" /> },
+]
+
 export default function Settings() {
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
+  const logout = useAuthStore((s) => s.logout)
   const [providers, setProviders] = useState<Provider[]>([])
   const [providersLoading, setProvidersLoading] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -73,6 +86,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations', 'signout']
+  const initialTab = validTabs.includes(searchParams.get('tab') as SettingsTab) ? (searchParams.get('tab') as SettingsTab) : 'profile'
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
 
   // Add provider form state
   const [selectedType, setSelectedType] = useState('nvidia')
@@ -100,6 +117,10 @@ export default function Settings() {
   // Provider validation cache
   const [providerValidations, setProviderValidations] = useState<Record<string, { valid: boolean; error?: string }>>({})
 
+  // Agent steps
+  const [agentSteps, setAgentSteps] = useState(user?.max_agent_steps || 10)
+  const [agentStepsSaving, setAgentStepsSaving] = useState(false)
+
   // Theme
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
@@ -122,6 +143,19 @@ export default function Settings() {
       window.history.replaceState({}, '', '/settings')
     }
   }, [])
+
+  useEffect(() => {
+    if (user?.max_agent_steps) {
+      setAgentSteps(user.max_agent_steps)
+    }
+  }, [user?.max_agent_steps])
+
+  // Sync active tab to URL
+  useEffect(() => {
+    if (activeTab !== searchParams.get('tab')) {
+      setSearchParams({ tab: activeTab }, { replace: true })
+    }
+  }, [activeTab])
 
   const loadProviders = async () => {
     setProvidersLoading(true)
@@ -291,8 +325,22 @@ export default function Settings() {
     }
   }
 
+  const handleUpdateAgentSteps = async (steps: number) => {
+    setAgentStepsSaving(true)
+    try {
+      await api.post('/me/agent-steps', { max_agent_steps: steps })
+      setAgentSteps(steps)
+      await fetchMe()
+      setSaved(true)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update agent steps')
+    } finally {
+      setAgentStepsSaving(false)
+    }
+  }
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex h-screen flex-col bg-background">
       {/* Header */}
       <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border-subtle bg-background px-5 py-3">
         <button
@@ -308,528 +356,563 @@ export default function Settings() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-2xl flex-1 p-5 space-y-4">
-        {/* Profile Card */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-white">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-text-primary">{user?.email || 'User'}</h2>
-              <div className="mt-0.5 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 bg-interactive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-interactive">
-                  <Shield className="h-3 w-3" />
-                  {user?.role || 'user'}
-                </span>
-                <span className="inline-flex items-center gap-1 bg-support-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-support-success">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Active
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Account Details */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-            <User className="h-4 w-4" />
-            Account Information
-          </h2>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <Fingerprint className="h-4 w-4 text-interactive" />
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">Email</p>
-                  <p className="text-sm text-text-primary">{user?.email}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <Lock className="h-4 w-4 text-link-primary" />
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">Role</p>
-                  <p className="text-sm font-mono text-text-primary">{user?.role || 'user'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Provider Management */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Server className="h-4 w-4" />
-                AI Providers
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Add one or more AI providers. Your API keys are encrypted at rest with AES-256-GCM.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                setShowAddModal(true)
-                setError('')
-                setApiKey('')
-              }}
-              className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Provider
-            </button>
-          </div>
-
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-3 overflow-hidden"
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar Tabs */}
+        <aside className="w-56 shrink-0 overflow-y-auto border-r border-border-subtle bg-layer/30 p-3">
+          <div className="space-y-1">
+            {TAB_ITEMS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setError('') }}
+                className={`flex w-full items-center gap-2 rounded-carbon px-3 py-2.5 text-xs font-medium transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-interactive/10 text-interactive shadow-inner'
+                    : 'text-text-secondary hover:bg-layer/60 hover:text-text-primary'
+                }`}
               >
-                <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </aside>
 
-          <AnimatePresence>
-            {saved && (
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-5">
+          <div className="mx-auto max-w-2xl space-y-4">
+            <AnimatePresence mode="wait">
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
+              {saved && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
+                    <Check className="h-4 w-4 shrink-0" />
+                    Saved successfully.
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Profile Tab */}
+            {activeTab === 'profile' && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-3 overflow-hidden"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
               >
-                <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
-                  <Check className="h-4 w-4 shrink-0" />
-                  Saved successfully.
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {providersLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-            </div>
-          ) : providers.length === 0 ? (
-            <div className="border border-border-subtle bg-background px-4 py-6 text-center">
-              <Server className="mx-auto mb-2 h-6 w-6 text-text-helper" />
-              <p className="text-xs text-text-helper">No providers configured</p>
-              <p className="mt-1 text-[10px] text-text-helper/70">Add a provider to start chatting</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {providers.map((p) => {
-                const pv = providerValidations[p.id]
-                return (
-                  <div key={p.id} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`flex h-6 w-6 items-center justify-center ${p.is_active ? 'bg-interactive/10' : 'bg-border-subtle'}`}>
-                        <Key className={`h-3 w-3 ${p.is_active ? 'text-interactive' : 'text-text-helper'}`} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
-                          {pv && (
-                            <span className={`inline-flex h-2 w-2 rounded-full ${pv.valid ? 'bg-support-success' : 'bg-support-error'}`} title={pv.valid ? 'Valid' : pv.error || 'Invalid'} />
-                          )}
-                        </div>
-                        <p className="text-[10px] font-mono text-text-helper truncate">{p.base_url}</p>
-                      </div>
+                {/* Profile Card */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-white">
+                      {user?.email?.charAt(0).toUpperCase() || 'U'}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => handleValidateProvider(p.id)}
-                        disabled={validating}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                      >
-                        {validating ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <TestTube className="h-3 w-3" />
-                        )}
-                        Test
-                      </button>
-                      <button
-                        onClick={() => handleRemoveProvider(p.id)}
-                        className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Remove
-                      </button>
+                    <div>
+                      <h2 className="text-sm font-semibold text-text-primary">{user?.email || 'User'}</h2>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 bg-interactive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-interactive">
+                          <Shield className="h-3 w-3" />
+                          {user?.role || 'user'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 bg-support-success/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-support-success">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Active
+                        </span>
+                      </div>
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
-
-          {validationResult && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-3 overflow-hidden"
-            >
-              {validationResult.valid ? (
-                <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
-                  <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  Provider key is valid and working!
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {validationResult.error || 'Provider validation failed'}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </div>
 
-        {/* Memory Toggle */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Brain className="h-4 w-4" />
-                Long-Term Memory
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Automatically summarize older conversations so the AI remembers context across long chats.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-            <div className="flex items-center gap-3">
-              <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
-              <div>
-                <p className="text-sm font-medium text-text-primary">Conversation Summarization</p>
-                <p className="text-[11px] text-text-helper">
-                  {user?.memory_enabled
-                    ? 'Enabled — AI will summarize older messages to maintain context'
-                    : 'Disabled — AI sees all messages (may hit token limits)'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleToggleMemory}
-              className={`relative h-5 w-9 transition-colors ${
-                user?.memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
-              }`}
-            >
-              <motion.div
-                animate={{ x: user?.memory_enabled ? 16 : 2 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                className="absolute top-1 h-3 w-3 bg-white"
-              />
-            </button>
-          </div>
-          <div className="mt-2 space-y-1.5">
-            <div className="flex items-start gap-2 text-[11px] text-text-helper">
-              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-              <span>Triggers when a chat exceeds 26 messages</span>
-            </div>
-            <div className="flex items-start gap-2 text-[11px] text-text-helper">
-              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-              <span>Keeps the last 6 messages verbatim for recent context</span>
-            </div>
-            <div className="flex items-start gap-2 text-[11px] text-text-helper">
-              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-              <span>Summaries are stored per-chat and updated automatically</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Integrations */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Wrench className="h-4 w-4" />
-                Integrations
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Connect external services so the AI can manage your calendar, email, and tasks.
-              </p>
-            </div>
-          </div>
-
-          {integrationsLoading ? (
-            <div className="flex items-center justify-center py-6">
-              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {integrations.map((int) => {
-                const isGoogle = int.provider === 'google'
-                const isTodoist = int.provider === 'todoist'
-                const Icon = isGoogle ? Mail : isTodoist ? ListTodo : Link
-                const label = isGoogle ? 'Google (Calendar + Gmail)' : isTodoist ? 'Todoist (Tasks)' : int.provider
-
-                return (
-                  <div key={int.provider} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center ${int.connected ? 'bg-support-success/10' : 'bg-border-subtle'}`}>
-                        <Icon className={`h-3 w-3 ${int.connected ? 'text-support-success' : 'text-text-helper'}`} />
+                {/* Appearance */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                        Appearance
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Choose your preferred theme.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      {theme === 'light' ? <Sun className="h-4 w-4 text-support-warning" /> : <Moon className="h-4 w-4 text-interactive" />}
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Theme</p>
+                        <p className="text-[11px] text-text-helper capitalize">{theme}</p>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-text-primary">{label}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {(['dark', 'light', 'system'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setTheme(t)}
+                          className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
+                            theme === t
+                              ? 'bg-interactive text-white'
+                              : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+              </motion.div>
+            )}
+
+            {/* AI Providers Tab */}
+            {activeTab === 'providers' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Server className="h-4 w-4" />
+                        AI Providers
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Add one or more AI providers. Your API keys are encrypted at rest with AES-256-GCM.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowAddModal(true)
+                        setError('')
+                        setApiKey('')
+                      }}
+                      className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Provider
+                    </button>
+                  </div>
+
+                  {providersLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                    </div>
+                  ) : providers.length === 0 ? (
+                    <div className="border border-border-subtle bg-background px-4 py-6 text-center">
+                      <Server className="mx-auto mb-2 h-6 w-6 text-text-helper" />
+                      <p className="text-xs text-text-helper">No providers configured</p>
+                      <p className="mt-1 text-[10px] text-text-helper/70">Add a provider to start chatting</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {providers.map((p) => {
+                        const pv = providerValidations[p.id]
+                        return (
+                          <div key={p.id} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`flex h-6 w-6 items-center justify-center ${p.is_active ? 'bg-interactive/10' : 'bg-border-subtle'}`}>
+                                <Key className={`h-3 w-3 ${p.is_active ? 'text-interactive' : 'text-text-helper'}`} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium text-text-primary truncate">{p.name}</p>
+                                  {pv && (
+                                    <span className={`inline-flex h-2 w-2 rounded-full ${pv.valid ? 'bg-support-success' : 'bg-support-error'}`} title={pv.valid ? 'Valid' : pv.error || 'Invalid'} />
+                                  )}
+                                </div>
+                                <p className="text-[10px] font-mono text-text-helper truncate">{p.base_url}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => handleValidateProvider(p.id)}
+                                disabled={validating}
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                              >
+                                {validating ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <TestTube className="h-3 w-3" />
+                                )}
+                                Test
+                              </button>
+                              <button
+                                onClick={() => handleRemoveProvider(p.id)}
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {validationResult && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-3 overflow-hidden"
+                    >
+                      {validationResult.valid ? (
+                        <div className="flex items-center gap-2 border border-support-success/30 bg-support-success/10 px-3 py-2 text-xs text-support-success">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          Provider key is valid and working!
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          {validationResult.error || 'Provider validation failed'}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* AI Tools Tab */}
+            {activeTab === 'tools' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                {/* Agent Steps */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4">
+                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                      <Settings2 className="h-4 w-4" />
+                      Agent Configuration
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      Control how many tool-calling iterations the AI can perform per message.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <Brain className="h-4 w-4 text-link-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-text-primary">Max Agent Steps</p>
+                          <p className="text-[11px] text-text-helper">
+                            Higher values allow the AI to chain multiple tools together.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min="1"
+                          max="50"
+                          value={agentSteps}
+                          onChange={(e) => setAgentSteps(Number(e.target.value))}
+                          onMouseUp={() => handleUpdateAgentSteps(agentSteps)}
+                          onTouchEnd={() => handleUpdateAgentSteps(agentSteps)}
+                          className="h-1 w-32 cursor-pointer appearance-none rounded bg-border-subtle accent-interactive"
+                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={agentSteps}
+                            onChange={(e) => {
+                              const val = Math.max(1, Math.min(50, Number(e.target.value)))
+                              setAgentSteps(val)
+                            }}
+                            onBlur={() => handleUpdateAgentSteps(agentSteps)}
+                            className="w-14 border border-border-subtle bg-background px-2 py-1 text-center text-sm text-text-primary outline-none focus:border-focus"
+                          />
+                          {agentStepsSaving && <Loader2 className="h-3 w-3 animate-spin text-interactive" />}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tool Permissions */}
+                <ToolPermissionsPanel />
+              </motion.div>
+            )}
+
+            {/* Memory Tab */}
+            {activeTab === 'memory' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                {/* Long-Term Memory */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Brain className="h-4 w-4" />
+                        Long-Term Memory
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Automatically summarize older conversations so the AI remembers context across long chats.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Conversation Summarization</p>
                         <p className="text-[11px] text-text-helper">
-                          {int.connected ? (int.scopes ? `Connected` : 'Connected') : 'Not connected'}
+                          {user?.memory_enabled
+                            ? 'Enabled — AI will summarize older messages to maintain context'
+                            : 'Disabled — AI sees all messages (may hit token limits)'}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {int.connected ? (
-                        <button
-                          onClick={() => handleDisconnectIntegration(int.provider)}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
-                        >
-                          <Unlink className="h-3 w-3" />
-                          Disconnect
-                        </button>
-                      ) : !int.is_configured ? (
-                        <button
-                          onClick={() => {
-                            setConfigProvider(int.provider)
-                            setClientId('')
-                            setClientSecret('')
-                            setShowConfigModal(true)
-                          }}
-                          className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
-                        >
-                          <Key className="h-4 w-4" />
-                          Configure App
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleConnect(int.provider)}
-                          disabled={connectingProvider === int.provider}
-                          className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
-                        >
-                          {connectingProvider === int.provider ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Link className="h-3 w-3" />
-                          )}
-                          Connect
-                        </button>
-                      )}
+                    <button
+                      onClick={handleToggleMemory}
+                      className={`relative h-5 w-9 transition-colors ${
+                        user?.memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                      }`}
+                    >
+                      <motion.div
+                        animate={{ x: user?.memory_enabled ? 16 : 2 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        className="absolute top-1 h-3 w-3 bg-white"
+                      />
+                    </button>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+                      <span>Triggers when a chat exceeds 26 messages</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+                      <span>Keeps the last 6 messages verbatim for recent context</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+                      <span>Summaries are stored per-chat and updated automatically</span>
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
-
-          <div className="mt-2 space-y-1.5">
-            <div className="flex items-start gap-2 text-[11px] text-text-helper">
-              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-              <span>Your credentials are encrypted with AES-256-GCM and never stored in plain text</span>
-            </div>
-            <div className="flex items-start gap-2 text-[11px] text-text-helper">
-              <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-              <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tools & Agent Configuration */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Wrench className="h-4 w-4" />
-                AI Tools & Agent
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Control how the AI uses tools: sandboxed terminal, file operations, web search, and integrations.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <Wrench className={`h-4 w-4 ${user?.tools_enabled ? 'text-interactive' : 'text-text-helper'}`} />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">Enable AI Tools</p>
-                  <p className="text-[11px] text-text-helper">
-                    {user?.tools_enabled
-                      ? 'AI can execute terminal commands, manage files, search the web, and use connected integrations'
-                      : 'AI responds with text only — no tool execution'}
-                  </p>
                 </div>
-              </div>
-              <button
-                onClick={async () => {
-                  try {
-                    await api.post('/me/tools', { tools_enabled: !user?.tools_enabled })
-                    await fetchMe()
-                  } catch {}
-                }}
-                className={`relative h-5 w-9 transition-colors ${
-                  user?.tools_enabled ? 'bg-interactive' : 'bg-border-subtle'
-                }`}
-              >
-                <motion.div
-                  animate={{ x: user?.tools_enabled ? 16 : 2 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="absolute top-1 h-3 w-3 bg-white"
-                />
-              </button>
-            </div>
-            <div className="border border-border-subtle bg-background px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <Brain className="h-4 w-4 text-link-primary" />
-                <div>
-                  <p className="text-sm font-medium text-text-primary">Agent Steps</p>
-                  <p className="text-[11px] text-text-helper">
-                    Maximum tool-calling iterations per message. Higher values allow the AI to chain multiple tools together.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="font-mono text-sm text-text-primary">{user?.max_agent_steps || 10}</span>
-                <span className="text-[10px] text-text-helper">steps (configured via max_agent_steps)</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Scratchpad Memory */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                <Notebook className="h-4 w-4" />
-                Scratchpad Memory
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Persistent notes the AI can read and update. Edit directly or let the AI manage it through conversations.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <textarea
-              value={scratchpad}
-              onChange={(e) => setScratchpad(e.target.value)}
-              placeholder="Your scratchpad is empty..."
-              rows={4}
-              className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-text-helper">
-                {scratchpadLoading ? 'Loading...' : `${scratchpad.length} characters`}
-              </span>
-              <button
-                onClick={saveScratchpad}
-                disabled={scratchpadSaving}
-                className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
-              >
-                {scratchpadSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Save Scratchpad
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Theme */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                {theme === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                Appearance
-              </h2>
-              <p className="mt-1 text-xs text-text-helper">
-                Choose your preferred theme. Light mode is experimental.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-            <div className="flex items-center gap-3">
-              {theme === 'light' ? <Sun className="h-4 w-4 text-support-warning" /> : <Moon className="h-4 w-4 text-interactive" />}
-              <div>
-                <p className="text-sm font-medium text-text-primary">Theme</p>
-                <p className="text-[11px] text-text-helper capitalize">{theme}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {(['dark', 'light', 'system'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
-                    theme === t
-                      ? 'bg-interactive text-white'
-                      : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Tool Permissions */}
-        <ToolPermissionsPanel />
-
-        {/* Security Info */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-            <Shield className="h-4 w-4" />
-            Security
-          </h2>
-          <div className="space-y-2">
-            {[
-              { label: 'Encryption at Rest', desc: 'API keys are encrypted with AES-256-GCM before storage.', status: 'Active', color: 'text-support-success' },
-              { label: 'Session Authentication', desc: 'JWT tokens stored in HttpOnly cookies with SameSite=Strict.', status: 'Active', color: 'text-support-success' },
-              { label: 'CSRF Protection', desc: 'All state-changing requests require a valid CSRF token.', status: 'Active', color: 'text-support-success' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-start gap-3 border border-border-subtle bg-background px-3 py-2.5">
-                <div className="mt-0.5 h-1.5 w-1.5 bg-support-success shrink-0" />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-text-primary">{item.label}</p>
-                    <span className={`text-[10px] font-semibold uppercase ${item.color}`}>{item.status}</span>
+                {/* Scratchpad Memory */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Notebook className="h-4 w-4" />
+                        Scratchpad Memory
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Persistent notes the AI can read and update. Edit directly or let the AI manage it through conversations.
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-text-helper">{item.desc}</p>
+                  <div className="space-y-2">
+                    <textarea
+                      value={scratchpad}
+                      onChange={(e) => setScratchpad(e.target.value)}
+                      placeholder="Your scratchpad is empty..."
+                      rows={4}
+                      className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-text-helper">
+                        {scratchpadLoading ? 'Loading...' : `${scratchpad.length} characters`}
+                      </span>
+                      <button
+                        onClick={saveScratchpad}
+                        disabled={scratchpadSaving}
+                        className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                      >
+                        {scratchpadSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                        Save Scratchpad
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              </motion.div>
+            )}
 
-        {/* Usage Dashboard Link */}
-        <div className="border border-border-subtle bg-layer p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <BarChart3 className="h-4 w-4 text-interactive" />
-              <div>
-                <p className="text-sm font-medium text-text-primary">Usage Dashboard</p>
-                <p className="text-[11px] text-text-helper">View your message and token usage statistics.</p>
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/usage')}
-              className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
-            >
-              <BarChart3 className="h-3 w-3" />
-              Open Dashboard
-            </button>
+            {/* Integrations Tab */}
+            {activeTab === 'integrations' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Wrench className="h-4 w-4" />
+                        Integrations
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Connect external services so the AI can manage your calendar, email, and tasks.
+                      </p>
+                    </div>
+                  </div>
+
+                  {integrationsLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {integrations.map((int) => {
+                        const isGoogle = int.provider === 'google'
+                        const isTodoist = int.provider === 'todoist'
+                        const Icon = isGoogle ? Mail : isTodoist ? ListTodo : Link
+                        const label = isGoogle ? 'Google (Calendar + Gmail)' : isTodoist ? 'Todoist (Tasks)' : int.provider
+
+                        return (
+                          <div key={int.provider} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`flex h-6 w-6 shrink-0 items-center justify-center ${int.connected ? 'bg-support-success/10' : 'bg-border-subtle'}`}>
+                                <Icon className={`h-3 w-3 ${int.connected ? 'text-support-success' : 'text-text-helper'}`} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-text-primary">{label}</p>
+                                <p className="text-[11px] text-text-helper">
+                                  {int.connected ? 'Connected' : 'Not connected'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {int.connected ? (
+                                <button
+                                  onClick={() => handleDisconnectIntegration(int.provider)}
+                                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
+                                >
+                                  <Unlink className="h-3 w-3" />
+                                  Disconnect
+                                </button>
+                              ) : !int.is_configured ? (
+                                <button
+                                  onClick={() => {
+                                    setConfigProvider(int.provider)
+                                    setClientId('')
+                                    setClientSecret('')
+                                    setShowConfigModal(true)
+                                  }}
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
+                                >
+                                  <Key className="h-4 w-4" />
+                                  Configure App
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleConnect(int.provider)}
+                                  disabled={connectingProvider === int.provider}
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                                >
+                                  {connectingProvider === int.provider ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Link className="h-3 w-3" />
+                                  )}
+                                  Connect
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+                      <span>Your credentials are encrypted with AES-256-GCM and never stored in plain text</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
+                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
+                      <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Sign Out Tab */}
+            {activeTab === 'signout' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4">
+                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                      <LogOut className="h-4 w-4" />
+                      Sign Out
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      Log out of your Project Vulcan account.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <LogOut className="h-4 w-4 text-support-error" />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Sign Out</p>
+                        <p className="text-[11px] text-text-helper">You will be redirected to the login page.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={logout}
+                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
+                    >
+                      <LogOut className="h-3 w-3" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
 
       {/* Configure Integration Modal */}
       <AnimatePresence>

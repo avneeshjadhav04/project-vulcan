@@ -340,11 +340,11 @@ export default function ChatInterface({
               </p>
               <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => navigate('/settings')}
+                  onClick={() => navigate('/settings?tab=providers')}
                   className="carbon-btn-primary"
                 >
                   <Settings className="h-4 w-4" aria-hidden="true" />
-                  Go to Settings
+                  Add AI Provider
                 </button>
                 <a
                   href="https://build.nvidia.com/explore/discover"

@@ -32,7 +32,7 @@ export function ArtifactCard({ title, type, content }: { title: string, type: st
           View Artifact
         </button>
       </div>
-      <div className="bg-[#0d1117] px-4 py-2 text-xs text-text-secondary">
+      <div className="bg-layer px-4 py-2 text-xs text-text-secondary">
         Artifact generated. Click view to open in the side panel.
       </div>
     </div>

@@ -3,7 +3,7 @@ use crate::{
     middleware::AppState,
     models::{
         Chat, Claims, CreateChatRequest, Message, Provider, SendMessageRequest,
-        UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User,
+        UpdateAgentStepsRequest, UpdateChatOrganizationRequest, UpdateToolsConfigRequest, User,
     },
 };
 use axum::{
@@ -907,6 +907,7 @@ pub fn router() -> Router<AppState> {
         .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
         .route("/me/tools", post(update_tools_config))
+        .route("/me/agent-steps", post(update_agent_steps))
         .route("/me/scratchpad", get(get_scratchpad).post(update_scratchpad_endpoint))
 }
 
@@ -962,6 +963,27 @@ async fn update_tools_config(
 
     Ok(Json(json!({
         "tools_enabled": tools_enabled.unwrap_or(user.tools_enabled) == 1,
+    })))
+}
+
+async fn update_agent_steps(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Json(req): Json<UpdateAgentStepsRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if req.max_agent_steps < 1 || req.max_agent_steps > 50 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    sqlx::query("UPDATE users SET max_agent_steps = ?1 WHERE id = ?2")
+        .bind(req.max_agent_steps)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "max_agent_steps": req.max_agent_steps,
     })))
 }
 
@@ -1357,13 +1379,16 @@ async fn export_chat(
         .map(|s| s.as_str())
         .unwrap_or("markdown");
 
+    // Sanitize chat title for use as a filename
+    let safe_title = chat.title.replace(|c: char| c.is_ascii_control() || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|', "_");
+
     let (content, content_type, filename) = match format {
         "json" => {
             let data = json!({"chat": chat, "messages": messages});
             (
                 data.to_string(),
                 "application/json",
-                format!("{}.json", chat.title),
+                format!("{}.json", safe_title),
             )
         }
         _ => {
@@ -1383,7 +1408,7 @@ async fn export_chat(
                 }
                 md.push_str("\n\n---\n\n");
             }
-            (md, "text/markdown", format!("{}.md", chat.title))
+            (md, "text/markdown", format!("{}.md", safe_title))
         }
     };
 

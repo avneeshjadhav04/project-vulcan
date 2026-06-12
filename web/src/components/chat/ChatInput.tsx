@@ -59,7 +59,7 @@ export default function ChatInput({
   useLayoutEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = '0px'
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 320)}px`
     }
   }, [input])
 
@@ -104,14 +104,9 @@ export default function ChatInput({
             }
           }}
           onDragOver={(e) => e.preventDefault()}
-          className="relative flex items-end gap-2 rounded-glass border border-white/10 bg-layer/50 p-2 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
+          className="relative flex flex-col rounded-glass border border-white/10 bg-layer/50 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
         >
-          <FileUpload 
-            getChatId={getChatId} 
-            chatId={_effectiveChatId}
-            files={attachedFiles} 
-            onFilesChange={onFilesChange} 
-          />
+          {/* Top area: textarea */}
           <textarea
             ref={textareaRef}
             value={input}
@@ -126,68 +121,82 @@ export default function ChatInput({
             rows={2}
             disabled={streaming}
             aria-label="Message input"
-            className="max-h-[200px] min-h-[48px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
+            className="max-h-[320px] min-h-[64px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
           />
 
-          <div className="w-52 shrink-0">
-            <ProviderModelSelector
-              selected={selectedModel}
-              onSelect={onModelChange}
+          {/* Bottom area: controls */}
+          <div className="flex items-end justify-between gap-2 px-2 pb-2">
+            {/* Left: file upload */}
+            <FileUpload 
+              getChatId={getChatId} 
+              chatId={_effectiveChatId}
+              files={attachedFiles} 
+              onFilesChange={onFilesChange} 
             />
-          </div>
 
-          <button
-            onClick={onToggleTools}
-            aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
-              toolsEnabled
-                ? 'bg-support-success/20 text-support-success'
-                : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
-            }`}
-          >
-            <Wrench className="h-4 w-4" aria-hidden="true" />
-          </button>
+            {/* Right: model, tools, voice, send */}
+            <div className="flex items-center gap-1.5">
+              <div className="w-44 shrink-0">
+                <ProviderModelSelector
+                  selected={selectedModel}
+                  onSelect={onModelChange}
+                />
+              </div>
 
-          {voiceSupported && (
-            <button
-              onClick={onToggleVoice}
-              aria-label={isListening ? 'Stop listening' : 'Voice input'}
-              className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
-                isListening
-                  ? 'bg-support-error/20 text-support-error'
-                  : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
-              }`}
-            >
-              {isListening ? (
-                <span className="relative flex h-4 w-4 items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-support-error/40" />
-                  <MicOff className="relative h-4 w-4" aria-hidden="true" />
-                </span>
-              ) : (
-                <Mic className="h-4 w-4" aria-hidden="true" />
+              <button
+                onClick={onToggleTools}
+                aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
+                  toolsEnabled
+                    ? 'bg-support-success/20 text-support-success'
+                    : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
+                }`}
+              >
+                <Wrench className="h-4 w-4" aria-hidden="true" />
+              </button>
+
+              {voiceSupported && (
+                <button
+                  onClick={onToggleVoice}
+                  aria-label={isListening ? 'Stop listening' : 'Voice input'}
+                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
+                    isListening
+                      ? 'bg-support-error/20 text-support-error'
+                      : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
+                  }`}
+                >
+                  {isListening ? (
+                    <span className="relative flex h-4 w-4 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-support-error/40" />
+                      <MicOff className="relative h-4 w-4" aria-hidden="true" />
+                    </span>
+                  ) : (
+                    <Mic className="h-4 w-4" aria-hidden="true" />
+                  )}
+                </button>
               )}
-            </button>
-          )}
 
-          {streaming ? (
-            <button
-              onClick={onStop}
-              aria-label="Stop generating"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
-            >
-              <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
-              <StopCircle className="h-5 w-5" aria-hidden="true" />
-            </button>
-          ) : (
-            <button
-              onClick={onSend}
-              disabled={!input.trim()}
-              aria-label="Send message"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 hover:shadow-interactive/30 disabled:opacity-30 disabled:shadow-none"
-            >
-              <ArrowUp className="h-5 w-5" aria-hidden="true" />
-            </button>
-          )}
+              {streaming ? (
+                <button
+                  onClick={onStop}
+                  aria-label="Stop generating"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
+                  <StopCircle className="h-5 w-5" aria-hidden="true" />
+                </button>
+              ) : (
+                <button
+                  onClick={onSend}
+                  disabled={!input.trim()}
+                  aria-label="Send message"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
+                >
+                  <ArrowUp className="h-5 w-5" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="mt-1.5 flex items-center justify-center gap-2">

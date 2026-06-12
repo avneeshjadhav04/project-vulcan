@@ -186,6 +186,11 @@ pub struct UpdateToolsConfigRequest {
     pub tools_enabled: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateAgentStepsRequest {
+    pub max_agent_steps: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct IntegrationCredential {
     pub id: String,
