@@ -8,3 +8,4 @@ pub mod providers;
 pub mod templates;
 pub mod terminal;
 pub mod settings;
+pub mod transcribe;

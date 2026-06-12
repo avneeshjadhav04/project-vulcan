@@ -14,6 +14,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub jwt_public_key: Option<Vec<u8>>,
     pub sandbox: SandboxState,
+    pub vosk_model: Option<std::sync::Arc<std::sync::Mutex<vosk::Model>>>,
 }
 
 pub async fn auth_middleware(

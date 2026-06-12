@@ -43,5 +43,14 @@ hex = "0.4"
 scraper = "0.20"
 headless_chrome = "1.0.21"
 
+# Audio transcription (Vosk)
+vosk = "0.2"
+# Audio decoding
+hound = "3"
+# Audio resampling
+rubato = "0.15"
+# Audio decoding for WebM/Opus
+symphonia = { version = "0.5", features = ["all", "all-codecs", "all-formats"] }
+
 [dev-dependencies]
 tokio-test = "0.4"

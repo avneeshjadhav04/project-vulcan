@@ -80,12 +80,31 @@ async fn run() -> anyhow::Result<()> {
         .timeout(std::time::Duration::from_secs(600))
         .build()?;
 
+    // Load Vosk model if available
+    println!("[INIT] Loading Vosk model...");
+    let vosk_model = if std::path::Path::new(&config.vosk_model_dir).exists() {
+        match vosk::Model::new(&config.vosk_model_dir) {
+            Some(model) => {
+                println!("[INIT] Vosk model loaded successfully");
+                Some(std::sync::Arc::new(std::sync::Mutex::new(model)))
+            }
+            None => {
+                println!("[INIT] Failed to load Vosk model from {}", config.vosk_model_dir);
+                None
+            }
+        }
+    } else {
+        println!("[INIT] Vosk model not found at {}, voice transcription disabled", config.vosk_model_dir);
+        None
+    };
+
     let state = AppState {
         config: config.clone(),
         db: db_pool,
         http_client,
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
+        vosk_model,
     };
     let bg_state = state.clone();
 
@@ -150,6 +169,9 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
