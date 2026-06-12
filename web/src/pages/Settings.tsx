@@ -64,7 +64,7 @@ const BUILT_IN_PROVIDERS = [
   { id: 'custom', name: 'Custom Provider', base_url: '' },
 ]
 
-type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations'
+type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'signout'
 
 const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
@@ -72,6 +72,7 @@ const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
   { id: 'memory', label: 'Memory', icon: <MemoryStick className="h-4 w-4" /> },
   { id: 'integrations', label: 'Integrations', icon: <Puzzle className="h-4 w-4" /> },
+  { id: 'signout', label: 'Sign Out', icon: <LogOut className="h-4 w-4" /> },
 ]
 
 export default function Settings() {
@@ -86,7 +87,7 @@ export default function Settings() {
   const [error, setError] = useState('')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations']
+  const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations', 'signout']
   const initialTab = validTabs.includes(searchParams.get('tab') as SettingsTab) ? (searchParams.get('tab') as SettingsTab) : 'profile'
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab)
 
@@ -481,25 +482,6 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {/* Sign Out */}
-                <div className="border border-border-subtle bg-layer p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <LogOut className="h-4 w-4 text-support-error" />
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">Sign Out</p>
-                        <p className="text-[11px] text-text-helper">Log out of your account.</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={logout}
-                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
-                    >
-                      <LogOut className="h-3 w-3" />
-                      Sign Out
-                    </button>
-                  </div>
-                </div>
               </motion.div>
             )}
 
@@ -885,6 +867,45 @@ export default function Settings() {
                       <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
                       <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
                     </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Sign Out Tab */}
+            {activeTab === 'signout' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4">
+                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                      <LogOut className="h-4 w-4" />
+                      Sign Out
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      Log out of your Project Vulcan account.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <LogOut className="h-4 w-4 text-support-error" />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Sign Out</p>
+                        <p className="text-[11px] text-text-helper">You will be redirected to the login page.</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={logout}
+                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
+                    >
+                      <LogOut className="h-3 w-3" />
+                      Sign Out
+                    </button>
                   </div>
                 </div>
               </motion.div>
