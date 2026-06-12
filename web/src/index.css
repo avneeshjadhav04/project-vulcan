@@ -3,35 +3,92 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Dark mode (default) */
+    --color-background: #09090b;
+    --color-layer: #18181b;
+    --color-layer-hover: #27272a;
+    --color-layer-active: #3f3f46;
+    --color-layer-selected: #27272a;
+    --color-border-subtle: #27272a;
+    --color-border-strong: #3f3f46;
+    --color-text-primary: #fafafa;
+    --color-text-secondary: #a1a1aa;
+    --color-text-placeholder: #71717a;
+    --color-text-helper: #a1a1aa;
+    --color-text-disabled: #52525b;
+    --color-icon-primary: #fafafa;
+    --color-icon-secondary: #a1a1aa;
+    --color-icon-disabled: #52525b;
+    --color-interactive: #0f62fe;
+    --color-interactive-hover: #0353e9;
+    --color-link-primary: #0f62fe;
+    --color-link-hover: #78a9ff;
+    --color-support-error: #ef4444;
+    --color-support-success: #22c55e;
+    --color-support-warning: #f97316;
+    --color-support-info: #3b82f6;
+    --color-focus: #60a5fa;
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --shadow-interactive: rgba(15, 98, 254, 0.25);
+    --glass-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+    --vibrant-gradient: linear-gradient(135deg, #0f62fe 0%, #0f62fe 100%);
+  }
+
+  html.light {
+    /* Light mode overrides */
+    --color-background: #f8f9fa;
+    --color-layer: #ffffff;
+    --color-layer-hover: #f1f5f9;
+    --color-layer-active: #e2e8f0;
+    --color-layer-selected: #f1f5f9;
+    --color-border-subtle: #e2e8f0;
+    --color-border-strong: #cbd5e1;
+    --color-text-primary: #18181b;
+    --color-text-secondary: #52525b;
+    --color-text-placeholder: #a1a1aa;
+    --color-text-helper: #71717a;
+    --color-text-disabled: #a1a1aa;
+    --color-icon-primary: #18181b;
+    --color-icon-secondary: #52525b;
+    --color-icon-disabled: #a1a1aa;
+    --color-interactive: #0f62fe;
+    --color-interactive-hover: #0353e9;
+    --color-link-primary: #0f62fe;
+    --color-link-hover: #4589ff;
+    --color-support-error: #ef4444;
+    --color-support-success: #22c55e;
+    --color-support-warning: #f97316;
+    --color-support-info: #3b82f6;
+    --color-focus: #60a5fa;
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --shadow-interactive: rgba(15, 98, 254, 0.25);
+    --glass-gradient: linear-gradient(135deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0.01) 100%);
+    --vibrant-gradient: linear-gradient(135deg, #0f62fe 0%, #4589ff 100%);
+  }
+
   html {
     font-family: 'Inter', sans-serif;
-    background-color: #161616;
-    color: #f4f4f4;
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     overflow-x: hidden;
-    background-color: #09090b; /* matches new tailwind background */
-  }
-
-  html.light {
-    background-color: #f8f9fa;
-    color: #18181b;
-  }
-
-  html.light body {
-    background-color: #f8f9fa;
+    background-color: var(--color-background);
   }
 
   ::selection {
-    background-color: #3f3f46;
-    color: #fafafa;
+    background-color: var(--color-layer-active);
+    color: var(--color-text-primary);
   }
 
   html.light ::selection {
-    background-color: #0f62fe;
+    background-color: var(--color-interactive);
     color: #ffffff;
   }
 
@@ -45,12 +102,12 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #3f3f46;
+    background: var(--color-layer-active);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #52525b;
+    background: var(--color-text-secondary);
   }
 
   html.light ::-webkit-scrollbar-thumb {
@@ -64,11 +121,17 @@
 
 @layer components {
   .carbon-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-carbon bg-vibrant-gradient px-4 py-3 text-sm font-medium text-white shadow-lg transition-all hover:opacity-90 hover:shadow-interactive/25 focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-carbon bg-vibrant-gradient px-4 py-3 text-sm font-medium text-white shadow-lg transition-all hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .carbon-btn-primary:hover {
+    box-shadow: 0 10px 15px -3px var(--shadow-interactive);
   }
 
   .carbon-btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-carbon border border-border-subtle bg-layer px-4 py-3 text-sm font-medium text-text-primary shadow-sm transition-all hover:border-interactive/50 hover:bg-layer-hover focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-carbon border border-border-subtle bg-layer px-4 py-3 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer-hover focus:outline-none focus:ring-2 focus:ring-interactive focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .carbon-btn-secondary:hover {
+    border-color: color-mix(in srgb, var(--color-interactive) 50%, transparent);
   }
 
   .carbon-btn-ghost {
@@ -80,7 +143,11 @@
   }
 
   .carbon-layer {
-    @apply rounded-glass bg-glass-gradient backdrop-blur-xl border border-white/10;
+    @apply rounded-glass bg-glass-gradient backdrop-blur-xl;
+    border: 1px solid color-mix(in srgb, var(--color-white) 10%, transparent);
+  }
+  html.light .carbon-layer {
+    border: 1px solid color-mix(in srgb, var(--color-black) 5%, transparent);
   }
 }
 
