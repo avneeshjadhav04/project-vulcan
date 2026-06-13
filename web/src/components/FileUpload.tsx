@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import axios from 'axios'
 import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon } from 'lucide-react'
+import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon, FileType, FileType2, Table2 } from 'lucide-react'
 
 export interface UploadedFile {
   id: string
@@ -19,11 +19,50 @@ const formatSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const getFileIcon = (mimeType: string) => {
+const getFileIcon = (mimeType: string, filename: string) => {
   if (mimeType.startsWith('image/')) return Image
+  
+  // Documents
   if (mimeType.includes('pdf')) return FileText
+  if (mimeType.includes('word') || mimeType.includes('document')) return FileType
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return FileType2
+  
+  // Spreadsheets
   if (mimeType.includes('spreadsheet') || mimeType.includes('csv') || mimeType.includes('excel')) return FileSpreadsheet
-  if (mimeType.includes('code') || mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('text')) return FileCode
+  
+  // Code/Text
+  if (mimeType.includes('code') || mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('plain')) return FileCode
+  
+  // Check by extension for files with generic mime types
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  switch (ext) {
+    case 'pdf': return FileText
+    case 'docx':
+    case 'doc': return FileType
+    case 'xlsx':
+    case 'xls':
+    case 'csv': return Table2
+    case 'pptx':
+    case 'ppt': return FileType2
+    case 'txt':
+    case 'md':
+    case 'json':
+    case 'xml':
+    case 'html':
+    case 'css':
+    case 'js':
+    case 'ts':
+    case 'py':
+    case 'rs':
+    case 'go':
+    case 'java':
+    case 'cpp':
+    case 'c':
+    case 'sql':
+    case 'yaml':
+    case 'yml': return FileCode
+  }
+  
   return FileIcon
 }
 
@@ -159,7 +198,7 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
             className="mb-2 flex flex-wrap gap-1.5 overflow-hidden"
           >
             {files.map((file) => {
-              const Icon = getFileIcon(file.mime_type)
+              const Icon = getFileIcon(file.mime_type, file.filename)
               const isImage = file.mime_type.startsWith('image/')
               
               return (
