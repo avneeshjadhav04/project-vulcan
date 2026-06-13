@@ -453,7 +453,7 @@ async fn execute_tool(
             }
             let operation = args["operation"].as_str().ok_or("Missing operation")?;
             let new_content = args["new_content"].as_str().ok_or("Missing new_content")?;
-            let workspace = format!("./workspace/{}", chat_id);
+            let workspace = format!("./workspace/{}", user_id);
             let path = std::path::Path::new(&workspace).join(filename);
             let mut content = tokio::fs::read_to_string(&path)
                 .await
