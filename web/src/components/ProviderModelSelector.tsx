@@ -22,10 +22,11 @@ export interface SelectedModel {
   modelId: string
 }
 
+const DROPDOWN_WIDTH = 384 // w-96 in px
+
 interface DropdownPos {
   left: number
   bottom: number
-  width: number
 }
 
 export default function ProviderModelSelector({
@@ -52,14 +53,16 @@ export default function ProviderModelSelector({
     retry: false,
   })
 
-  // Calculate dropdown position from trigger button
+  // Calculate dropdown position from trigger button — centered over trigger, clamped to viewport
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
+    let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
+    // Clamp so dropdown never overflows left or right edge
+    left = Math.max(8, Math.min(left, window.innerWidth - DROPDOWN_WIDTH - 8))
     setDropdownPos({
-      left: rect.left,
+      left,
       bottom: rect.top,
-      width: rect.width,
     })
   }, [open])
 
@@ -69,10 +72,11 @@ export default function ProviderModelSelector({
     const update = () => {
       if (triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect()
+        let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
+        left = Math.max(8, Math.min(left, window.innerWidth - DROPDOWN_WIDTH - 8))
         setDropdownPos({
-          left: rect.left,
+          left,
           bottom: rect.top,
-          width: rect.width,
         })
       }
     }
@@ -149,8 +153,8 @@ export default function ProviderModelSelector({
           className="fixed z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
           style={{
             left: dropdownPos.left,
-            bottom: `calc(100vh - ${dropdownPos.bottom}px)`,
-            width: 384,
+            bottom: `calc(100vh - ${dropdownPos.bottom}px + 8px)`,
+            width: DROPDOWN_WIDTH,
           }}
         >
           {/* Search */}
