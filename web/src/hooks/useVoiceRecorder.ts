@@ -3,6 +3,80 @@ import { api } from '../lib/api'
 
 type VoiceState = 'idle' | 'recording' | 'transcribing' | 'error'
 
+// Convert AudioBuffer to mono WAV Blob at 16kHz
+async function audioBufferToWav(buffer: AudioBuffer): Promise<Blob> {
+  // Resample to 16kHz mono
+  const targetSampleRate = 16000
+  const offlineCtx = new OfflineAudioContext(1, Math.ceil(buffer.duration * targetSampleRate), targetSampleRate)
+  const source = offlineCtx.createBufferSource()
+  source.buffer = buffer
+  source.connect(offlineCtx.destination)
+  source.start()
+  const resampled = await offlineCtx.startRendering()
+
+  const numChannels = 1
+  const numFrames = resampled.length
+  const bytesPerSample = 2
+  const blockAlign = numChannels * bytesPerSample
+  const byteRate = targetSampleRate * blockAlign
+  const dataSize = numFrames * blockAlign
+
+  // WAV header + data
+  const headerSize = 44
+  const wavBuffer = new ArrayBuffer(headerSize + dataSize)
+  const view = new DataView(wavBuffer)
+  let offset = 0
+
+  // RIFF chunk descriptor
+  writeString(view, offset, 'RIFF')
+  offset += 4
+  view.setUint32(offset, 36 + dataSize, true)
+  offset += 4
+  writeString(view, offset, 'WAVE')
+  offset += 4
+
+  // fmt sub-chunk
+  writeString(view, offset, 'fmt ')
+  offset += 4
+  view.setUint32(offset, 16, true)
+  offset += 4
+  view.setUint16(offset, 1, true)
+  offset += 2
+  view.setUint16(offset, numChannels, true)
+  offset += 2
+  view.setUint32(offset, targetSampleRate, true)
+  offset += 4
+  view.setUint32(offset, byteRate, true)
+  offset += 4
+  view.setUint16(offset, blockAlign, true)
+  offset += 2
+  view.setUint16(offset, 16, true)
+  offset += 2
+
+  // data sub-chunk
+  writeString(view, offset, 'data')
+  offset += 4
+  view.setUint32(offset, dataSize, true)
+  offset += 4
+
+  // Write PCM samples
+  const channelData = resampled.getChannelData(0)
+  for (let i = 0; i < numFrames; i++) {
+    const sample = Math.max(-1, Math.min(1, channelData[i]))
+    const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF
+    view.setInt16(offset, intSample, true)
+    offset += 2
+  }
+
+  return new Blob([wavBuffer], { type: 'audio/wav' })
+}
+
+function writeString(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i))
+  }
+}
+
 export function useVoiceRecorder() {
   const [state, setState] = useState<VoiceState>('idle')
   const [transcript, setTranscript] = useState('')
@@ -17,7 +91,7 @@ export function useVoiceRecorder() {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/wav' })
+      const recorder = new MediaRecorder(stream)
 
       audioChunks.current = []
       recorder.ondataavailable = (e) => {
@@ -64,12 +138,20 @@ export function useVoiceRecorder() {
 
     setState('transcribing')
 
-    // Send to backend
-    const blob = new Blob(audioChunks.current, { type: 'audio/wav' })
-    const formData = new FormData()
-    formData.append('audio', blob)
-
     try {
+      // Decode WebM/Opus to AudioBuffer
+      const webmBlob = new Blob(audioChunks.current, { type: 'audio/webm' })
+      const arrayBuffer = await webmBlob.arrayBuffer()
+      const audioContext = new AudioContext()
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+      audioContext.close()
+
+      // Convert to WAV
+      const wavBlob = await audioBufferToWav(audioBuffer)
+
+      const formData = new FormData()
+      formData.append('audio', wavBlob)
+
       const response = await api.post('/transcribe', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
