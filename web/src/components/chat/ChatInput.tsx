@@ -23,9 +23,10 @@ interface ChatInputProps {
   onModelChange: (sel: SelectedModel) => void
   attachedFiles: UploadedFile[]
   onFilesChange: (files: UploadedFile[]) => void
-  voiceState: 'idle' | 'recording' | 'transcribing' | 'error'
+  voiceState: 'idle' | 'connecting' | 'recording' | 'error'
   voiceRecordingTime: number
   voiceTranscript: string
+  voicePartialText: string
   onStartVoice: () => void
   onStopVoice: () => void
   onCancelVoice: () => void
@@ -51,6 +52,7 @@ export default function ChatInput({
   voiceState,
   voiceRecordingTime,
   voiceTranscript,
+  voicePartialText,
   onStartVoice,
   onStopVoice,
   onCancelVoice,
@@ -114,26 +116,15 @@ export default function ChatInput({
           className="relative flex flex-col rounded-glass border border-white/10 bg-layer/50 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
         >
           {/* Top area: textarea or voice recording */}
-          {voiceState === 'recording' ? (
+          {voiceState === 'connecting' ? (
             <div className="flex items-center gap-3 px-4 py-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/20">
-                <span className="flex h-3 w-3 rounded-full bg-support-error animate-pulse" />
-              </div>
+              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
               <div className="flex-1">
-                <div className="text-sm text-text-primary font-medium">
-                  Recording... {(voiceRecordingTime / 1000).toFixed(1)}s
-                </div>
+                <div className="text-sm text-text-primary">Connecting...</div>
                 <div className="text-[10px] text-text-helper">
-                  Speak now. Click stop when done.
+                  Setting up voice transcription
                 </div>
               </div>
-              <button
-                onClick={onStopVoice}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-layer-hover text-text-primary hover:bg-layer-active transition-colors"
-                aria-label="Stop recording"
-              >
-                <StopCircle className="h-4 w-4" />
-              </button>
               <button
                 onClick={onCancelVoice}
                 className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
@@ -141,10 +132,39 @@ export default function ChatInput({
                 Cancel
               </button>
             </div>
-          ) : voiceState === 'transcribing' ? (
-            <div className="flex items-center gap-3 px-4 py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-              <div className="text-sm text-text-primary">Transcribing...</div>
+          ) : voiceState === 'recording' ? (
+            <div className="flex flex-col px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/20">
+                  <span className="flex h-3 w-3 rounded-full bg-support-error animate-pulse" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-text-primary font-medium">
+                    Recording... {(voiceRecordingTime / 1000).toFixed(1)}s
+                  </div>
+                  <div className="text-[10px] text-text-helper">
+                    Speak now. Click stop when done.
+                  </div>
+                </div>
+                <button
+                  onClick={onStopVoice}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-layer-hover text-text-primary hover:bg-layer-active transition-colors"
+                  aria-label="Stop recording"
+                >
+                  <StopCircle className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={onCancelVoice}
+                  className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              {voicePartialText && (
+                <div className="mt-2 text-sm text-text-primary/80 italic">
+                  {voicePartialText}
+                </div>
+              )}
             </div>
           ) : (
             <textarea
@@ -242,13 +262,13 @@ export default function ChatInput({
         </div>
 
         <div className="mt-1.5 flex items-center justify-center gap-2">
-          {voiceState === 'recording' ? (
+          {voiceState === 'connecting' ? (
+            <span className="text-[10px] text-interactive">
+              Connecting to transcription service...
+            </span>
+          ) : voiceState === 'recording' ? (
             <span className="text-[10px] text-support-error">
               Recording... speak clearly
-            </span>
-          ) : voiceState === 'transcribing' ? (
-            <span className="text-[10px] text-interactive">
-              Transcribing your voice...
             </span>
           ) : voiceState === 'error' ? (
             <span className="text-[10px] text-support-error">

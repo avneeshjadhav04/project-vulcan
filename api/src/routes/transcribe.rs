@@ -1,13 +1,15 @@
 use axum::{
-    extract::{Multipart, State},
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{Extension, Multipart, State},
     http::StatusCode,
-    response::Json,
-    routing::post,
+    response::{Json, Response},
+    routing::{get, post},
     Router,
 };
 use serde::Serialize;
 
 use crate::middleware::AppState;
+use crate::models::Claims;
 
 #[derive(Serialize)]
 struct TranscriptionResponse {
@@ -15,13 +17,163 @@ struct TranscriptionResponse {
     confidence: f32,
 }
 
-#[derive(Serialize)]
-struct TranscriptionError {
-    error: String,
+enum StreamResult {
+    Partial(String),
+    Final { text: String, confidence: f32 },
+    Error(String),
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/transcribe", post(transcribe_audio))
+    Router::new()
+        .route("/transcribe", post(transcribe_audio))
+        .route("/transcribe/stream", get(transcribe_stream))
+}
+
+async fn transcribe_stream(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
+) -> Response {
+    ws.on_upgrade(move |socket| handle_stream(socket, state))
+}
+
+async fn handle_stream(mut socket: WebSocket, state: AppState) {
+    let model = match state.vosk_model {
+        Some(m) => m,
+        None => {
+            let msg = serde_json::json!({"type": "error", "error": "Vosk model not loaded" }).to_string();
+            let _ = socket.send(Message::Text(msg)).await;
+            let _ = socket.close().await;
+            return;
+        }
+    };
+
+    // Audio channel: async task -> blocking Vosk thread
+    let (audio_tx, mut audio_rx) = tokio::sync::mpsc::channel::<Vec<i16>>(128);
+    // Result channel: blocking Vosk thread -> async task
+    let (result_tx, mut result_rx) = tokio::sync::mpsc::channel::<StreamResult>(128);
+
+    // Spawn Vosk recognizer on a dedicated blocking thread
+    let vosk_handle = tokio::task::spawn_blocking(move || {
+        let model = match model.lock() {
+            Ok(m) => m,
+            Err(e) => {
+                let _ = result_tx.blocking_send(StreamResult::Error(format!("Model lock failed: {:?}", e)));
+                return;
+            }
+        };
+
+        let mut recognizer = match vosk::Recognizer::new(&*model, 16000.0) {
+            Some(r) => r,
+            None => {
+                let _ = result_tx.blocking_send(StreamResult::Error("Failed to create recognizer".to_string()));
+                return;
+            }
+        };
+
+        // Enable partial results
+        recognizer.set_partial_words(true);
+
+        let mut last_partial = String::new();
+
+        while let Some(chunk) = audio_rx.blocking_recv() {
+            recognizer.accept_waveform(&chunk);
+
+            let partial = recognizer.partial_result();
+            let text = partial.partial.to_string();
+            if !text.is_empty() && text != last_partial {
+                last_partial = text.clone();
+                if result_tx.blocking_send(StreamResult::Partial(text)).is_err() {
+                    break;
+                }
+            }
+        }
+
+        // Final result
+        let result = recognizer.final_result();
+        if let Some(single) = result.single() {
+            let text = single.text.to_string();
+            let confidence = if single.result.is_empty() {
+                0.0
+            } else {
+                single.result.iter().map(|r| r.conf as f32).sum::<f32>() / single.result.len() as f32
+            };
+            let _ = result_tx.blocking_send(StreamResult::Final { text, confidence });
+        }
+    });
+
+    // Main async loop: read from WebSocket and send audio, or read results and send back
+    let mut audio_tx = Some(audio_tx);
+    let mut running = true;
+
+    while running {
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Binary(data))) => {
+                        // Convert little-endian bytes to i16 PCM
+                        if data.len() % 2 != 0 {
+                            continue;
+                        }
+                        let i16_data: Vec<i16> = data.chunks_exact(2)
+                            .map(|b| i16::from_le_bytes([b[0], b[1]]))
+                            .collect();
+                        if let Some(ref tx) = audio_tx {
+                            if tx.send(i16_data).await.is_err() {
+                                // Vosk thread died
+                                audio_tx = None;
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Text(text))) => {
+                        if text == "stop" {
+                            // Client wants to stop - drop audio channel to signal EOS
+                            audio_tx = None;
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => {
+                        // Client disconnected
+                        audio_tx = None;
+                        running = false;
+                    }
+                    _ => {}
+                }
+            }
+            result = result_rx.recv() => {
+                match result {
+                    Some(StreamResult::Partial(text)) => {
+                        let msg = serde_json::json!({"type": "partial", "text": text}).to_string();
+                        if socket.send(Message::Text(msg)).await.is_err() {
+                            running = false;
+                        }
+                    }
+                    Some(StreamResult::Final { text, confidence }) => {
+                        let msg = serde_json::json!({
+                            "type": "final",
+                            "text": text,
+                            "confidence": confidence
+                        }).to_string();
+                        let _ = socket.send(Message::Text(msg)).await;
+                        running = false;
+                    }
+                    Some(StreamResult::Error(error)) => {
+                        let msg = serde_json::json!({"type": "error", "error": error}).to_string();
+                        let _ = socket.send(Message::Text(msg)).await;
+                        running = false;
+                    }
+                    None => {
+                        // Vosk thread closed channel
+                        running = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // Make sure audio channel is dropped so Vosk thread exits
+    drop(audio_tx);
+    let _ = vosk_handle.await;
+    let _ = socket.close().await;
 }
 
 async fn transcribe_audio(
