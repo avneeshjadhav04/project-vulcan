@@ -104,7 +104,7 @@ export default function ProviderModelSelector({
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md">
+        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer shadow-xl">
           {/* Search */}
           <div className="border-b border-white/5 p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
