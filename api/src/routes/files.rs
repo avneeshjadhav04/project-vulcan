@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 
+use calamine::Reader;
 use crate::{middleware::AppState, models::Claims};
 
 pub fn router() -> Router<AppState> {
@@ -248,24 +249,149 @@ async fn download_file(
 }
 
 fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> {
+    // First, try MIME type detection
     match mime_type {
         "text/plain" | "text/markdown" | "text/x-markdown" => String::from_utf8(data.to_vec()).ok(),
         "text/csv" => String::from_utf8(data.to_vec()).ok(),
         "application/json" => String::from_utf8(data.to_vec()).ok(),
+        "application/pdf" => extract_pdf_text(data),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => extract_docx_text(data),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => extract_xlsx_text(data),
+        "application/vnd.ms-excel" => extract_xlsx_text(data),
         _ => {
             // For other types, try to detect by extension
             let ext = std::path::Path::new(filename)
                 .extension()
                 .and_then(|e| e.to_str())
-                .unwrap_or("");
-            match ext {
+                .unwrap_or("")
+                .to_lowercase();
+            match ext.as_str() {
                 "txt" | "md" | "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "json" | "csv"
                 | "yaml" | "yml" | "toml" | "html" | "css" | "sh" | "sql" | "go" | "c" | "cpp"
                 | "h" | "java" | "kt" | "swift" | "rb" | "php" | "xml" | "log" | "ini" | "cfg"
                 | "conf" => String::from_utf8(data.to_vec()).ok(),
+                "pdf" => extract_pdf_text(data),
+                "docx" => extract_docx_text(data),
+                "xlsx" | "xls" => extract_xlsx_text(data),
                 _ => None,
             }
         }
+    }
+}
+
+fn extract_pdf_text(data: &[u8]) -> Option<String> {
+    match lopdf::Document::load_mem(data) {
+        Ok(doc) => {
+            let mut text = String::new();
+            for (i, page) in doc.get_pages().iter().enumerate() {
+                if let Ok(page_text) = doc.extract_text(&[*page.0]) {
+                    if i > 0 {
+                        text.push('\n');
+                    }
+                    text.push_str(&page_text);
+                }
+            }
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
+        Err(e) => {
+            tracing::warn!("PDF extraction failed: {}", e);
+            None
+        }
+    }
+}
+
+fn extract_docx_text(data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    
+    // Read word/document.xml from the DOCX archive
+    let mut doc_xml = String::new();
+    {
+        let mut file = archive.by_name("word/document.xml").ok()?;
+        std::io::Read::read_to_string(&mut file, &mut doc_xml).ok()?;
+    }
+    
+    // Use xml-rs to parse the XML properly
+    let mut text = String::new();
+    let mut current_paragraph = String::new();
+    let mut in_text_element = false;
+    
+    let reader = xml::reader::EventReader::from_str(&doc_xml);
+    
+    for event in reader {
+        match event {
+            Ok(xml::reader::XmlEvent::StartElement { name, .. }) => {
+                if name.local_name == "t" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    in_text_element = true;
+                }
+            }
+            Ok(xml::reader::XmlEvent::EndElement { name }) => {
+                if name.local_name == "t" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    in_text_element = false;
+                } else if name.local_name == "p" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    // End of paragraph
+                    if !current_paragraph.is_empty() {
+                        if !text.is_empty() {
+                            text.push('\n');
+                        }
+                        text.push_str(&current_paragraph);
+                        current_paragraph.clear();
+                    }
+                }
+            }
+            Ok(xml::reader::XmlEvent::Characters(content)) => {
+                if in_text_element {
+                    current_paragraph.push_str(&content);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    // Don't forget the last paragraph if it wasn't ended
+    if !current_paragraph.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&current_paragraph);
+    }
+    
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text.trim().to_string())
+    }
+}
+
+fn extract_xlsx_text(data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut workbook = calamine::Xlsx::new(cursor).ok()?;
+    
+    let mut text = String::new();
+    if let Some(Ok(range)) = workbook.worksheet_range_at(0) {
+        let rows = range.rows();
+        for row in rows {
+            let row_text: Vec<String> = row
+                .iter()
+                .map(|cell| cell.to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !row_text.is_empty() {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&row_text.join("\t"));
+            }
+        }
+    }
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
     }
 }
 
