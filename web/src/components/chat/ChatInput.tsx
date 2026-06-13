@@ -14,7 +14,7 @@ import FileUpload, { type UploadedFile } from '../FileUpload'
 interface ChatInputProps {
   input: string
   onInputChange: (value: string) => void
-  onSend: () => void
+  onSend: (text?: string) => void
   onStop: () => void
   streaming: boolean
   effectiveChatId?: string
@@ -169,10 +169,11 @@ export default function ChatInput({
           ) : (
             <textarea
               ref={textareaRef}
-              value={voiceTranscript ? voiceTranscript : input}
+              value={voiceTranscript || input}
               onChange={(e) => {
                 if (voiceTranscript) {
-                  onVoiceTranscript(e.target.value)
+                  onInputChange(e.target.value)
+                  onVoiceTranscript('')
                 } else {
                   onInputChange(e.target.value)
                 }
@@ -180,7 +181,10 @@ export default function ChatInput({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  onSend()
+                  const text = voiceTranscript || input.trim()
+                  onSend(text)
+                  onInputChange('')
+                  onVoiceTranscript('')
                 }
               }}
               placeholder="Message AI..."
@@ -244,11 +248,10 @@ export default function ChatInput({
               ) : (
                 <button
                   onClick={() => {
-                    if (voiceTranscript) {
-                      onInputChange(voiceTranscript)
-                      onVoiceTranscript('')
-                    }
-                    onSend()
+                    const text = voiceTranscript || input.trim()
+                    onSend(text)
+                    onInputChange('')
+                    onVoiceTranscript('')
                   }}
                   disabled={!input.trim() && !voiceTranscript.trim()}
                   aria-label="Send message"

@@ -161,8 +161,8 @@ export default function ChatInterface({
     const currentFiles = [...attachedFiles]
     if (!textOverride) {
       setInput('')
-      setAttachedFiles([])
     }
+    setAttachedFiles([])
 
     await startStream(text, {
       effectiveChatId,
@@ -395,7 +395,7 @@ export default function ChatInterface({
       <ChatInput
         input={input}
         onInputChange={setInput}
-        onSend={() => handleSend()}
+        onSend={(text) => handleSend(text)}
         onStop={stopStream}
         streaming={streaming}
         effectiveChatId={effectiveChatId}
