@@ -23,7 +23,6 @@ export function useVoiceStreaming() {
   const streamRef = useRef<MediaStream | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number>(0)
-  const partialTextRef = useRef<string>('')
 
   const startRecording = useCallback(async () => {
     try {
@@ -31,7 +30,6 @@ export function useVoiceStreaming() {
       setError(null)
       setTranscript('')
       setPartialText('')
-      partialTextRef.current = ''
       setRecordingTime(0)
 
       // Build WebSocket URL
@@ -105,12 +103,10 @@ export function useVoiceStreaming() {
         try {
           const data: StreamMessage = JSON.parse(event.data)
           if (data.type === 'partial' && data.text) {
-            partialTextRef.current = data.text
             setPartialText(data.text)
           } else if (data.type === 'final' && data.text !== undefined) {
             setTranscript(data.text)
             setPartialText('')
-            partialTextRef.current = ''
             setState('idle')
             cleanup()
           } else if (data.type === 'error') {
