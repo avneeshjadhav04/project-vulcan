@@ -49,6 +49,7 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
     pub parent_id: Option<String>,
+    pub attachments: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -144,6 +145,7 @@ pub struct SendMessageRequest {
     pub content: String,
     pub is_regenerate: Option<bool>,
     pub parent_id: Option<String>,
+    pub attachments: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

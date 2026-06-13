@@ -16,6 +16,7 @@ import {
   ThumbsDown,
   AlertTriangle,
   RefreshCw,
+  FileText,
 } from 'lucide-react'
 import { markdownComponents, extractArtifacts, stripArtifacts, ArtifactCard } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
@@ -29,6 +30,7 @@ interface MessageItem {
   tokens_used?: number
   tool_name?: string
   tool_call_id?: string
+  attachments?: string
 }
 
 interface MessageBubbleProps {
@@ -213,6 +215,27 @@ function MessageBubble({
             </div>
           ) : (
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+          )}
+          {/* Attachments */}
+          {msg.attachments && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {(() => {
+                try {
+                  const attachments = JSON.parse(msg.attachments)
+                  return attachments.map((filename: string, index: number) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-layer/60 px-2 py-0.5 text-[10px] text-text-secondary"
+                    >
+                      <FileText className="h-3 w-3" />
+                      {filename}
+                    </span>
+                  ))
+                } catch {
+                  return null
+                }
+              })()}
+            </div>
           )}
         </div>
 

@@ -1565,6 +1565,48 @@ fn build_messages_payload(
     payload
 }
 
+async fn resolve_message_attachments(
+    db: &sqlx::SqlitePool,
+    messages: &mut [Message],
+) {
+    for msg in messages.iter_mut() {
+        if let Some(attachments_json) = &msg.attachments {
+            if let Ok(attachment_names) = serde_json::from_str::<Vec<String>>(attachments_json) {
+                let mut file_contents = Vec::new();
+                for filename in attachment_names {
+                    if let Ok(file) = sqlx::query_as::<_, crate::models::FileRecord>(
+                        "SELECT * FROM files WHERE filename = ?1 AND chat_id = ?2 ORDER BY created_at DESC LIMIT 1"
+                    )
+                    .bind(&filename)
+                    .bind(&msg.chat_id)
+                    .fetch_optional(db)
+                    .await
+                    {
+                        if let Some(file) = file {
+                            if let Some(extracted_text) = file.extracted_text {
+                                file_contents.push(format!(
+                                    "[File: {}]\n```\n{}\n```",
+                                    file.filename,
+                                    extracted_text
+                                ));
+                            } else {
+                                file_contents.push(format!("[File: {}]", file.filename));
+                            }
+                        }
+                    }
+                }
+                if !file_contents.is_empty() {
+                    if !msg.content.is_empty() {
+                        msg.content = format!("{}\n\n{}", file_contents.join("\n\n"), msg.content);
+                    } else {
+                        msg.content = file_contents.join("\n\n");
+                    }
+                }
+            }
+        }
+    }
+}
+
 async fn send_message(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
@@ -1598,10 +1640,12 @@ async fn send_message(
     let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
     let is_regenerate = req.is_regenerate.unwrap_or(false);
+    let attachments_json = req.attachments.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
     if !is_regenerate {
-        sqlx::query("INSERT INTO messages (chat_id, role, content) VALUES (?1, 'user', ?2)")
+        sqlx::query("INSERT INTO messages (chat_id, role, content, attachments) VALUES (?1, 'user', ?2, ?3)")
             .bind(id.clone())
             .bind(content)
+            .bind(attachments_json.as_deref())
             .execute(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -1630,12 +1674,15 @@ async fn send_message(
         .execute(&state.db)
         .await;
 
-    let history: Vec<Message> =
+    let mut history: Vec<Message> =
         sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
             .bind(id.clone())
             .fetch_all(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Resolve file attachments for AI context
+    resolve_message_attachments(&state.db, &mut history).await;
 
     let connected_integrations: Vec<(String,)> = sqlx::query_as(
         "SELECT provider FROM integration_credentials WHERE user_id = ?1 AND provider IN ('google', 'todoist')"

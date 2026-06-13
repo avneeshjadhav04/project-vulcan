@@ -141,7 +141,9 @@ export function useChatStream(): [StreamState, StreamActions] {
         currentChatId = currentChatId as string
       }
 
-      let messageContent = text
+      // Build AI context with file contents (for AI only, not displayed to user)
+      let aiContent = text
+      let attachmentNames: string[] = []
       if (attachedFiles.length > 0) {
         const fileContexts = attachedFiles
             .map((f) => {
@@ -151,7 +153,8 @@ export function useChatStream(): [StreamState, StreamActions] {
             return `[File: ${f.filename}]`
           })
           .join('\n\n')
-        messageContent = `${fileContexts}\n\n${text}`
+        aiContent = `${fileContexts}\n\n${text}`
+        attachmentNames = attachedFiles.map(f => f.filename)
       }
 
       const endpoint = `/api/chats/${currentChatId}/message`
@@ -162,7 +165,7 @@ export function useChatStream(): [StreamState, StreamActions] {
           'X-CSRF-Token': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || '',
         },
         credentials: 'include',
-        body: JSON.stringify({ content: messageContent, is_regenerate: isRegenerate }),
+        body: JSON.stringify({ content: aiContent, attachments: attachmentNames, is_regenerate: isRegenerate }),
         signal: controller.signal,
       })
 
