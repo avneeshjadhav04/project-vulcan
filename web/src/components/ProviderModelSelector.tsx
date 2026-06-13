@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { ChevronUp, Check, Loader2, Search, Cpu, AlertCircle, Plus } from 'lucide-react'
@@ -22,13 +22,6 @@ export interface SelectedModel {
   modelId: string
 }
 
-const DROPDOWN_WIDTH = 384 // w-96 in px
-
-interface DropdownPos {
-  left: number
-  bottom: number
-}
-
 export default function ProviderModelSelector({
   selected,
   onSelect,
@@ -38,9 +31,7 @@ export default function ProviderModelSelector({
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
   const navigate = useNavigate()
 
   const { data, isLoading, error } = useQuery({
@@ -52,41 +43,6 @@ export default function ProviderModelSelector({
     enabled: open,
     retry: false,
   })
-
-  // Calculate dropdown position from trigger button — centered over trigger, clamped to viewport
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
-    let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
-    // Clamp so dropdown never overflows left or right edge
-    left = Math.max(8, Math.min(left, window.innerWidth - DROPDOWN_WIDTH - 8))
-    setDropdownPos({
-      left,
-      bottom: rect.top,
-    })
-  }, [open])
-
-  // Update position on resize/scroll
-  useEffect(() => {
-    if (!open) return
-    const update = () => {
-      if (triggerRef.current) {
-        const rect = triggerRef.current.getBoundingClientRect()
-        let left = rect.left + rect.width / 2 - DROPDOWN_WIDTH / 2
-        left = Math.max(8, Math.min(left, window.innerWidth - DROPDOWN_WIDTH - 8))
-        setDropdownPos({
-          left,
-          bottom: rect.top,
-        })
-      }
-    }
-    window.addEventListener('resize', update)
-    window.addEventListener('scroll', update, true)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('scroll', update, true)
-    }
-  }, [open])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -135,7 +91,6 @@ export default function ProviderModelSelector({
   return (
     <div ref={ref} className="relative">
       <button
-        ref={triggerRef}
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between gap-2 rounded-carbon border border-white/10 bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
       >
@@ -148,15 +103,8 @@ export default function ProviderModelSelector({
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && dropdownPos && (
-        <div
-          className="fixed z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
-          style={{
-            left: dropdownPos.left,
-            bottom: `calc(100vh - ${dropdownPos.bottom}px + 8px)`,
-            width: DROPDOWN_WIDTH,
-          }}
-        >
+      {open && (
+        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md">
           {/* Search */}
           <div className="border-b border-white/5 p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
