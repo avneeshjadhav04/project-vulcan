@@ -17,7 +17,7 @@ export function useVoiceRecorder() {
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/wav' })
 
       audioChunks.current = []
       recorder.ondataavailable = (e) => {
@@ -65,7 +65,7 @@ export function useVoiceRecorder() {
     setState('transcribing')
 
     // Send to backend
-    const blob = new Blob(audioChunks.current, { type: 'audio/webm' })
+    const blob = new Blob(audioChunks.current, { type: 'audio/wav' })
     const formData = new FormData()
     formData.append('audio', blob)
 
