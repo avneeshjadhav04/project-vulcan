@@ -13,6 +13,7 @@ use axum::{
     routing::{delete, get, patch, post},
     Router,
 };
+use base64::Engine;
 use futures::stream::StreamExt;
 use serde_json::json;
 use std::collections::HashMap;
@@ -1558,6 +1559,31 @@ fn build_messages_payload(
                 "content": msg.content
             }));
         } else {
+            // Check if message contains multimodal image data
+            if msg.content.starts_with("__MULTIMODAL__") {
+                let json_str = msg.content.trim_start_matches("__MULTIMODAL__");
+                if let Ok(multimodal) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    let text = multimodal["text"].as_str().unwrap_or("");
+                    let empty_images = Vec::new();
+                    let images = multimodal["images"].as_array().unwrap_or(&empty_images);
+                    
+                    let mut content_parts = vec![json!({"type": "text", "text": text})];
+                    for img_url in images {
+                        if let Some(url) = img_url.as_str() {
+                            content_parts.push(json!({
+                                "type": "image_url",
+                                "image_url": {"url": url}
+                            }));
+                        }
+                    }
+                    
+                    payload.push(json!({
+                        "role": msg.role,
+                        "content": content_parts
+                    }));
+                    continue;
+                }
+            }
             payload.push(json!({"role": msg.role, "content": msg.content}));
         }
     }
@@ -1572,7 +1598,9 @@ async fn resolve_message_attachments(
     for msg in messages.iter_mut() {
         if let Some(attachments_json) = &msg.attachments {
             if let Ok(attachment_names) = serde_json::from_str::<Vec<String>>(attachments_json) {
-                let mut file_contents = Vec::new();
+                let mut text_contents = Vec::new();
+                let mut image_data_urls = Vec::new();
+                
                 for filename in attachment_names {
                     if let Ok(file) = sqlx::query_as::<_, crate::models::FileRecord>(
                         "SELECT * FROM files WHERE filename = ?1 AND chat_id = ?2 ORDER BY created_at DESC LIMIT 1"
@@ -1583,24 +1611,51 @@ async fn resolve_message_attachments(
                     .await
                     {
                         if let Some(file) = file {
-                            if let Some(extracted_text) = file.extracted_text {
-                                file_contents.push(format!(
-                                    "[File: {}]\n```\n{}\n```",
-                                    file.filename,
-                                    extracted_text
-                                ));
+                            let is_image = file.mime_type.starts_with("image/");
+                            
+                            if is_image {
+                                // Read image and encode as base64
+                                if let Ok(data) = tokio::fs::read(&file.storage_path).await {
+                                    let base64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+                                    let data_url = format!("data:{};base64,{}", file.mime_type, base64_data);
+                                    image_data_urls.push(data_url);
+                                }
                             } else {
-                                file_contents.push(format!("[File: {}]", file.filename));
+                                // Text extraction for non-images
+                                if let Some(extracted_text) = file.extracted_text {
+                                    text_contents.push(format!(
+                                        "[File: {}]\n```\n{}\n```",
+                                        file.filename,
+                                        extracted_text
+                                    ));
+                                } else {
+                                    text_contents.push(format!("[File: {}]", file.filename));
+                                }
                             }
                         }
                     }
                 }
-                if !file_contents.is_empty() {
-                    if !msg.content.is_empty() {
-                        msg.content = format!("{}\n\n{}", file_contents.join("\n\n"), msg.content);
-                    } else {
-                        msg.content = file_contents.join("\n\n");
-                    }
+                
+                // Build the content
+                let mut parts = Vec::new();
+                if !text_contents.is_empty() {
+                    parts.push(text_contents.join("\n\n"));
+                }
+                if !msg.content.is_empty() {
+                    parts.push(msg.content.clone());
+                }
+                
+                let combined_text = parts.join("\n\n");
+                
+                if !image_data_urls.is_empty() {
+                    // Create multimodal format for images
+                    let multimodal = json!({
+                        "text": combined_text,
+                        "images": image_data_urls
+                    });
+                    msg.content = format!("__MULTIMODAL__{}", multimodal.to_string());
+                } else {
+                    msg.content = combined_text;
                 }
             }
         }
