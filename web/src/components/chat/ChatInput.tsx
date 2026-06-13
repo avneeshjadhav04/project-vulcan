@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect } from 'react'
+import { useRef, useLayoutEffect, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowUp,
@@ -72,6 +72,19 @@ export default function ChatInput({
     }
   }, [input])
 
+  // Enter key stops recording
+  useEffect(() => {
+    if (voiceState !== 'recording') return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        onStopVoice()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [voiceState, onStopVoice])
+
   return (
     <div className="border-t border-white/5 bg-background/80 backdrop-blur-xl px-4 py-4">
       <div className="mx-auto max-w-3xl">
@@ -129,7 +142,7 @@ export default function ChatInput({
                 onClick={onCancelVoice}
                 className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
               >
-                Cancel
+                Stop
               </button>
             </div>
           ) : voiceState === 'recording' ? (
@@ -157,7 +170,7 @@ export default function ChatInput({
                   onClick={onCancelVoice}
                   className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
                 >
-                  Cancel
+                  Stop
                 </button>
               </div>
               {voicePartialText && (
