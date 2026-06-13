@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { ChevronUp, Check, Loader2, Search, Cpu, AlertCircle, Plus } from 'lucide-react'
@@ -22,6 +22,12 @@ export interface SelectedModel {
   modelId: string
 }
 
+interface DropdownPos {
+  left: number
+  bottom: number
+  width: number
+}
+
 export default function ProviderModelSelector({
   selected,
   onSelect,
@@ -31,7 +37,9 @@ export default function ProviderModelSelector({
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [dropdownPos, setDropdownPos] = useState<DropdownPos | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const navigate = useNavigate()
 
   const { data, isLoading, error } = useQuery({
@@ -43,6 +51,38 @@ export default function ProviderModelSelector({
     enabled: open,
     retry: false,
   })
+
+  // Calculate dropdown position from trigger button
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    setDropdownPos({
+      left: rect.left,
+      bottom: rect.top,
+      width: rect.width,
+    })
+  }, [open])
+
+  // Update position on resize/scroll
+  useEffect(() => {
+    if (!open) return
+    const update = () => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect()
+        setDropdownPos({
+          left: rect.left,
+          bottom: rect.top,
+          width: rect.width,
+        })
+      }
+    }
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -91,6 +131,7 @@ export default function ProviderModelSelector({
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between gap-2 rounded-carbon border border-white/10 bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
       >
@@ -103,8 +144,15 @@ export default function ProviderModelSelector({
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md">
+      {open && dropdownPos && (
+        <div
+          className="fixed z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md"
+          style={{
+            left: dropdownPos.left,
+            bottom: `calc(100vh - ${dropdownPos.bottom}px)`,
+            width: 384,
+          }}
+        >
           {/* Search */}
           <div className="border-b border-white/5 p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
@@ -175,9 +223,9 @@ export default function ProviderModelSelector({
                         : 'text-text-secondary'
                     }`}
                   >
-                    <span className="truncate font-mono">{item.model.id}</span>
+                    <span className="font-mono break-all">{item.model.id}</span>
                     {selected.providerId === item.providerId && selected.modelId === item.model.id && (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-interactive" />
+                      <Check className="h-3.5 w-3.5 shrink-0 text-interactive ml-2" />
                     )}
                   </button>
                 ))}
