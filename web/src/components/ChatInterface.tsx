@@ -5,7 +5,7 @@ import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useChatStream } from '../hooks/useChatStream'
-import { useVoiceRecorder } from '../hooks/useVoiceRecorder'
+import { useVoiceStreaming } from '../hooks/useVoiceStreaming'
 import { useChatScroll } from '../hooks/useChatScroll'
 import type { SelectedModel } from './ProviderModelSelector'
 import type { UploadedFile } from './FileUpload'
@@ -58,7 +58,7 @@ export default function ChatInterface({
 
   const showError = useErrorToast();
 
-  const voice = useVoiceRecorder()
+  const voice = useVoiceStreaming()
 
   useEffect(() => {
     setEffectiveChatId(chatId)
@@ -420,6 +420,7 @@ export default function ChatInterface({
         voiceState={voice.state}
         voiceRecordingTime={voice.recordingTime}
         voiceTranscript={voice.transcript}
+        voicePartialText={voice.partialText}
         onStartVoice={voice.startRecording}
         onStopVoice={voice.stopRecording}
         onCancelVoice={voice.cancelRecording}

@@ -20,6 +20,7 @@ describe('ChatInput component', () => {
     voiceState: 'idle' as const,
     voiceRecordingTime: 0,
     voiceTranscript: '',
+    voicePartialText: '',
     onStartVoice: vi.fn(),
     onStopVoice: vi.fn(),
     onCancelVoice: vi.fn(),
