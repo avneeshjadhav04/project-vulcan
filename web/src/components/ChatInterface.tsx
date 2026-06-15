@@ -226,20 +226,31 @@ export default function ChatInterface({
     }
   }, [effectiveChatId, refetch, handleSend])
 
-  const handleGlobalDragOver = useCallback((e: React.DragEvent) => {
+  const dragCounterRef = useRef(0)
+
+  const handleGlobalDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    setIsGlobalDragging(true)
+    dragCounterRef.current++
+    if (dragCounterRef.current === 1) {
+      setIsGlobalDragging(true)
+    }
+  }, [])
+
+  const handleGlobalDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault() // Required to allow dropping
   }, [])
 
   const handleGlobalDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    if (!e.relatedTarget || (e.relatedTarget as Element).nodeName === 'HTML') {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
       setIsGlobalDragging(false)
     }
   }, [])
 
   const handleGlobalDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    dragCounterRef.current = 0
     setIsGlobalDragging(false)
     const files = e.dataTransfer.files
     if (files.length > 0) {
@@ -275,6 +286,7 @@ export default function ChatInterface({
     <div className="flex h-full w-full overflow-hidden">
       <div 
         className="relative flex flex-1 flex-col overflow-hidden bg-background"
+        onDragEnter={handleGlobalDragEnter}
         onDragOver={handleGlobalDragOver}
         onDragLeave={handleGlobalDragLeave}
         onDrop={handleGlobalDrop}
