@@ -44,9 +44,11 @@ function getDirectoryContents(tree: WorkspaceFile[], path: string): WorkspaceFil
 export default function WorkspacePanel({
   onClose,
   isMobile,
+  width,
 }: {
   onClose: () => void
   isMobile?: boolean
+  width?: number
 }) {
   const [currentPath, setCurrentPath] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -258,11 +260,12 @@ export default function WorkspacePanel({
   return (
     <motion.div
       initial={{ width: 0, opacity: 0 }}
-      animate={{ width: isMobile ? '100%' : 400, opacity: 1 }}
+      animate={{ width: isMobile ? '100%' : width || 400, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
       className={`h-full border-l border-border-subtle bg-layer flex flex-col overflow-hidden shrink-0 ${
         isMobile ? 'absolute right-0 top-0 z-40' : ''
       }`}
+      style={{ width: isMobile ? '100%' : width || 400 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-background">
