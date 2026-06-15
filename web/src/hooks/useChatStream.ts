@@ -39,7 +39,7 @@ export interface StreamState {
   streaming: boolean
   streamedContent: string
   sendError: string
-  toolExecution: ToolExecution | null
+  toolExecutions: ToolExecution[]
   creatingChat: boolean
 }
 
@@ -67,7 +67,7 @@ export function useChatStream(): [StreamState, StreamActions] {
   const [streaming, setStreaming] = useState(false)
   const [streamedContent, setStreamedContent] = useState('')
   const [sendError, setSendError] = useState('')
-  const [toolExecution, setToolExecution] = useState<ToolExecution | null>(null)
+  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([])
   const [creatingChat, setCreatingChat] = useState(false)
 
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -80,7 +80,7 @@ export function useChatStream(): [StreamState, StreamActions] {
     }
     setStreaming(false)
     setStreamedContent('')
-    setToolExecution(null)
+    setToolExecutions([])
   }, [])
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function useChatStream(): [StreamState, StreamActions] {
 
   const clearStreamedContent = useCallback(() => {
     setStreamedContent('')
-    setToolExecution(null)
+    setToolExecutions([])
   }, [])
 
   const startStream = useCallback(async (text: string, options: StreamOptions) => {
@@ -114,7 +114,7 @@ export function useChatStream(): [StreamState, StreamActions] {
     setStreaming(true)
     setStreamedContent('')
     setSendError('')
-    setToolExecution(null)
+    setToolExecutions([])
     startTimeRef.current = Date.now()
 
     const controller = new AbortController()
@@ -167,8 +167,8 @@ export function useChatStream(): [StreamState, StreamActions] {
           window.location.href = '/login'
           return
         }
-        if (res.status === 428) {
-          throw new Error('Add an AI provider API key in Settings to start chatting.')
+        if (res.status === 412) {
+          throw new Error('Add an AI provider in Settings to start chatting.')
         }
         const text = await res.text()
         throw new Error(text || `Request failed (${res.status})`)
@@ -218,37 +218,40 @@ export function useChatStream(): [StreamState, StreamActions] {
           if (raw.startsWith('[TOOL]') && raw.endsWith('[/TOOL]')) {
             try {
               const toolData = JSON.parse(raw.slice(6, -7))
-              setToolExecution({
-                tool_name: toolData.tool_name || 'unknown',
-                tool_id: toolData.tool_id || '',
-                command: toolData.command || '',
-                stdout: toolData.stdout || '',
-                stderr: toolData.stderr || '',
-                status: toolData.status || 'error',
-                filename: toolData.filename || '',
-                query: toolData.query || '',
-                results: toolData.results || [],
-                events: toolData.events,
-                emails: toolData.emails,
-                tasks: toolData.tasks,
-                to: toolData.to,
-                subject: toolData.subject,
-                body: toolData.body,
-                from: toolData.from,
-                date: toolData.date,
-                summary: toolData.summary,
-                start: toolData.start,
-                end: toolData.end,
-                location: toolData.location,
-                content: toolData.content,
-                due_string: toolData.due_string,
-                priority: toolData.priority,
-                task_id: toolData.task_id,
-                url: toolData.url,
-                page_content: toolData.page_content || toolData.content,
-                code: toolData.code,
-                language: toolData.language,
-              })
+              setToolExecutions((prev) => [
+                ...prev,
+                {
+                  tool_name: toolData.tool_name || 'unknown',
+                  tool_id: toolData.tool_id || '',
+                  command: toolData.command || '',
+                  stdout: toolData.stdout || '',
+                  stderr: toolData.stderr || '',
+                  status: toolData.status || 'error',
+                  filename: toolData.filename || '',
+                  query: toolData.query || '',
+                  results: toolData.results || [],
+                  events: toolData.events,
+                  emails: toolData.emails,
+                  tasks: toolData.tasks,
+                  to: toolData.to,
+                  subject: toolData.subject,
+                  body: toolData.body,
+                  from: toolData.from,
+                  date: toolData.date,
+                  summary: toolData.summary,
+                  start: toolData.start,
+                  end: toolData.end,
+                  location: toolData.location,
+                  content: toolData.content,
+                  due_string: toolData.due_string,
+                  priority: toolData.priority,
+                  task_id: toolData.task_id,
+                  url: toolData.url,
+                  page_content: toolData.page_content || toolData.content,
+                  code: toolData.code,
+                  language: toolData.language,
+                },
+              ])
             } catch {}
             continue
           }
@@ -281,7 +284,7 @@ export function useChatStream(): [StreamState, StreamActions] {
       }
 
       // Stream ended without [DONE] marker
-      setToolExecution(null)
+      setToolExecutions([])
       const duration = Date.now() - startTimeRef.current
       onStreamDone?.({
         provider: selectedModel.providerId || '',
@@ -304,7 +307,7 @@ export function useChatStream(): [StreamState, StreamActions] {
   }, [])
 
   return [
-    { streaming, streamedContent, sendError, toolExecution, creatingChat },
+    { streaming, streamedContent, sendError, toolExecutions, creatingChat },
     { startStream, stopStream, clearStreamedContent },
   ]
 }

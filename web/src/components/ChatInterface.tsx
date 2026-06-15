@@ -20,6 +20,7 @@ import {
   Settings,
   ExternalLink,
   Paperclip,
+  X,
 } from 'lucide-react'
 
 interface MessageItem {
@@ -47,13 +48,14 @@ export default function ChatInterface({
   const [validatingModel, setValidatingModel] = useState(false)
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
   const [isGlobalDragging, setIsGlobalDragging] = useState(false)
+  const [providerOverlayDismissed, setProviderOverlayDismissed] = useState(false)
   const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const [streamState, streamActions] = useChatStream()
-  const { streaming, streamedContent, sendError, toolExecution, creatingChat } = streamState
+  const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
@@ -157,6 +159,13 @@ export default function ChatInterface({
   const handleSend = useCallback(async (textOverride?: string, isRegenerate = false) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
+
+    // Check if user has a provider before sending
+    if (userData && !userData.has_provider && !userData.has_nim_key) {
+      setProviderOverlayDismissed(false)
+      showError('Add an AI provider in Settings to start chatting.')
+      return
+    }
 
     const currentFiles = [...attachedFiles]
     if (!textOverride) {
@@ -298,20 +307,29 @@ export default function ChatInterface({
 
       {/* API Key Required Overlay */}
       <AnimatePresence>
-        {userData && !userData.has_provider && !userData.has_nim_key && (
+        {userData && !userData.has_provider && !userData.has_nim_key && !providerOverlayDismissed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/95"
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xl"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="mx-4 max-w-sm border border-border-subtle bg-layer p-8 text-center"
+              className="relative mx-4 max-w-sm rounded-2xl border border-border-subtle bg-layer p-8 text-center shadow-2xl"
             >
-              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
+              {/* Close button */}
+              <button
+                onClick={() => setProviderOverlayDismissed(true)}
+                className="absolute right-3 top-3 p-1.5 text-text-helper transition-colors hover:text-text-primary"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              
+              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-background">
                 <Key className="h-6 w-6 text-interactive" aria-hidden="true" />
               </div>
               <h2 className="mb-2 text-base font-semibold text-text-primary">AI Provider Required</h2>
@@ -378,7 +396,7 @@ export default function ChatInterface({
         messages={messages}
         streaming={streaming}
         streamedContent={streamedContent}
-        toolExecution={toolExecution}
+        toolExecutions={toolExecutions}
         creatingChat={creatingChat}
         chatId={effectiveChatId}
         messageMeta={messageMeta}

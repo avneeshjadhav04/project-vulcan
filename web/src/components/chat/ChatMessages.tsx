@@ -19,7 +19,7 @@ interface ChatMessagesProps {
   messages: MessageItem[]
   streaming: boolean
   streamedContent: string
-  toolExecution: ToolExecution | null
+  toolExecutions: ToolExecution[]
   creatingChat: boolean
   chatId?: string
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
@@ -37,7 +37,7 @@ export default function ChatMessages({
   messages,
   streaming,
   streamedContent,
-  toolExecution,
+  toolExecutions,
   creatingChat,
   chatId,
   messageMeta,
@@ -93,15 +93,23 @@ export default function ChatMessages({
               )
             })}
 
-            {toolExecution && streaming && (
-              <ToolExecutionCard tool={toolExecution} chatId={chatId} />
+            {toolExecutions.length > 0 && streaming && (
+              <div className="space-y-2">
+                {toolExecutions.map((tool, index) => (
+                  <ToolExecutionCard 
+                    key={`${tool.tool_id}-${index}`} 
+                    tool={tool} 
+                    chatId={chatId} 
+                  />
+                ))}
+              </div>
             )}
 
             {streamedContent && (
               <StreamingMessage content={streamedContent} isStreaming={streaming} />
             )}
 
-            {streaming && !streamedContent && !toolExecution && <TypingIndicator />}
+            {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
           </>
         )}
         <div ref={messagesEndRef} />
