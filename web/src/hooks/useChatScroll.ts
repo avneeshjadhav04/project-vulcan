@@ -16,10 +16,10 @@ export function useChatScroll(chatId?: string) {
     setShowScrollBtn(!nearBottom)
   }, [])
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+  const scrollToBottom = useCallback(() => {
     const container = containerRef.current
     if (!container) return
-    container.scrollTo({ top: container.scrollHeight, behavior })
+    container.scrollTop = container.scrollHeight
     setShowScrollBtn(false)
     wasNearBottomRef.current = true
   }, [])
