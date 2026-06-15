@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::{delete, get, post},
@@ -27,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/workspace", get(list_user_workspace))
         .route("/workspace/folder", post(create_folder))
         .route("/workspace/file", post(create_file))
+        .route("/workspace/upload", post(upload_workspace_files))
         .route(
             "/workspace/*filename",
             get(download_user_workspace)
@@ -472,6 +473,110 @@ async fn create_file(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::CREATED)
+}
+
+#[derive(serde::Deserialize)]
+struct UploadWorkspaceQuery {
+    path: Option<String>,
+    overwrite: Option<bool>,
+}
+
+async fn upload_workspace_files(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Query(query): Query<UploadWorkspaceQuery>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    tokio::fs::create_dir_all(&user_workspace_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let target_folder = query.path.unwrap_or_default();
+    let overwrite = query.overwrite.unwrap_or(false);
+    let base_dir = if target_folder.is_empty() {
+        user_workspace_dir.clone()
+    } else {
+        if !is_safe_path(&target_folder) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        user_workspace_dir.join(&target_folder)
+    };
+
+    // Collect all files first to check for conflicts
+    let mut files_to_write: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut conflicts: Vec<String> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+        if name != "file" {
+            continue;
+        }
+
+        let raw_filename = field.file_name().unwrap_or("unnamed");
+        let _filename = std::path::Path::new(raw_filename)
+            .file_name()
+            .unwrap_or(std::ffi::OsStr::new("unnamed"))
+            .to_string_lossy()
+            .replace("\"", "")
+            .replace("\r", "")
+            .replace("\n", "");
+
+        let relative_path = raw_filename.replace("\\", "/").trim_start_matches('/').to_string();
+        if relative_path.is_empty() {
+            continue;
+        }
+
+        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+        let size = data.len() as i64;
+
+        if size > 50 * 1024 * 1024 {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+
+        let file_path = base_dir.join(&relative_path);
+        if file_path.exists() && !overwrite {
+            conflicts.push(relative_path.clone());
+        }
+        files_to_write.push((relative_path, data.to_vec()));
+    }
+
+    if !conflicts.is_empty() && !overwrite {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "conflicts": conflicts,
+                "message": "Some files already exist. Set overwrite=true to replace them."
+            })),
+        ));
+    }
+
+    let mut uploaded_files = Vec::new();
+    for (relative_path, data) in files_to_write {
+        let file_path = base_dir.join(&relative_path);
+        if let Some(parent) = file_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+        tokio::fs::write(&file_path, &data)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        uploaded_files.push(serde_json::json!({
+            "path": relative_path,
+            "size_bytes": data.len(),
+        }));
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "files": uploaded_files })),
+    ))
 }
 
 async fn save_user_workspace(

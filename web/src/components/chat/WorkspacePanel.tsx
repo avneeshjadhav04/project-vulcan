@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import {
@@ -17,8 +17,10 @@ import {
   Trash2,
   Save,
   Check,
+  Upload,
+  Loader2,
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface WorkspaceFile {
   name: string
@@ -56,6 +58,15 @@ export default function WorkspacePanel({
   const [renamingItem, setRenamingItem] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [deleteConfirming, setDeleteConfirming] = useState<string | null>(null)
+
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
+  const [overwriteConflicts, setOverwriteConflicts] = useState<string[] | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
   const [autoRefresh] = useState(true)
@@ -161,6 +172,89 @@ export default function WorkspacePanel({
     }
   }
 
+  // ─── Upload Logic ───
+
+  const handleUpload = useCallback(async (files: FileList | null, overwrite = false) => {
+    if (!files || files.length === 0) return
+    setIsUploading(true)
+
+    const formData = new FormData()
+    for (const file of Array.from(files)) {
+      // Use webkitRelativePath for folder uploads, fallback to name
+      const relativePath = (file as any).webkitRelativePath || file.name
+      formData.append('file', file, relativePath)
+    }
+
+    try {
+      const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''
+      const res = await fetch(
+        `/api/workspace/upload?path=${encodeURIComponent(currentPath)}&overwrite=${overwrite}`,
+        {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': csrfToken },
+          credentials: 'include',
+          body: formData,
+        }
+      )
+
+      if (res.status === 409) {
+        const data = await res.json()
+        setOverwriteConflicts(data.conflicts || [])
+        setPendingFiles(Array.from(files))
+        setIsUploading(false)
+        return
+      }
+
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`)
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['workspace'] })
+    } catch (e: any) {
+      console.error('Upload failed:', e)
+      alert(e.message || 'Upload failed')
+    } finally {
+      setIsUploading(false)
+    }
+  }, [currentPath, queryClient])
+
+  const confirmOverwrite = useCallback(() => {
+    if (pendingFiles) {
+      handleUpload(pendingFiles as unknown as FileList, true)
+      setOverwriteConflicts(null)
+      setPendingFiles(null)
+    }
+  }, [pendingFiles, handleUpload])
+
+  const cancelOverwrite = useCallback(() => {
+    setOverwriteConflicts(null)
+    setPendingFiles(null)
+  }, [])
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleUpload(e.target.files)
+    e.target.value = '' // Reset input
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    handleUpload(e.dataTransfer.files)
+  }
+
   return (
     <motion.div
       initial={{ width: 0, opacity: 0 }}
@@ -191,6 +285,22 @@ export default function WorkspacePanel({
         <div className="flex items-center gap-1">
           {!selectedFile && (
             <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors disabled:opacity-50"
+                title="Upload Files"
+              >
+                <Upload className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => folderInputRef.current?.click()}
+                disabled={isUploading}
+                className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors disabled:opacity-50"
+                title="Upload Folder"
+              >
+                <FolderPlus className="w-4 h-4" />
+              </button>
               <button
                 onClick={() => {
                   setIsCreating('folder')
@@ -261,10 +371,96 @@ export default function WorkspacePanel({
         </div>
       </div>
 
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        {...({ webkitdirectory: '', directory: '' } as any)}
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
+
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
         {!selectedFile ? (
-          <div className="p-2">
+          <div
+            className={`p-2 h-full ${isDragOver ? 'bg-interactive/5' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {/* Drag overlay */}
+            <AnimatePresence>
+              {isDragOver && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/90 border-2 border-dashed border-interactive/50 m-2 rounded-lg"
+                >
+                  <Upload className="w-8 h-8 text-interactive mb-2" />
+                  <p className="text-sm font-medium text-text-primary">Drop files to upload</p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    Files will be uploaded to {currentPath || 'workspace root'}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Upload progress */}
+            {isUploading && (
+              <div className="mb-2 px-2 py-1.5 bg-interactive/10 rounded flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-interactive" />
+                <span className="text-xs text-text-secondary">Uploading...</span>
+              </div>
+            )}
+
+            {/* Overwrite confirmation */}
+            <AnimatePresence>
+              {overwriteConflicts && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mb-2 border border-support-warning/30 bg-support-warning/10 rounded overflow-hidden"
+                >
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-medium text-support-warning">
+                      Some files already exist
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {overwriteConflicts.map((conflict) => (
+                        <li key={conflict} className="text-[11px] text-text-secondary">
+                          {conflict}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={confirmOverwrite}
+                        className="px-2 py-1 text-[11px] bg-support-warning text-white rounded hover:opacity-90 transition-opacity"
+                      >
+                        Replace All
+                      </button>
+                      <button
+                        onClick={cancelOverwrite}
+                        className="px-2 py-1 text-[11px] text-text-secondary hover:bg-surface-elevated rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Breadcrumb */}
             {currentPath && (
               <div className="flex items-center gap-1 px-2 py-1 text-xs text-text-secondary mb-1">
