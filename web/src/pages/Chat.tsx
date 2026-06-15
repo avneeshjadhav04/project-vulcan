@@ -21,6 +21,10 @@ const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
 const DEFAULT_SIDEBAR_WIDTH = 280
 
+const MIN_WORKSPACE_WIDTH = 280
+const MAX_WORKSPACE_WIDTH = 600
+const DEFAULT_WORKSPACE_WIDTH = 400
+
 const MIN_TERMINAL_HEIGHT = 300
 const MAX_TERMINAL_HEIGHT = 800
 const DEFAULT_TERMINAL_HEIGHT = 500
@@ -40,6 +44,11 @@ export default function Chat() {
   })
   const [isResizingTerminal, setIsResizingTerminal] = useState(false)
   const [isTerminalMaximized, setIsTerminalMaximized] = useState(false)
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => {
+    const saved = localStorage.getItem('workspaceWidth')
+    return saved ? Math.min(MAX_WORKSPACE_WIDTH, Math.max(MIN_WORKSPACE_WIDTH, parseInt(saved, 10))) : DEFAULT_WORKSPACE_WIDTH
+  })
+  const [isResizingWorkspace, setIsResizingWorkspace] = useState(false)
   const mainRef = useRef<HTMLDivElement>(null)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({
     providerId: '',
@@ -136,6 +145,22 @@ export default function Chat() {
     [isResizingTerminal]
   )
 
+  const startResizeWorkspace = useCallback(() => setIsResizingWorkspace(true), [])
+  const stopResizeWorkspace = useCallback(() => setIsResizingWorkspace(false), [])
+
+  const resizeWorkspace = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizingWorkspace) return
+      const newWidth = Math.max(
+        MIN_WORKSPACE_WIDTH,
+        Math.min(MAX_WORKSPACE_WIDTH, window.innerWidth - e.clientX)
+      )
+      setWorkspaceWidth(newWidth)
+      localStorage.setItem('workspaceWidth', String(newWidth))
+    },
+    [isResizingWorkspace]
+  )
+
   useEffect(() => {
     if (isResizing) {
       document.addEventListener('mousemove', resize)
@@ -175,6 +200,26 @@ export default function Chat() {
       document.body.style.userSelect = ''
     }
   }, [isResizingTerminal, resizeTerminal, stopResizeTerminal])
+
+  useEffect(() => {
+    if (isResizingWorkspace) {
+      document.addEventListener('mousemove', resizeWorkspace)
+      document.addEventListener('mouseup', stopResizeWorkspace)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    } else {
+      document.removeEventListener('mousemove', resizeWorkspace)
+      document.removeEventListener('mouseup', stopResizeWorkspace)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    return () => {
+      document.removeEventListener('mousemove', resizeWorkspace)
+      document.removeEventListener('mouseup', stopResizeWorkspace)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizingWorkspace, resizeWorkspace, stopResizeWorkspace])
 
   return (
     <div className="relative flex h-screen bg-background">
@@ -314,9 +359,23 @@ export default function Chat() {
           </AnimatePresence>
         </div>
 
+        {/* Workspace resize handle */}
+        {showWorkspace && !isMobile && (
+          <div
+            onMouseDown={startResizeWorkspace}
+            className={`relative z-20 w-1 shrink-0 cursor-col-resize transition-colors ${
+              isResizingWorkspace ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
+            }`}
+          />
+        )}
+
         <AnimatePresence>
           {showWorkspace && (
-            <WorkspacePanel onClose={() => setShowWorkspace(false)} isMobile={isMobile} />
+            <WorkspacePanel
+              onClose={() => setShowWorkspace(false)}
+              isMobile={isMobile}
+              width={workspaceWidth}
+            />
           )}
         </AnimatePresence>
       </main>
