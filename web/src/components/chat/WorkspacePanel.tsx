@@ -66,21 +66,29 @@ export default function WorkspacePanel({
   const [isReadingFolder, setIsReadingFolder] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [overwriteConflicts, setOverwriteConflicts] = useState<string[] | null>(null)
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<{ file: File; relativePath: string }[] | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
 
   // ─── File System Entry Helpers ───
 
-  const readFileEntry = (entry: FileSystemFileEntry): Promise<File> => {
+  interface FileWithPath {
+    file: File
+    relativePath: string
+  }
+
+  const readFileEntry = (entry: FileSystemFileEntry, relativePath: string): Promise<FileWithPath> => {
     return new Promise((resolve, reject) => {
-      entry.file(resolve, reject)
+      entry.file((file) => resolve({ file, relativePath }), reject)
     })
   }
 
-  const readDirectoryEntry = async (entry: FileSystemDirectoryEntry): Promise<File[]> => {
-    const files: File[] = []
+  const readDirectoryEntry = async (
+    entry: FileSystemDirectoryEntry,
+    basePath: string = ''
+  ): Promise<FileWithPath[]> => {
+    const files: FileWithPath[] = []
     const reader = entry.createReader()
 
     const readEntries = (): Promise<FileSystemEntry[]> => {
@@ -94,12 +102,13 @@ export default function WorkspacePanel({
       entries = await readEntries()
       for (const child of entries) {
         if (child.name.startsWith('.')) continue // Skip hidden files
+        const childPath = basePath ? `${basePath}/${child.name}` : child.name
         if (child.isDirectory) {
-          const childFiles = await readDirectoryEntry(child as FileSystemDirectoryEntry)
+          const childFiles = await readDirectoryEntry(child as FileSystemDirectoryEntry, childPath)
           files.push(...childFiles)
         } else {
-          const file = await readFileEntry(child as FileSystemFileEntry)
-          files.push(file)
+          const fileWithPath = await readFileEntry(child as FileSystemFileEntry, childPath)
+          files.push(fileWithPath)
         }
       }
     } while (entries.length > 0)
@@ -213,14 +222,12 @@ export default function WorkspacePanel({
 
   // ─── Upload Logic ───
 
-  const handleUpload = useCallback(async (files: File[], overwrite = false) => {
+  const handleUpload = useCallback(async (files: FileWithPath[], overwrite = false) => {
     if (!files || files.length === 0) return
     setIsUploading(true)
 
     const formData = new FormData()
-    for (const file of files) {
-      // Use webkitRelativePath for folder uploads, fallback to name
-      const relativePath = (file as any).webkitRelativePath || file.name
+    for (const { file, relativePath } of files) {
       formData.append('file', file, relativePath)
     }
 
@@ -272,7 +279,11 @@ export default function WorkspacePanel({
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      handleUpload(Array.from(e.target.files))
+      const files: FileWithPath[] = Array.from(e.target.files).map((file) => ({
+        file,
+        relativePath: (file as any).webkitRelativePath || file.name,
+      }))
+      handleUpload(files)
     }
     e.target.value = '' // Reset input
   }
@@ -298,7 +309,7 @@ export default function WorkspacePanel({
     if (!items || items.length === 0) return
 
     setIsReadingFolder(true)
-    const allFiles: File[] = []
+    const allFiles: FileWithPath[] = []
 
     try {
       for (let i = 0; i < items.length; i++) {
@@ -307,16 +318,17 @@ export default function WorkspacePanel({
         if (!entry) {
           // Fallback to regular file if entry API not available
           const file = item.getAsFile()
-          if (file) allFiles.push(file)
+          if (file) allFiles.push({ file, relativePath: file.name })
           continue
         }
 
         if (entry.isDirectory) {
-          const files = await readDirectoryEntry(entry as FileSystemDirectoryEntry)
+          // Pass entry.name as basePath so the folder itself is included
+          const files = await readDirectoryEntry(entry as FileSystemDirectoryEntry, entry.name)
           allFiles.push(...files)
         } else if (entry.isFile) {
-          const file = await readFileEntry(entry as FileSystemFileEntry)
-          allFiles.push(file)
+          const fileWithPath = await readFileEntry(entry as FileSystemFileEntry, entry.name)
+          allFiles.push(fileWithPath)
         }
       }
 
