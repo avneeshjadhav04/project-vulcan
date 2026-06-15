@@ -77,9 +77,9 @@ const MAX_API_KEY_LENGTH: usize = 512;
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
 const MEMORY_RECENT_WINDOW: usize = 6; // Always keep last 6 messages
 
-/// Build the full tools definition array for LLM requests.
-fn build_tools_def() -> Vec<serde_json::Value> {
-    vec![
+/// Build the tools definition array for LLM requests, filtered by connected integrations.
+fn build_tools_def(has_google: bool, has_todoist: bool) -> Vec<serde_json::Value> {
+    let mut tools = vec![
         json!({
             "type": "function",
             "function": {
@@ -197,161 +197,6 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "calendar_list_events",
-                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
-                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
-                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
-                    },
-                    "required": []
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_create_event",
-                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string", "description": "Event title/summary"},
-                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
-                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
-                        "description": {"type": "string", "description": "Event description"},
-                        "location": {"type": "string", "description": "Event location"},
-                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
-                    },
-                    "required": ["summary", "start_time", "end_time"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_delete_event",
-                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "event_id": {"type": "string", "description": "ID of the event to delete"}
-                    },
-                    "required": ["event_id"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "email_send",
-                "description": "Send an email. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "to": {"type": "string", "description": "Recipient email address"},
-                        "subject": {"type": "string", "description": "Email subject"},
-                        "body": {"type": "string", "description": "Email body text"}
-                    },
-                    "required": ["to", "subject", "body"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "email_list",
-                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
-                        "query": {"type": "string", "description": "Search query for emails"}
-                    },
-                    "required": []
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "email_read",
-                "description": "Read a specific email by ID. Requires Gmail connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "email_id": {"type": "string", "description": "ID of the email to read"}
-                    },
-                    "required": ["email_id"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_list",
-                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
-                    },
-                    "required": []
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_create",
-                "description": "Create a new task in Todoist. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "content": {"type": "string", "description": "Task content/name"},
-                        "description": {"type": "string", "description": "Task description"},
-                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
-                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
-                    },
-                    "required": ["content"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_update",
-                "description": "Update an existing Todoist task. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to update"},
-                        "content": {"type": "string", "description": "New task content"},
-                        "due_string": {"type": "string", "description": "New due date"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_complete",
-                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to complete"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }),
-        json!({
-            "type": "function",
-            "function": {
                 "name": "fetch_webpage",
                 "description": "Fetch and extract the text content of a webpage. Use this to read articles, documentation, or any web page.",
                 "parameters": {
@@ -383,7 +228,170 @@ fn build_tools_def() -> Vec<serde_json::Value> {
                 }
             }
         }),
-    ]
+    ];
+    
+    if has_google {
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_list_events",
+                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
+                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
+                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
+                    },
+                    "required": []
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_create_event",
+                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string", "description": "Event title/summary"},
+                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
+                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
+                        "description": {"type": "string", "description": "Event description"},
+                        "location": {"type": "string", "description": "Event location"},
+                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
+                    },
+                    "required": ["summary", "start_time", "end_time"]
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "calendar_delete_event",
+                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "event_id": {"type": "string", "description": "ID of the event to delete"}
+                    },
+                    "required": ["event_id"]
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "email_send",
+                "description": "Send an email. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "to": {"type": "string", "description": "Recipient email address"},
+                        "subject": {"type": "string", "description": "Email subject"},
+                        "body": {"type": "string", "description": "Email body text"}
+                    },
+                    "required": ["to", "subject", "body"]
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "email_list",
+                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
+                        "query": {"type": "string", "description": "Search query for emails"}
+                    },
+                    "required": []
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "email_read",
+                "description": "Read a specific email by ID. Requires Gmail connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email_id": {"type": "string", "description": "ID of the email to read"}
+                    },
+                    "required": ["email_id"]
+                }
+            }
+        }));
+    }
+    
+    if has_todoist {
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_list",
+                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
+                    },
+                    "required": []
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_create",
+                "description": "Create a new task in Todoist. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "Task content/name"},
+                        "description": {"type": "string", "description": "Task description"},
+                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
+                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
+                    },
+                    "required": ["content"]
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_update",
+                "description": "Update an existing Todoist task. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to update"},
+                        "content": {"type": "string", "description": "New task content"},
+                        "due_string": {"type": "string", "description": "New due date"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }));
+        tools.push(json!({
+            "type": "function",
+            "function": {
+                "name": "tasks_complete",
+                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "ID of the task to complete"}
+                    },
+                    "required": ["task_id"]
+                }
+            }
+        }));
+    }
+    
+    tools
 }
 
 /// Execute a single tool call and return the result JSON.
@@ -1875,7 +1883,7 @@ async fn send_message(
         }
 
         let mut current_messages = messages_payload;
-        let tools = build_tools_def();
+        let tools = build_tools_def(has_google, has_todoist);
         let mut total_steps = 0;
 
         loop {
