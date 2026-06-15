@@ -192,9 +192,12 @@ export default function ChatInterface({
       onChatCreated: () => {
         queryClient.invalidateQueries({ queryKey: ['chats'] })
       },
+      onUserMessageAdded: () => {
+        scroll.forceScrollToBottom()
+      },
       isRegenerate,
     })
-  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
+  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient, scroll])
 
 
   const handleRegenerate = useCallback(async () => {
@@ -402,7 +405,6 @@ export default function ChatInterface({
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.containerRef}
-        messagesEndRef={scroll.endRef}
         wasNearBottomRef={scroll.wasNearBottomRef}
         onScroll={scroll.handleScroll}
         onScrollToBottom={scroll.scrollToBottom}
