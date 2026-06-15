@@ -12,6 +12,7 @@ import {
   Globe,
   RefreshCw,
   FolderPlus,
+  FolderUp,
   FilePlus,
   Pencil,
   Trash2,
@@ -388,7 +389,7 @@ export default function WorkspacePanel({
                 className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors disabled:opacity-50"
                 title="Upload Folder"
               >
-                <FolderPlus className="w-4 h-4" />
+                <FolderUp className="w-4 h-4" />
               </button>
               <button
                 onClick={() => {
