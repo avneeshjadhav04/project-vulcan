@@ -4,7 +4,6 @@ const SCROLL_THRESHOLD = 150
 
 export function useChatScroll(chatId?: string) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const endRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const wasNearBottomRef = useRef(true)
 
@@ -18,7 +17,17 @@ export function useChatScroll(chatId?: string) {
   }, [])
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    endRef.current?.scrollIntoView({ behavior })
+    const container = containerRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior })
+    setShowScrollBtn(false)
+    wasNearBottomRef.current = true
+  }, [])
+
+  const forceScrollToBottom = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+    container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
     setShowScrollBtn(false)
     wasNearBottomRef.current = true
   }, [])
@@ -35,10 +44,10 @@ export function useChatScroll(chatId?: string) {
 
   return {
     containerRef,
-    endRef,
     showScrollBtn,
     handleScroll,
     scrollToBottom,
+    forceScrollToBottom,
     wasNearBottomRef,
   }
 }

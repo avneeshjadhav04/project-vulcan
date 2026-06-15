@@ -25,7 +25,6 @@ interface ChatMessagesProps {
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
-  messagesEndRef: React.RefObject<HTMLDivElement>
   wasNearBottomRef: React.MutableRefObject<boolean>
   onScroll: () => void
   onScrollToBottom: () => void
@@ -44,7 +43,6 @@ export default function ChatMessages({
   messageMeta,
   showScrollBtn,
   scrollContainerRef,
-  messagesEndRef,
   wasNearBottomRef,
   onScroll,
   onScrollToBottom,
@@ -61,13 +59,13 @@ export default function ChatMessages({
 
   // Auto-scroll when new content arrives (after DOM commit, before paint)
   useLayoutEffect(() => {
-    const end = messagesEndRef.current
-    if (!end) return
+    const container = scrollContainerRef.current
+    if (!container) return
 
     if (wasNearBottomRef.current) {
-      end.scrollIntoView({ behavior: 'auto' })
+      container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
     }
-  }, [messages.length, streamedContent, toolExecutions.length, messagesEndRef, wasNearBottomRef])
+  }, [messages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef])
 
   return (
     <div
@@ -90,7 +88,6 @@ export default function ChatMessages({
           <>
             {messages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === messages.length - 1
-              // When streaming replaces the last assistant message, animate it in once streaming ends
               return (
                 <MessageBubble
                   key={msg.id}
@@ -108,10 +105,10 @@ export default function ChatMessages({
             {toolExecutions.length > 0 && streaming && (
               <div className="space-y-2">
                 {toolExecutions.map((tool, index) => (
-                  <ToolExecutionCard 
-                    key={`${tool.tool_id}-${index}`} 
-                    tool={tool} 
-                    chatId={chatId} 
+                  <ToolExecutionCard
+                    key={`${tool.tool_id}-${index}`}
+                    tool={tool}
+                    chatId={chatId}
                   />
                 ))}
               </div>
@@ -124,7 +121,6 @@ export default function ChatMessages({
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
           </>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <ScrollToBottom onClick={onScrollToBottom} visible={showScrollBtn} />

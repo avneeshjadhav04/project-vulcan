@@ -60,6 +60,7 @@ export interface StreamOptions {
   refetchChat: () => Promise<any>
   windowHistoryReplace: (chatId: string) => void
   onChatCreated?: () => void
+  onUserMessageAdded?: () => void
   isRegenerate?: boolean
 }
 
@@ -108,6 +109,7 @@ export function useChatStream(): [StreamState, StreamActions] {
       refetchChat,
       windowHistoryReplace,
       onChatCreated,
+      onUserMessageAdded,
       isRegenerate,
     } = options
 
@@ -176,6 +178,7 @@ export function useChatStream(): [StreamState, StreamActions] {
 
       // Fetch the newly inserted user message right away so it shows up in UI
       await refetchChat()
+      onUserMessageAdded?.()
 
       const reader = res.body?.getReader()
       if (!reader) return
