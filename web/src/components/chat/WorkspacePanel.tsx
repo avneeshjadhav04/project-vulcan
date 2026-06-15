@@ -289,21 +289,35 @@ export default function WorkspacePanel({
     e.target.value = '' // Reset input
   }
 
+  const dragCounterRef = useRef(0)
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current++
+    if (dragCounterRef.current === 1) {
+      setIsDragOver(true)
+    }
+  }
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsDragOver(true)
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setIsDragOver(false)
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false)
+    }
   }
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    dragCounterRef.current = 0
     setIsDragOver(false)
 
     const items = e.dataTransfer.items
@@ -482,6 +496,7 @@ export default function WorkspacePanel({
         {!selectedFile ? (
           <div
             className={`p-2 h-full ${isDragOver ? 'bg-interactive/5' : ''}`}
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
