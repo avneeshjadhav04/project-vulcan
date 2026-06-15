@@ -152,29 +152,6 @@ cd api && cargo run
 cd web && npm install && npm run dev
 ```
 
-## Architecture
-
-```
-  CLIENT LAYER                    API LAYER                        DATA LAYER
-  ┌─────────────────┐             ┌─────────────────┐              ┌─────────────────┐
-  │                 │   HTTP/SSE  │                 │    SQLx      │                 │
-  │  React + Vite   │◄───────────►│  Rust / Axum    │◄────────────►│     SQLite      │
-  │  TypeScript     │   WebSocket │  Tokio async    │              │   (file DB)     │
-  │  Tailwind CSS   │             │                 │              │   (FTS5 search) │
-  └─────────────────┘             └────────┬────────┘              └─────────────────┘
-                                           │
-                           ┌───────────────┼───────────────┐
-                           │               │               │
-                           ▼               ▼               ▼
-                    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-                    │  NVIDIA /   │  │   proot +   │  │  JWT /      │
-                    │  OpenAI /   │  │ Ubuntu 24   │  │  Argon2     │
-                    │  Groq / etc │  │  (Sandbox)  │  │  AES-GCM    │
-                    │  (BYOK AI)  │  │             │  │             │
-                    └─────────────┘  └─────────────┘  └─────────────┘
-                     EXTERNAL            SANDBOX           SECURITY
-```
-
 ## Security
 
 - **Passwords**: Argon2id hashing
@@ -182,52 +159,6 @@ cd web && npm install && npm run dev
 - **Auth**: JWT via HttpOnly, SameSite=Strict cookies with CSRF tokens
 - **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
 - **JWT Fallback**: HS256 when RSA keys not available
-
-## Project Structure
-
-```
-├── api/                    # Rust API Gateway (Axum)
-│   ├── src/
-│   │   ├── main.rs         # Server & routing
-│   │   ├── auth.rs         # JWT, Argon2, AES-GCM
-│   │   ├── config.rs       # Environment config
-│   │   ├── db.rs           # SQLite connection
-│   │   ├── middleware.rs   # Auth guards, CSRF
-│   │   ├── models.rs       # Data types
-│   │   ├── providers/      # Multi-provider registry
-│   │   └── routes/
-│   │       ├── auth.rs     # Login/signup
-│   │       ├── chat.rs     # SSE streaming, tools, memory
-│   │       ├── models.rs   # Provider model fetcher
-│   │       └── terminal.rs # WS proxy
-│   ├── Cargo.toml
-│   └── Dockerfile
-├── web/                    # React Frontend
-│   ├── src/
-│   │   ├── pages/          # Landing, Login, Chat, Settings
-│   │   ├── components/
-│   │   │   ├── chat/       # Chat UI sub-components
-│   │   │   ├── ChatInterface.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── Terminal.tsx
-│   │   │   └── ProviderModelSelector.tsx
-│   │   ├── hooks/          # Reusable logic
-│   │   ├── stores/         # Zustand auth store
-│   │   └── lib/            # API client
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── Dockerfile
-├── db/migrations/          # SQLite schema
-├── scripts/                # Install & uninstall scripts
-├── secrets/                # JWT RSA keys (gitignored, local only)
-├── logos/                  # Brand assets
-├── docker-compose.yml      # Quickstart (GHCR image)
-├── docker-compose.dev.yml  # Development (build from source)
-├── Dockerfile              # Unified release build
-├── .env.example            # Environment template
-├── .gitignore              # Git exclusions
-└── LICENSE                 # MIT License
-```
 
 ## Branching Strategy
 
