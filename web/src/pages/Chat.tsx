@@ -21,9 +21,9 @@ const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
 const DEFAULT_SIDEBAR_WIDTH = 280
 
-const MIN_TERMINAL_HEIGHT = 150
-const MAX_TERMINAL_HEIGHT = 600
-const DEFAULT_TERMINAL_HEIGHT = 300
+const MIN_TERMINAL_HEIGHT = 300
+const MAX_TERMINAL_HEIGHT = 800
+const DEFAULT_TERMINAL_HEIGHT = 500
 
 export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
@@ -34,8 +34,12 @@ export default function Chat() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [terminalHeight, setTerminalHeight] = useState(DEFAULT_TERMINAL_HEIGHT)
+  const [terminalHeight, setTerminalHeight] = useState(() => {
+    const saved = localStorage.getItem('terminalHeight')
+    return saved ? Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, parseInt(saved, 10))) : DEFAULT_TERMINAL_HEIGHT
+  })
   const [isResizingTerminal, setIsResizingTerminal] = useState(false)
+  const [isTerminalMaximized, setIsTerminalMaximized] = useState(false)
   const mainRef = useRef<HTMLDivElement>(null)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({
     providerId: '',
@@ -73,6 +77,18 @@ export default function Chat() {
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [chatId])
+
+  // Keyboard shortcut: Ctrl+` to toggle terminal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault()
+        setShowTerminal((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // Mobile detection and auto-collapse sidebar
   useEffect(() => {
@@ -114,6 +130,8 @@ export default function Chat() {
         Math.min(MAX_TERMINAL_HEIGHT, rect.bottom - e.clientY)
       )
       setTerminalHeight(newHeight)
+      setIsTerminalMaximized(false)
+      localStorage.setItem('terminalHeight', String(newHeight))
     },
     [isResizingTerminal]
   )
@@ -273,13 +291,23 @@ export default function Chat() {
                 />
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: terminalHeight, opacity: 1 }}
+                  animate={{ height: isTerminalMaximized ? MAX_TERMINAL_HEIGHT : terminalHeight, opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden border-t border-border-subtle"
-                  style={{ height: terminalHeight }}
+                  style={{ height: isTerminalMaximized ? MAX_TERMINAL_HEIGHT : terminalHeight }}
                 >
-                  <Terminal />
+                  <Terminal 
+                    isMaximized={isTerminalMaximized}
+                    onToggleMaximize={() => {
+                      setIsTerminalMaximized(!isTerminalMaximized)
+                      if (!isTerminalMaximized) {
+                        setTerminalHeight(MAX_TERMINAL_HEIGHT)
+                      } else {
+                        setTerminalHeight(DEFAULT_TERMINAL_HEIGHT)
+                      }
+                    }}
+                  />
                 </motion.div>
               </>
             )}
