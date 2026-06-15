@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useLayoutEffect } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -26,6 +26,7 @@ interface ChatMessagesProps {
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
   messagesEndRef: React.RefObject<HTMLDivElement>
+  wasNearBottomRef: React.MutableRefObject<boolean>
   onScroll: () => void
   onScrollToBottom: () => void
   onRegenerate: () => void
@@ -44,6 +45,7 @@ export default function ChatMessages({
   showScrollBtn,
   scrollContainerRef,
   messagesEndRef,
+  wasNearBottomRef,
   onScroll,
   onScrollToBottom,
   onRegenerate,
@@ -56,6 +58,16 @@ export default function ChatMessages({
     }
     return -1
   }, [messages])
+
+  // Auto-scroll when new content arrives (after DOM commit, before paint)
+  useLayoutEffect(() => {
+    const end = messagesEndRef.current
+    if (!end) return
+
+    if (wasNearBottomRef.current) {
+      end.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [messages.length, streamedContent, toolExecutions.length, messagesEndRef, wasNearBottomRef])
 
   return (
     <div
