@@ -63,12 +63,49 @@ export default function WorkspacePanel({
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false)
+  const [isReadingFolder, setIsReadingFolder] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [overwriteConflicts, setOverwriteConflicts] = useState<string[] | null>(null)
   const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+
+  // ─── File System Entry Helpers ───
+
+  const readFileEntry = (entry: FileSystemFileEntry): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      entry.file(resolve, reject)
+    })
+  }
+
+  const readDirectoryEntry = async (entry: FileSystemDirectoryEntry): Promise<File[]> => {
+    const files: File[] = []
+    const reader = entry.createReader()
+
+    const readEntries = (): Promise<FileSystemEntry[]> => {
+      return new Promise((resolve, reject) => {
+        reader.readEntries(resolve, reject)
+      })
+    }
+
+    let entries: FileSystemEntry[]
+    do {
+      entries = await readEntries()
+      for (const child of entries) {
+        if (child.name.startsWith('.')) continue // Skip hidden files
+        if (child.isDirectory) {
+          const childFiles = await readDirectoryEntry(child as FileSystemDirectoryEntry)
+          files.push(...childFiles)
+        } else {
+          const file = await readFileEntry(child as FileSystemFileEntry)
+          files.push(file)
+        }
+      }
+    } while (entries.length > 0)
+
+    return files
+  }
 
   const queryClient = useQueryClient()
   const [autoRefresh] = useState(true)
@@ -176,12 +213,12 @@ export default function WorkspacePanel({
 
   // ─── Upload Logic ───
 
-  const handleUpload = useCallback(async (files: FileList | null, overwrite = false) => {
+  const handleUpload = useCallback(async (files: File[], overwrite = false) => {
     if (!files || files.length === 0) return
     setIsUploading(true)
 
     const formData = new FormData()
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       // Use webkitRelativePath for folder uploads, fallback to name
       const relativePath = (file as any).webkitRelativePath || file.name
       formData.append('file', file, relativePath)
@@ -202,7 +239,7 @@ export default function WorkspacePanel({
       if (res.status === 409) {
         const data = await res.json()
         setOverwriteConflicts(data.conflicts || [])
-        setPendingFiles(Array.from(files))
+        setPendingFiles(files)
         setIsUploading(false)
         return
       }
@@ -222,7 +259,7 @@ export default function WorkspacePanel({
 
   const confirmOverwrite = useCallback(() => {
     if (pendingFiles) {
-      handleUpload(pendingFiles as unknown as FileList, true)
+      handleUpload(pendingFiles, true)
       setOverwriteConflicts(null)
       setPendingFiles(null)
     }
@@ -234,7 +271,9 @@ export default function WorkspacePanel({
   }, [])
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleUpload(e.target.files)
+    if (e.target.files) {
+      handleUpload(Array.from(e.target.files))
+    }
     e.target.value = '' // Reset input
   }
 
@@ -250,11 +289,46 @@ export default function WorkspacePanel({
     setIsDragOver(false)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
-    handleUpload(e.dataTransfer.files)
+
+    const items = e.dataTransfer.items
+    if (!items || items.length === 0) return
+
+    setIsReadingFolder(true)
+    const allFiles: File[] = []
+
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        const entry = item.webkitGetAsEntry?.()
+        if (!entry) {
+          // Fallback to regular file if entry API not available
+          const file = item.getAsFile()
+          if (file) allFiles.push(file)
+          continue
+        }
+
+        if (entry.isDirectory) {
+          const files = await readDirectoryEntry(entry as FileSystemDirectoryEntry)
+          allFiles.push(...files)
+        } else if (entry.isFile) {
+          const file = await readFileEntry(entry as FileSystemFileEntry)
+          allFiles.push(file)
+        }
+      }
+
+      if (allFiles.length > 0) {
+        handleUpload(allFiles)
+      }
+    } catch (err) {
+      console.error('Failed to read dropped items:', err)
+      alert('Failed to read dropped folder. Try using the upload button instead.')
+    } finally {
+      setIsReadingFolder(false)
+    }
   }
 
   return (
@@ -422,6 +496,14 @@ export default function WorkspacePanel({
               <div className="mb-2 px-2 py-1.5 bg-interactive/10 rounded flex items-center gap-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-interactive" />
                 <span className="text-xs text-text-secondary">Uploading...</span>
+              </div>
+            )}
+
+            {/* Reading folder contents */}
+            {isReadingFolder && (
+              <div className="mb-2 px-2 py-1.5 bg-interactive/10 rounded flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-interactive" />
+                <span className="text-xs text-text-secondary">Reading folder contents...</span>
               </div>
             )}
 
