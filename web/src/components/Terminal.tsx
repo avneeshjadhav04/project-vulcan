@@ -15,9 +15,17 @@ import {
   ChevronDown,
   ArrowUpToLine,
   ArrowDownToLine,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 
-export default function Terminal() {
+export default function Terminal({ 
+  isMaximized = false,
+  onToggleMaximize,
+}: {
+  isMaximized?: boolean
+  onToggleMaximize?: () => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -305,6 +313,15 @@ export default function Terminal() {
             <ArrowDownToLine className="h-3 w-3" />
           </button>
           <div className="mx-1 h-3 w-px bg-border-subtle" />
+          {onToggleMaximize && (
+            <button
+              onClick={onToggleMaximize}
+              className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+              title={isMaximized ? 'Minimize terminal' : 'Maximize terminal'}
+            >
+              {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+            </button>
+          )}
           <button
             onClick={handleClear}
             className="flex items-center gap-1 p-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
