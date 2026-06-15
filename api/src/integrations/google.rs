@@ -242,7 +242,7 @@ pub async fn send_email(
         to, subject, body_text
     );
     let encoded =
-        base64::engine::general_purpose::URL_SAFE.encode(email.as_bytes());
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(email.as_bytes());
 
     let gmail_body = json!({"raw": encoded});
 
