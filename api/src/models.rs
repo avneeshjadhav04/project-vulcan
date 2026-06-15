@@ -12,6 +12,8 @@ pub struct User {
     pub encrypted_nim_key: Option<String>,
     pub role: String,
     pub memory_enabled: i32,
+    pub summarization_enabled: i32,
+    pub cross_chat_memory_enabled: i32,
     pub tools_enabled: i32,
     pub max_agent_steps: i32,
     pub created_at: DateTime<Utc>,

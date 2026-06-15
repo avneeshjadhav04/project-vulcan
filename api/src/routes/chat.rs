@@ -915,6 +915,8 @@ pub fn router() -> Router<AppState> {
         .route("/me/key", post(update_nim_key))
         .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
+        .route("/me/summarization", post(toggle_summarization))
+        .route("/me/cross-chat-memory", post(toggle_cross_chat_memory))
         .route("/me/tools", post(update_tools_config))
         .route("/me/agent-steps", post(update_agent_steps))
         .route("/me/scratchpad", get(get_scratchpad).post(update_scratchpad_endpoint))
@@ -945,6 +947,8 @@ async fn get_me(
         "has_provider": provider_count > 0,
         "provider_count": provider_count,
         "memory_enabled": user.memory_enabled == 1,
+        "summarization_enabled": user.summarization_enabled == 1,
+        "cross_chat_memory_enabled": user.cross_chat_memory_enabled == 1,
         "tools_enabled": user.tools_enabled == 1,
         "max_agent_steps": user.max_agent_steps,
     })))
@@ -1017,6 +1021,54 @@ async fn toggle_memory(
 
     Ok(Json(json!({
         "memory_enabled": new_value == 1,
+    })))
+}
+
+async fn toggle_summarization(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let new_value = if user.summarization_enabled == 1 { 0 } else { 1 };
+
+    sqlx::query("UPDATE users SET summarization_enabled = ?1 WHERE id = ?2")
+        .bind(new_value)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "summarization_enabled": new_value == 1,
+    })))
+}
+
+async fn toggle_cross_chat_memory(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let new_value = if user.cross_chat_memory_enabled == 1 { 0 } else { 1 };
+
+    sqlx::query("UPDATE users SET cross_chat_memory_enabled = ?1 WHERE id = ?2")
+        .bind(new_value)
+        .bind(claims.sub.clone())
+        .execute(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(json!({
+        "cross_chat_memory_enabled": new_value == 1,
     })))
 }
 
@@ -1762,9 +1814,9 @@ async fn send_message(
         .any(|(provider,)| provider == "todoist");
     let mut system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
 
-    // ─── Memory / Summarization Logic ───
-    let memory_enabled = user.memory_enabled == 1;
-    if memory_enabled {
+    // ─── Scratchpad Memory (always available if enabled) ───
+    let scratchpad_enabled = user.memory_enabled == 1;
+    if scratchpad_enabled {
         let scratchpad = sqlx::query_scalar::<_, String>("SELECT content FROM scratchpad_memory WHERE user_id = ?1")
             .bind(&user.id)
             .fetch_optional(&state.db)
@@ -1776,8 +1828,28 @@ async fn send_message(
             }
         }
     }
+    
+    // ─── Cross-Chat Memory (opt-in) ───
+    let cross_chat_enabled = user.cross_chat_memory_enabled == 1;
+    if cross_chat_enabled {
+        let cross_chat_facts = sqlx::query_scalar::<_, String>(
+            "SELECT content FROM cross_chat_memory WHERE user_id = ?1 ORDER BY updated_at DESC LIMIT 1"
+        )
+        .bind(&user.id)
+        .fetch_optional(&state.db)
+        .await
+        .unwrap_or_default();
+        if let Some(content) = cross_chat_facts {
+            if !content.is_empty() {
+                system_prompt.push_str(&format!("\n\n[CROSS-CHAT CONTEXT]\n{}", content));
+            }
+        }
+    }
+    
+    // ─── Summarization Logic ───
+    let summarization_enabled = user.summarization_enabled == 1;
     let needs_summarization =
-        memory_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
+        summarization_enabled && history.len() > MEMORY_SUMMARIZE_THRESHOLD + MEMORY_RECENT_WINDOW;
 
     let messages_payload = if needs_summarization {
         // Split into older messages (to summarize) and recent messages (to keep verbatim)
@@ -1800,6 +1872,9 @@ async fn send_message(
         let summary_text = if use_existing_summary {
             chat.summary.clone().unwrap_or_default()
         } else {
+            // Use previous summary (even if stale) while generating new one in background
+            let stale_summary = chat.summary.clone().unwrap_or_default();
+            
             // Generate summary in background (don't block response)
             let state_clone = state.clone();
             let base_url_clone = resolved.base_url.clone();
@@ -1842,8 +1917,33 @@ async fn send_message(
                 }
             });
 
-            // While summary generates, return a lightweight placeholder
-            "(Generating summary of earlier conversation...)".to_string()
+            // Return stale summary if available, otherwise empty string
+            if !stale_summary.is_empty() {
+                stale_summary
+            } else {
+                // No previous summary available - generate synchronously for first time
+                match summarize_conversation(
+                    &state,
+                    &resolved.base_url,
+                    &resolved.api_key,
+                    &chat.model_id,
+                    older,
+                )
+                .await
+                {
+                    Ok(summary) => {
+                        let _ = sqlx::query(
+                            "UPDATE chats SET summary = ?1, summary_updated_at = datetime('now') WHERE id = ?2"
+                        )
+                        .bind(&summary)
+                        .bind(&id)
+                        .execute(&state.db)
+                        .await;
+                        summary
+                    }
+                    Err(_) => String::new(),
+                }
+            }
         };
 
         build_messages_payload(&system_prompt, Some(&summary_text), recent)

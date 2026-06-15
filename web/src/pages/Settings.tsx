@@ -316,12 +316,21 @@ export default function Settings() {
     }
   }
 
-  const handleToggleMemory = async () => {
+  const handleToggleSummarization = async () => {
     try {
-      await api.post('/me/memory')
+      await api.post('/me/summarization')
       await fetchMe()
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to toggle memory')
+      setError(err.response?.data?.error || 'Failed to toggle summarization')
+    }
+  }
+
+  const handleToggleCrossChatMemory = async () => {
+    try {
+      await api.post('/me/cross-chat-memory')
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to toggle cross-chat memory')
     }
   }
 
@@ -675,13 +684,13 @@ export default function Settings() {
                 transition={{ duration: 0.2 }}
                 className="space-y-4"
               >
-                {/* Long-Term Memory */}
+                {/* Conversation Summarization */}
                 <div className="border border-border-subtle bg-layer p-5">
                   <div className="mb-4 flex items-start justify-between">
                     <div>
                       <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
                         <Brain className="h-4 w-4" />
-                        Long-Term Memory
+                        Conversation Summarization
                       </h2>
                       <p className="mt-1 text-xs text-text-helper">
                         Automatically summarize older conversations so the AI remembers context across long chats.
@@ -690,24 +699,24 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
                     <div className="flex items-center gap-3">
-                      <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                      <Brain className={`h-4 w-4 ${user?.summarization_enabled ? 'text-interactive' : 'text-text-helper'}`} />
                       <div>
-                        <p className="text-sm font-medium text-text-primary">Conversation Summarization</p>
+                        <p className="text-sm font-medium text-text-primary">Auto-Summarize</p>
                         <p className="text-[11px] text-text-helper">
-                          {user?.memory_enabled
+                          {user?.summarization_enabled
                             ? 'Enabled — AI will summarize older messages to maintain context'
                             : 'Disabled — AI sees all messages (may hit token limits)'}
                         </p>
                       </div>
                     </div>
                     <button
-                      onClick={handleToggleMemory}
+                      onClick={handleToggleSummarization}
                       className={`relative h-5 w-9 transition-colors ${
-                        user?.memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                        user?.summarization_enabled ? 'bg-interactive' : 'bg-border-subtle'
                       }`}
                     >
                       <motion.div
-                        animate={{ x: user?.memory_enabled ? 16 : 2 }}
+                        animate={{ x: user?.summarization_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                         className="absolute top-1 h-3 w-3 bg-white"
                       />
@@ -726,6 +735,46 @@ export default function Settings() {
                       <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
                       <span>Summaries are stored per-chat and updated automatically</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Cross-Chat Memory */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Brain className="h-4 w-4" />
+                        Cross-Chat Memory
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Allow the AI to remember facts across all your conversations. Disabled by default for privacy.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <Brain className={`h-4 w-4 ${user?.cross_chat_memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Cross-Chat Context</p>
+                        <p className="text-[11px] text-text-helper">
+                          {user?.cross_chat_memory_enabled
+                            ? 'Enabled — AI remembers facts across all chats'
+                            : 'Disabled — Each chat is completely isolated'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleToggleCrossChatMemory}
+                      className={`relative h-5 w-9 transition-colors ${
+                        user?.cross_chat_memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                      }`}
+                    >
+                      <motion.div
+                        animate={{ x: user?.cross_chat_memory_enabled ? 16 : 2 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        className="absolute top-1 h-3 w-3 bg-white"
+                      />
+                    </button>
                   </div>
                 </div>
 
