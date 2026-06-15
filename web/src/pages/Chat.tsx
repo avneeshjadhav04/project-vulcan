@@ -159,7 +159,7 @@ export default function Chat() {
   }, [isResizingTerminal, resizeTerminal, stopResizeTerminal])
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="relative flex h-screen bg-background">
       <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
@@ -244,9 +244,11 @@ export default function Chat() {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-3 top-3 z-10 flex items-center gap-2 rounded-carbon border border-white/10 bg-layer/60 px-3 py-2 text-text-secondary backdrop-blur-md transition-all hover:bg-layer/80 hover:text-text-primary shadow-sm"
+          className="absolute left-3 top-3 z-50 flex items-center gap-2 rounded-carbon border border-white/10 bg-layer px-3 py-2 text-text-primary shadow-lg transition-all hover:bg-layer-hover hover:text-text-primary"
+          title="Show sidebar"
         >
           <PanelLeftOpen className="h-4 w-4" />
+          <span className="text-xs font-medium">Chats</span>
         </button>
       )}
 
