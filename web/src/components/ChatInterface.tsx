@@ -194,7 +194,10 @@ export default function ChatInterface({
       },
       isRegenerate,
     })
-  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
+    
+    // Auto-scroll to bottom when sending a new message
+    scroll.scrollToBottom('auto')
+  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient, scroll])
 
 
   const handleRegenerate = useCallback(async () => {

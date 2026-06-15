@@ -19,8 +19,18 @@ export function useChatScroll(chatId?: string) {
   }, [])
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
     isAutoScrollingRef.current = true
-    messagesEndRef.current?.scrollIntoView({ behavior })
+    
+    // Use direct scrollTop assignment for reliability
+    if (behavior === 'auto') {
+      container.scrollTop = container.scrollHeight
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior })
+    }
+    setShowScrollBtn(false)
     
     // Clear any existing debounce timer
     if (debounceTimerRef.current) {
@@ -52,6 +62,10 @@ export function useChatScroll(chatId?: string) {
       if (isAutoScrollingRef.current) return
       const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
       const nearBottom = distanceFromBottom < SCROLL_THRESHOLD
+      
+      // Always update button visibility when content changes
+      setShowScrollBtn(!nearBottom)
+      
       if (nearBottom) {
         // Use 'auto' behavior during fast streaming to avoid jumpy smooth scrolling animations
         scrollToBottom('auto')
