@@ -117,24 +117,35 @@ export default function ChatInterface({
     const currentProviderId = chatData?.chat.provider_id
     if (!currentModelId || !currentProviderId || !userData?.has_provider) {
       setModelValidation(null)
+      setValidatingModel(false)
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
     setValidatingModel(true)
 
-    api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`)
+    api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`, {
+      signal: controller.signal,
+      timeout: 15000,
+    })
       .then((res) => {
-        if (!cancelled) setModelValidation(res.data)
+        clearTimeout(timeoutId)
+        if (!controller.signal.aborted) setModelValidation(res.data)
       })
       .catch(() => {
-        if (!cancelled) setModelValidation(null)
+        clearTimeout(timeoutId)
+        if (!controller.signal.aborted) setModelValidation(null)
       })
       .finally(() => {
-        if (!cancelled) setValidatingModel(false)
+        clearTimeout(timeoutId)
+        if (!controller.signal.aborted) setValidatingModel(false)
       })
 
-    return () => { cancelled = true }
+    return () => {
+      controller.abort()
+      clearTimeout(timeoutId)
+    }
   }, [chatData?.chat.model_id, chatData?.chat.provider_id, userData?.has_provider])
 
   // Assign pending meta to last assistant message
