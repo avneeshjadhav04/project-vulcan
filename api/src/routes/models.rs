@@ -242,6 +242,7 @@ async fn validate_model(
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
         .json(&test_body)
+        .timeout(std::time::Duration::from_secs(20))
         .send()
         .await;
 
