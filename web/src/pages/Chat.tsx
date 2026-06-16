@@ -35,7 +35,12 @@ export default function Chat() {
   const [showTerminal, setShowTerminal] = useState(false)
   const [showWorkspace, setShowWorkspace] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('sidebarWidth')
+    return saved
+      ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, parseInt(saved, 10)))
+      : DEFAULT_SIDEBAR_WIDTH
+  })
   const [isResizing, setIsResizing] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [terminalHeight, setTerminalHeight] = useState(() => {
@@ -123,6 +128,7 @@ export default function Chat() {
       if (!isResizing) return
       const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, e.clientX))
       setSidebarWidth(newWidth)
+      localStorage.setItem('sidebarWidth', String(newWidth))
     },
     [isResizing]
   )
@@ -325,6 +331,7 @@ export default function Chat() {
             chatId={chatId}
             selectedModel={selectedModel}
             onModelChange={handleModelChange}
+            sidebarOpen={sidebarOpen}
           />
 
           <AnimatePresence>
