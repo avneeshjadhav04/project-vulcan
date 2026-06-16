@@ -131,7 +131,10 @@ function Nav() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-background/60 backdrop-blur-xl transition-all">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2">
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="flex items-center gap-2"
+        >
           <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-md" />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
@@ -649,10 +652,13 @@ function Footer() {
   return (
     <footer className="border-t border-white/5 bg-background/80 backdrop-blur-md px-6 py-10">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
-        <div className="flex items-center gap-3">
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="flex items-center gap-3"
+        >
           <img src="/VulcanLogo.png" alt="" className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
-        </div>
+        </button>
         <div className="flex items-center gap-4">
           <a
             href="https://github.com/avneeshjadhav04/project-vulcan"
