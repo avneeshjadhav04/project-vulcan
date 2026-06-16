@@ -6,9 +6,10 @@ interface ChatHeaderProps {
   title?: string
   optimisticTitle?: string
   chatId?: string
+  sidebarOpen?: boolean
 }
 
-export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeaderProps) {
+export default function ChatHeader({ title, optimisticTitle, chatId, sidebarOpen }: ChatHeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
   const exportRef = useRef<HTMLDivElement>(null)
@@ -81,7 +82,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId }: ChatHeade
   }
 
   return (
-    <header className="relative z-10 flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md">
+    <header className={`relative z-10 flex items-center justify-between border-b border-white/5 bg-background/80 px-6 py-4 backdrop-blur-md ${sidebarOpen === false ? 'pl-32' : ''}`}>
       <div className="flex items-center gap-3 min-w-0">
         <h2 className="truncate text-xs font-semibold text-text-primary">
           {title || optimisticTitle || 'New Chat'}

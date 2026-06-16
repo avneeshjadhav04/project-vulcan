@@ -35,10 +35,12 @@ export default function ChatInterface({
   chatId,
   selectedModel,
   onModelChange,
+  sidebarOpen,
 }: {
   chatId?: string
   selectedModel: SelectedModel
   onModelChange?: (selection: SelectedModel) => void
+  sidebarOpen?: boolean
 }) {
   const [input, setInput] = useState('')
   const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
@@ -318,6 +320,7 @@ export default function ChatInterface({
         title={chatData?.chat.title}
         optimisticTitle={optimisticTitle}
         chatId={effectiveChatId}
+        sidebarOpen={sidebarOpen}
       />
 
       {/* API Key Required Overlay */}
