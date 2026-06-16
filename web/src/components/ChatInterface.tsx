@@ -112,6 +112,7 @@ export default function ChatInterface({
   // attachedFiles only represents files about to be sent.
 
   // Validate model when chat loads
+  const validationRunRef = useRef(0)
   useEffect(() => {
     const currentModelId = chatData?.chat.model_id
     const currentProviderId = chatData?.chat.provider_id
@@ -121,25 +122,25 @@ export default function ChatInterface({
       return
     }
 
+    const runId = ++validationRunRef.current
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 15000)
     setValidatingModel(true)
 
     api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`, {
       signal: controller.signal,
-      timeout: 15000,
     })
       .then((res) => {
         clearTimeout(timeoutId)
-        if (!controller.signal.aborted) setModelValidation(res.data)
+        if (validationRunRef.current === runId) setModelValidation(res.data)
       })
       .catch(() => {
         clearTimeout(timeoutId)
-        if (!controller.signal.aborted) setModelValidation(null)
+        if (validationRunRef.current === runId) setModelValidation(null)
       })
       .finally(() => {
         clearTimeout(timeoutId)
-        if (!controller.signal.aborted) setValidatingModel(false)
+        if (validationRunRef.current === runId) setValidatingModel(false)
       })
 
     return () => {
