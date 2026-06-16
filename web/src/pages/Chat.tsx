@@ -235,13 +235,16 @@ export default function Chat() {
           >
             {/* Logo */}
             <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-              <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/chat')}
+                className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
+              >
                 <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-sm" />
                 <div>
                   <span className="text-sm font-semibold text-text-primary">Project Vulcan</span>
                   <p className="text-[10px] text-text-secondary">Personal AI Assistant</p>
                 </div>
-              </div>
+              </button>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="p-1.5 text-text-disabled transition-colors hover:text-text-primary"
