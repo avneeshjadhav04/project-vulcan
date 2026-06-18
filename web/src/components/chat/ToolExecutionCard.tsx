@@ -34,8 +34,16 @@ interface ToolResult {
   language?: string
 }
 
-export default function ToolExecutionCard({ tool, chatId }: { tool: ToolResult, chatId?: string }) {
-  const [expanded, setExpanded] = useState(true)
+export default function ToolExecutionCard({
+  tool,
+  chatId,
+  defaultExpanded = false,
+}: {
+  tool: ToolResult
+  chatId?: string
+  defaultExpanded?: boolean
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
   const isSuccess = tool.status === 'success' || tool.status === 'created' || tool.status === 'modified'
   const isError = tool.status === 'error'
   const isTerminal = tool.tool_name === 'execute_terminal_command'
