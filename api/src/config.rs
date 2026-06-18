@@ -8,7 +8,6 @@ pub struct Config {
     pub jwt_secret_path: Option<String>,
     pub jwt_fallback_secret: Vec<u8>,
     pub master_key: [u8; 32],
-    pub nim_base_url: String,
     pub bind_addr: String,
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
@@ -153,8 +152,6 @@ impl Config {
             jwt_secret_path,
             jwt_fallback_secret,
             master_key,
-            nim_base_url: env::var("NIM_BASE_URL")
-                .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string()),
             bind_addr,
             cookie_secure,
             cors_origin,

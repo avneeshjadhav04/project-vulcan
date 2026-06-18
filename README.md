@@ -123,7 +123,6 @@ cd ~/vulcan && docker compose pull && docker compose up -d
 |----------|----------|---------|-------------|
 | `MASTER_KEY` | Yes | auto-generated | 32+ byte key for AES-256-GCM encryption |
 | `DATABASE_URL` | No | `sqlite:/data/vulcan.db` | SQLite database path |
-| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | Default NVIDIA NIM endpoint |
 | `APP_BASE_URL` | No | `http://localhost:8080` | Base URL for OAuth callbacks |
 | `PORT` | No | `8080` | HTTP port |
 | `DISABLE_TOOLS` | No | - | Set to `1` to disable AI tool execution |

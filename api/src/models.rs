@@ -8,8 +8,6 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
-    #[serde(skip_serializing)]
-    pub encrypted_nim_key: Option<String>,
     pub role: String,
     pub memory_enabled: i32,
     pub summarization_enabled: i32,
@@ -148,11 +146,6 @@ pub struct SendMessageRequest {
     pub is_regenerate: Option<bool>,
     pub parent_id: Option<String>,
     pub attachments: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateNimKeyRequest {
-    pub api_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

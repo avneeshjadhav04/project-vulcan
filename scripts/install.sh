@@ -112,9 +112,6 @@ DATABASE_URL=sqlite:/data/vulcan.db
 # Logging level (trace, debug, info, warn, error)
 RUST_LOG=info
 
-# Default NVIDIA NIM endpoint (optional — users can add providers via UI)
-NIM_BASE_URL=https://integrate.api.nvidia.com/v1
-
 # Application base URL (for OAuth redirect callbacks)
 APP_BASE_URL=http://localhost:8080
 
