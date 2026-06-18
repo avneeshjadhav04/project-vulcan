@@ -57,7 +57,7 @@ export default function Chat() {
   const mainRef = useRef<HTMLDivElement>(null)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>({
     providerId: '',
-    modelId: 'meta/llama-3.1-8b-instruct',
+    modelId: '',
   })
   const user = useAuthStore((s) => s.user)
 

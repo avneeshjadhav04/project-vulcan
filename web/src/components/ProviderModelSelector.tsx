@@ -97,7 +97,11 @@ export default function ProviderModelSelector({
         <div className="flex items-center gap-2 min-w-0">
           <Cpu className="h-3.5 w-3.5 shrink-0 text-interactive" />
           <span className="font-mono truncate text-[11px]">
-            {selectedItem ? `${selectedItem.providerName} / ${selectedItem.model.id}` : selected.modelId || 'Select model'}
+            {selectedItem
+              ? `${selectedItem.providerName} / ${selectedItem.model.id}`
+              : selected.providerId
+                ? selected.modelId || 'Select model'
+                : 'No provider'}
           </span>
         </div>
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -140,7 +144,7 @@ export default function ProviderModelSelector({
                 <button
                   onClick={() => {
                     setOpen(false)
-                    navigate('/settings')
+                    navigate('/settings?tab=providers')
                   }}
                   className="inline-flex items-center gap-1 text-xs text-interactive hover:text-link-hover"
                 >
