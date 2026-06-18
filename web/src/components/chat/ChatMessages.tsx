@@ -13,6 +13,7 @@ interface MessageItem {
   content: string
   created_at: string
   tokens_used?: number
+  tool_name?: string
 }
 
 interface ChatMessagesProps {
@@ -50,12 +51,20 @@ export default function ChatMessages({
   onEditMessage,
   onSuggestion,
 }: ChatMessagesProps) {
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter(
+        (m) => !(m.role === 'assistant' && m.tool_name === 'tool_calls_init' && !m.content.trim())
+      ),
+    [messages]
+  )
+
   const lastAssistantIndex = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return i
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i].role === 'assistant') return i
     }
     return -1
-  }, [messages])
+  }, [visibleMessages])
 
   // Auto-scroll when new content arrives (after DOM commit, before paint)
   useLayoutEffect(() => {
@@ -65,7 +74,7 @@ export default function ChatMessages({
     if (wasNearBottomRef.current) {
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
     }
-  }, [messages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef])
 
   return (
     <div
@@ -86,8 +95,8 @@ export default function ChatMessages({
           <EmptyState onSuggestion={onSuggestion} />
         ) : (
           <>
-            {messages.map((msg, index) => {
-              const isLastAssistant = msg.role === 'assistant' && index === messages.length - 1
+            {visibleMessages.map((msg, index) => {
+              const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
               return (
                 <MessageBubble
                   key={msg.id}
@@ -109,6 +118,7 @@ export default function ChatMessages({
                     key={`${tool.tool_id}-${index}`}
                     tool={tool}
                     chatId={chatId}
+                    defaultExpanded={index === toolExecutions.length - 1}
                   />
                 ))}
               </div>

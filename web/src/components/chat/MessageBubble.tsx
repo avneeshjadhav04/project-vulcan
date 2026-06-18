@@ -83,6 +83,15 @@ function MessageBubble({
     onReact?.(msg.id, reaction)
   }, [msg.id, onReact])
 
+  // Skip empty assistant placeholders used for tool-call context
+  if (
+    msg.role === 'assistant' &&
+    msg.tool_name === 'tool_calls_init' &&
+    !msg.content.trim()
+  ) {
+    return null
+  }
+
   if (msg.role === 'tool') {
     let parsed: any = {}
     try {
