@@ -37,22 +37,22 @@
   }
 
   html.light {
-    /* Light mode overrides */
-    --color-background: #f8f9fa;
+    /* Light mode overrides - softer on eyes with visible borders */
+    --color-background: #f1f5f9;
     --color-layer: #ffffff;
-    --color-layer-hover: #f1f5f9;
+    --color-layer-hover: #f8fafc;
     --color-layer-active: #e2e8f0;
-    --color-layer-selected: #f1f5f9;
-    --color-border-subtle: #e2e8f0;
-    --color-border-strong: #cbd5e1;
-    --color-text-primary: #18181b;
-    --color-text-secondary: #52525b;
-    --color-text-placeholder: #a1a1aa;
-    --color-text-helper: #71717a;
-    --color-text-disabled: #a1a1aa;
-    --color-icon-primary: #18181b;
-    --color-icon-secondary: #52525b;
-    --color-icon-disabled: #a1a1aa;
+    --color-layer-selected: #f8fafc;
+    --color-border-subtle: #cbd5e1;
+    --color-border-strong: #94a3b8;
+    --color-text-primary: #1e293b;
+    --color-text-secondary: #64748b;
+    --color-text-placeholder: #cbd5e1;
+    --color-text-helper: #94a3b8;
+    --color-text-disabled: #cbd5e1;
+    --color-icon-primary: #1e293b;
+    --color-icon-secondary: #64748b;
+    --color-icon-disabled: #cbd5e1;
     --color-interactive: #0f62fe;
     --color-interactive-hover: #0353e9;
     --color-link-primary: #0f62fe;
@@ -64,8 +64,8 @@
     --color-focus: #60a5fa;
     --color-white: #ffffff;
     --color-black: #000000;
-    --shadow-interactive: rgba(15, 98, 254, 0.25);
-    --glass-gradient: linear-gradient(135deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0.01) 100%);
+    --shadow-interactive: rgba(15, 98, 254, 0.2);
+    --glass-gradient: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.01) 100%);
     --vibrant-gradient: linear-gradient(135deg, #0f62fe 0%, #4589ff 100%);
   }
 
@@ -154,6 +154,20 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .bg-scrim {
+    background-color: rgba(0, 0, 0, 0.4);
+  }
+  html.light .bg-scrim {
+    background-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .bg-scrim-strong {
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+  html.light .bg-scrim-strong {
+    background-color: rgba(0, 0, 0, 0.2);
   }
 }
 

@@ -92,7 +92,7 @@ export default function ProviderModelSelector({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-carbon border border-white/10 bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
+        className="flex w-full items-center justify-between gap-2 rounded-carbon border border-border-subtle bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
       >
         <div className="flex items-center gap-2 min-w-0">
           <Cpu className="h-3.5 w-3.5 shrink-0 text-interactive" />
@@ -108,9 +108,9 @@ export default function ProviderModelSelector({
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-white/10 bg-layer shadow-xl">
+        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl">
           {/* Search */}
-          <div className="border-b border-white/5 p-2">
+          <div className="border-b border-border-subtle p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
               <Search className="h-3.5 w-3.5 text-text-helper" />
               <input

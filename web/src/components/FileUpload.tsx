@@ -259,13 +259,13 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute bottom-full left-0 mb-2 w-48 rounded-md border border-white/10 bg-layer/90 p-2.5 shadow-lg backdrop-blur-md"
+              className="absolute bottom-full left-0 mb-2 w-48 rounded-md border border-border-subtle bg-layer/90 p-2.5 shadow-lg backdrop-blur-md"
             >
               <div className="mb-1.5 flex justify-between text-[10px] font-medium text-text-primary">
                 <span>Uploading...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10 shadow-inner">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-border-subtle shadow-inner">
                 <div
                   className="h-full bg-vibrant-gradient transition-all duration-300 ease-out"
                   style={{ width: `${uploadProgress}%` }}

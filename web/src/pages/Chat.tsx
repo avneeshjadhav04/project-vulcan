@@ -237,11 +237,11 @@ export default function Chat() {
             animate={{ width: sidebarWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex shrink-0 flex-col overflow-hidden border-r border-white/5 bg-layer/30 backdrop-blur-md"
+            className="flex shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-layer/30 backdrop-blur-md"
             style={{ width: sidebarWidth }}
           >
             {/* Logo */}
-            <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
               <button
                 onClick={() => navigate('/chat')}
                 className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
@@ -266,8 +266,8 @@ export default function Chat() {
             </div>
 
             {/* Footer */}
-            <div className="border-t border-white/5 p-3">
-              <div className="mb-2 flex items-center gap-2 rounded-carbon border border-white/5 bg-layer/50 px-3 py-2 shadow-sm transition-colors hover:bg-layer/80">
+            <div className="border-t border-border-subtle p-3">
+              <div className="mb-2 flex items-center gap-2 rounded-carbon border border-border-subtle bg-layer/50 px-3 py-2 shadow-sm transition-colors hover:bg-layer/80">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient text-white shadow-inner">
                   <span className="text-[11px] font-bold">
                     {user?.email?.charAt(0).toUpperCase() || 'U'}
@@ -317,7 +317,7 @@ export default function Chat() {
       {!sidebarOpen && (
         <button
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-3 top-3 z-50 flex items-center gap-2 rounded-carbon border border-white/10 bg-layer px-3 py-2 text-text-primary shadow-lg transition-all hover:bg-layer-hover hover:text-text-primary"
+          className="absolute left-3 top-3 z-50 flex items-center gap-2 rounded-carbon border border-border-subtle bg-layer px-3 py-2 text-text-primary shadow-lg transition-all hover:bg-layer-hover hover:text-text-primary"
           title="Show sidebar"
         >
           <PanelLeftOpen className="h-4 w-4" />
