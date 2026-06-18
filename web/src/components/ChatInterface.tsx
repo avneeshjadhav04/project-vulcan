@@ -51,12 +51,13 @@ export default function ChatInterface({
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
   const [isGlobalDragging, setIsGlobalDragging] = useState(false)
   const [providerOverlayDismissed, setProviderOverlayDismissed] = useState(false)
-  const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
+  const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
+  const currentChatIdRef = useRef<string | undefined>(chatId)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [streamState, streamActions] = useChatStream()
+  const [streamState, streamActions] = useChatStream(effectiveChatId)
   const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
@@ -67,6 +68,7 @@ export default function ChatInterface({
   useEffect(() => {
     setEffectiveChatId(chatId)
     setOptimisticTitle(undefined)
+    currentChatIdRef.current = chatId
   }, [chatId])
 
   // Sync selected model to chat's stored provider+model when chat loads
@@ -104,8 +106,8 @@ export default function ChatInterface({
   useEffect(() => {
     setInput('')
     setAttachedFiles([])
-    setMessageMeta({})
-    pendingMetaRef.current = null
+    setModelValidation(null)
+    setValidatingModel(false)
   }, [chatId])
 
   // Removed: We no longer load all past files into the input box.
@@ -151,24 +153,24 @@ export default function ChatInterface({
 
   // Assign pending meta to last assistant message
   useEffect(() => {
-    if (pendingMetaRef.current && chatData?.messages && chatData.messages.length > 0) {
+    if (effectiveChatId && pendingMetaRef.current[effectiveChatId] && chatData?.messages && chatData.messages.length > 0) {
       const lastMsg = chatData.messages[chatData.messages.length - 1]
       if (lastMsg.role === 'assistant') {
-        setMessageMeta((prev) => ({ ...prev, [lastMsg.id]: pendingMetaRef.current! }))
-        pendingMetaRef.current = null
+        setMessageMeta((prev) => ({ ...prev, [lastMsg.id]: pendingMetaRef.current[effectiveChatId]! }))
+        pendingMetaRef.current = { ...pendingMetaRef.current, [effectiveChatId]: undefined }
       }
     }
-  }, [chatData?.messages])
+  }, [chatData?.messages, effectiveChatId])
 
   // Smoothly clear streamed content when streaming finishes
   useEffect(() => {
     if (!streaming && streamedContent && chatData?.messages) {
       const timer = setTimeout(() => {
-        clearStreamedContent()
+        clearStreamedContent(effectiveChatId)
       }, 150)
       return () => clearTimeout(timer)
     }
-  }, [streaming, streamedContent, chatData?.messages, clearStreamedContent])
+  }, [streaming, streamedContent, chatData?.messages, clearStreamedContent, effectiveChatId])
 
   const handleSend = useCallback(async (textOverride?: string, isRegenerate = false) => {
     const text = textOverride || input.trim()
@@ -193,25 +195,23 @@ export default function ChatInterface({
       setEffectiveChatId,
       setOptimisticTitle,
       attachedFiles: currentFiles,
-      onStreamDone: (meta) => {
-        pendingMetaRef.current = meta
+      onStreamDone: (meta, chatId) => {
+        pendingMetaRef.current = { ...pendingMetaRef.current, [chatId]: meta }
       },
-      onStreamError: (error) => {
-        console.error('Stream error:', error)
+      onStreamError: (error, chatId) => {
+        console.error('Stream error:', error, chatId)
       },
-      refetchChat: refetch,
       windowHistoryReplace: (id) => {
-        window.history.replaceState({}, '', `/chat/${id}`)
+        if (!currentChatIdRef.current || currentChatIdRef.current === id) {
+          window.history.replaceState({}, '', `/chat/${id}`)
+        }
       },
       onChatCreated: () => {
         queryClient.invalidateQueries({ queryKey: ['chats'] })
       },
-      onUserMessageAdded: () => {
-        scroll.forceScrollToBottom()
-      },
       isRegenerate,
     })
-  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient, scroll])
+  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, startStream, queryClient, chatId, userData, showError])
 
 
   const handleRegenerate = useCallback(async () => {
