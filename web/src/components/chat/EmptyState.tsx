@@ -7,6 +7,8 @@ interface Suggestion {
   text: string
 }
 
+const CLOCKWISE_SLOTS = [0, 1, 3, 2]
+
 const IDEA_POOL: Suggestion[] = [
   // Coding / Dev
   { id: 1, text: 'List all files in the current directory' },
@@ -68,7 +70,7 @@ function shuffle<T>(array: T[]): T[] {
 
 export default function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
   const [displayed, setDisplayed] = useState<Suggestion[]>(() => shuffle(IDEA_POOL).slice(0, 4))
-  const [slotIndex, setSlotIndex] = useState(0)
+  const [stepIndex, setStepIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
 
   const rotate = useCallback(() => {
@@ -77,11 +79,11 @@ export default function EmptyState({ onSuggestion }: { onSuggestion: (text: stri
       const available = IDEA_POOL.filter((s) => !currentIds.has(s.id))
       const next = available.length > 0 ? available[Math.floor(Math.random() * available.length)] : IDEA_POOL[Math.floor(Math.random() * IDEA_POOL.length)]
       const updated = [...current]
-      updated[slotIndex] = next
+      updated[CLOCKWISE_SLOTS[stepIndex]] = next
       return updated
     })
-    setSlotIndex((i) => (i + 1) % 4)
-  }, [slotIndex])
+    setStepIndex((i) => (i + 1) % 4)
+  }, [stepIndex])
 
   useEffect(() => {
     const interval = setInterval(() => {
