@@ -78,6 +78,7 @@ export default function Chat() {
   }, [selectedModel.providerId])
 
   const handleModelChange = useCallback(async (sel: SelectedModel) => {
+    if (sel.providerId === selectedModel.providerId && sel.modelId === selectedModel.modelId) return
     setSelectedModel(sel)
     if (chatId) {
       try {
@@ -86,7 +87,7 @@ export default function Chat() {
         console.error('Failed to update chat model:', e)
       }
     }
-  }, [chatId])
+  }, [chatId, selectedModel])
 
   useEffect(() => {
     window.scrollTo(0, 0)
