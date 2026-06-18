@@ -86,7 +86,7 @@ export default function EmptyState({ onSuggestion }: { onSuggestion: (text: stri
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isPaused) rotate()
-    }, 5000)
+    }, 10000)
     return () => clearInterval(interval)
   }, [isPaused, rotate])
 
