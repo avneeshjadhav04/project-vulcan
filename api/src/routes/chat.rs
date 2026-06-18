@@ -1602,6 +1602,36 @@ async fn send_message(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
+    // Persist model/provider selection from the frontend so this message uses
+    // the currently selected model, even if the chat row hasn't been updated yet.
+    let chat = if req.provider_id.is_some() || req.model_id.is_some() {
+        if let Some(ref pid) = req.provider_id {
+            let _: Provider = sqlx::query_as("SELECT * FROM providers WHERE id = ?1 AND user_id = ?2")
+                .bind(pid)
+                .bind(&claims.sub)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| StatusCode::BAD_REQUEST)?;
+        }
+        sqlx::query_as(
+            "UPDATE chats SET
+                model_id = COALESCE(?1, model_id),
+                provider_id = COALESCE(?2, provider_id),
+                updated_at = datetime('now')
+             WHERE id = ?3 AND user_id = ?4
+             RETURNING *",
+        )
+        .bind(req.model_id.as_deref())
+        .bind(req.provider_id.as_deref())
+        .bind(id.clone())
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    } else {
+        chat
+    };
+
     let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
     let is_regenerate = req.is_regenerate.unwrap_or(false);

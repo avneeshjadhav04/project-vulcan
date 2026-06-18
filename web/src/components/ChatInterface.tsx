@@ -53,6 +53,7 @@ export default function ChatInterface({
   const [providerOverlayDismissed, setProviderOverlayDismissed] = useState(false)
   const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
   const currentChatIdRef = useRef<string | undefined>(chatId)
+  const lastSyncedChatIdRef = useRef<string | null>(null)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -92,15 +93,16 @@ export default function ChatInterface({
     },
   })
   const scroll = useChatScroll(effectiveChatId)
-  // Sync model from loaded chat
+  // Sync model from loaded chat only when switching chats, not on every refetch
   useEffect(() => {
-    if (chatData?.chat.model_id) {
-      onModelChange?.({
-        providerId: chatData.chat.provider_id || '',
-        modelId: chatData.chat.model_id,
-      })
-    }
-  }, [chatData?.chat.model_id, chatData?.chat.provider_id, onModelChange])
+    if (!effectiveChatId || !chatData?.chat.model_id) return
+    if (lastSyncedChatIdRef.current === effectiveChatId) return
+    lastSyncedChatIdRef.current = effectiveChatId
+    onModelChange?.({
+      providerId: chatData.chat.provider_id || '',
+      modelId: chatData.chat.model_id,
+    })
+  }, [effectiveChatId, chatData?.chat.model_id, chatData?.chat.provider_id, onModelChange])
 
   // Reset state when switching chats
   useEffect(() => {

@@ -187,7 +187,13 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           'X-CSRF-Token': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || '',
         },
         credentials: 'include',
-        body: JSON.stringify({ content: text, attachments: attachmentNames, is_regenerate: isRegenerate }),
+        body: JSON.stringify({
+          content: text,
+          attachments: attachmentNames,
+          is_regenerate: isRegenerate,
+          provider_id: selectedModel.providerId || undefined,
+          model_id: selectedModel.modelId,
+        }),
         signal: controller.signal,
       })
 

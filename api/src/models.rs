@@ -146,6 +146,8 @@ pub struct SendMessageRequest {
     pub is_regenerate: Option<bool>,
     pub parent_id: Option<String>,
     pub attachments: Option<Vec<String>>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
