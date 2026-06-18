@@ -48,7 +48,7 @@ const IDEA_POOL: Suggestion[] = [
 
   // Fun / Creative
   { id: 33, text: 'Write a short sci-fi story about Mars' },
-  { id: 34, text: 'Generate a recipe using chicken and broccoli' },
+  { id: 34, text: 'Plan a weekend project to learn a new skill' },
   { id: 35, text: 'Create a workout plan for beginners' },
   { id: 36, text: 'Suggest a playlist theme for a road trip' },
   { id: 37, text: 'Write a haiku about coding' },
@@ -116,7 +116,7 @@ export default function EmptyState({ onSuggestion }: { onSuggestion: (text: stri
               initial={{ opacity: 0, filter: 'blur(8px)', scale: 0.95 }}
               animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
               exit={{ opacity: 0, filter: 'blur(8px)', scale: 0.95 }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
               onClick={() => onSuggestion(s.text)}
               className="flex items-start gap-2 border border-border-subtle bg-layer p-3 text-left transition-colors hover:border-border-strong hover:bg-layer-hover focus:outline-none focus:ring-1 focus:ring-focus"
             >
