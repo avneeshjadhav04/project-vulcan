@@ -52,7 +52,7 @@ export default function UsageDashboard() {
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-border-subtle bg-background px-5 py-3">
         <button
-          onClick={() => navigate('/chat')}
+          onClick={() => navigate('/settings')}
           className="flex items-center gap-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
         >
           <ArrowLeft className="h-4 w-4" />

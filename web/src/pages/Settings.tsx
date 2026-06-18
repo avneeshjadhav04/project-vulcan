@@ -34,6 +34,7 @@ import {
   Settings2,
   MemoryStick,
   Puzzle,
+  BarChart3,
   LogOut,
 } from 'lucide-react'
 
@@ -66,12 +67,13 @@ const BUILT_IN_PROVIDERS = [
 
 type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'signout'
 
-const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+const TAB_ITEMS: { id: SettingsTab | 'usage'; label: string; icon: React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
   { id: 'providers', label: 'AI Providers', icon: <Server className="h-4 w-4" /> },
   { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
   { id: 'memory', label: 'Memory', icon: <MemoryStick className="h-4 w-4" /> },
   { id: 'integrations', label: 'Integrations', icon: <Puzzle className="h-4 w-4" /> },
+  { id: 'usage', label: 'Usage', icon: <BarChart3 className="h-4 w-4" /> },
   { id: 'signout', label: 'Sign Out', icon: <LogOut className="h-4 w-4" /> },
 ]
 
@@ -372,7 +374,14 @@ export default function Settings() {
             {TAB_ITEMS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setError('') }}
+                onClick={() => {
+                  if (tab.id === 'usage') {
+                    navigate('/usage')
+                    return
+                  }
+                  setActiveTab(tab.id)
+                  setError('')
+                }}
                 className={`flex w-full items-center gap-2 rounded-carbon px-3 py-2.5 text-xs font-medium transition-all ${
                   activeTab === tab.id
                     ? 'bg-interactive/10 text-interactive shadow-inner'
