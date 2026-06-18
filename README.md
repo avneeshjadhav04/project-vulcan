@@ -9,13 +9,16 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 ## Features
 
-- **AI Chat**: Real-time streaming chat with Server-Sent Events (SSE), smooth stream handoff, and live typing indicators
-- **Multi-Provider Support**: NVIDIA NIM, OpenAI, Groq, and any OpenAI-compatible provider — bring your own keys
-- **Syntax Highlighting**: Code blocks rendered with Shiki (`github-dark` theme) for 100+ languages
-- **Sandboxed Terminal**: Isolated command execution via `proot` + Ubuntu 24.04 LTS rootfs
-- **Mobile-First UX**: Responsive design with action buttons always visible, smart auto-scroll, and keyboard-friendly navigation
-- **Accessible**: ARIA labels, `aria-live` regions, focus rings, and keyboard navigation throughout
-- **Dark Mode Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
+- **AI Chat**: Real-time streaming responses with Markdown rendering, Shiki syntax highlighting, message editing, regeneration, reactions, and file attachments
+- **Multi-Provider Models**: Bring your own keys for NVIDIA NIM, OpenAI, Groq, Anthropic, Ollama, OpenRouter, Together AI, or any OpenAI-compatible provider
+- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad, and Google Calendar/Gmail/Todoist integrations — with per-tool permissions (auto/ask/deny)
+- **Memory & Context**: Conversation summarization, opt-in cross-chat memory, and a persistent scratchpad the AI can read and update
+- **Workspace & Files**: User workspace file tree with upload/download, AI-generated artifact previews, and chat export to Markdown or JSON
+- **Sandboxed Terminal**: WebSocket terminal running commands inside an isolated Ubuntu/proot environment
+- **Integrations**: OAuth connections to Google (Calendar + Gmail) and Todoist
+- **Organization**: Pin, archive, folder, and tag chats; command palette; global chat search; and a usage dashboard
+- **Voice Input**: Browser microphone transcription via Vosk
+- **Accessible & Themed**: Dark/light/system theme, resizable panels, keyboard shortcuts (`Ctrl + `` for terminal), ARIA labels, and focus rings
 
 ## Tech Stack
 
