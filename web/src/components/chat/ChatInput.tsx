@@ -86,7 +86,7 @@ export default function ChatInput({
   }, [voiceState, onStopVoice])
 
   return (
-    <div className="border-t border-white/5 bg-background/80 backdrop-blur-xl px-4 py-4">
+    <div className="border-t border-border-subtle bg-background/80 backdrop-blur-xl px-4 py-4">
       <div className="mx-auto max-w-3xl">
         <AnimatePresence>
           {sendError && (
@@ -126,7 +126,7 @@ export default function ChatInput({
             }
           }}
           onDragOver={(e) => e.preventDefault()}
-          className="relative flex flex-col rounded-glass border border-white/10 bg-layer/50 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
+          className="relative flex flex-col rounded-glass border border-border-subtle bg-layer/50 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
         >
           {/* Top area: textarea or voice recording */}
           {voiceState === 'connecting' ? (

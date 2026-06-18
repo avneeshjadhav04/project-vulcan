@@ -284,7 +284,7 @@ export default function Sidebar({
           createChat.mutate(selectedModel)
         }}
         disabled={createChat.isPending}
-        className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-carbon border border-white/10 bg-layer/50 py-2.5 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer/80 hover:shadow-md disabled:opacity-50"
+        className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-carbon border border-border-subtle bg-layer/50 py-2.5 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer/80 hover:shadow-md disabled:opacity-50"
       >
         <Plus className="h-4 w-4 text-interactive" />
         New Chat

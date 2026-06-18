@@ -26,7 +26,7 @@ export default function StreamingMessage({ content, isStreaming }: { content: st
             </span>
           )}
         </div>
-        <div className="inline-block border border-white/5 bg-layer/60 px-5 py-3 text-left text-text-primary shadow-sm backdrop-blur-md rounded-2xl rounded-tl-sm">
+        <div className="inline-block border border-border-subtle bg-layer/60 px-5 py-3 text-left text-text-primary shadow-sm backdrop-blur-md rounded-2xl rounded-tl-sm">
           <div className="prose prose-invert prose-sm max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {content}

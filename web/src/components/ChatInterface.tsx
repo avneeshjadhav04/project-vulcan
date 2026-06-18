@@ -318,7 +318,7 @@ export default function ChatInterface({
             <motion.div 
               initial={{ scale: 0.9, y: 10 }}
               animate={{ scale: 1, y: 0 }}
-              className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-layer/90 px-12 py-10 shadow-2xl backdrop-blur-xl"
+              className="flex flex-col items-center justify-center rounded-2xl border border-border-subtle bg-layer/90 px-12 py-10 shadow-2xl backdrop-blur-xl"
             >
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-interactive/20">
                 <Paperclip className="h-8 w-8 text-interactive" />

@@ -164,7 +164,7 @@ function MessageBubble({
           className={`inline-block text-left shadow-sm ${
             isUser
               ? 'bg-interactive text-white rounded-2xl rounded-tr-sm px-5 py-3'
-              : `border border-white/5 bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary ${isStreamingReplacement ? 'opacity-60' : ''}`
+              : `border border-border-subtle bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary ${isStreamingReplacement ? 'opacity-60' : ''}`
           }`}
         >
           {isEditing ? (
@@ -234,7 +234,7 @@ function MessageBubble({
                   return attachments.map((filename: string, index: number) => (
                     <span
                       key={index}
-                      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-layer/60 px-2 py-0.5 text-[10px] text-text-secondary"
+                      className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-layer/60 px-2 py-0.5 text-[10px] text-text-secondary"
                     >
                       <FileText className="h-3 w-3" />
                       {filename}

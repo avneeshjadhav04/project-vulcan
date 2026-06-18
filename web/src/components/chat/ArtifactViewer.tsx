@@ -36,9 +36,9 @@ export default function ArtifactViewer() {
       initial={{ width: 0, opacity: 0 }}
       animate={{ width: 500, opacity: 1 }}
       exit={{ width: 0, opacity: 0 }}
-      className="flex h-full shrink-0 flex-col border-l border-white/5 bg-layer/30 backdrop-blur-md"
+      className="flex h-full shrink-0 flex-col border-l border-border-subtle bg-layer/30 backdrop-blur-md"
     >
-      <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <div className="flex items-center gap-2 overflow-hidden">
           <Code className="h-4 w-4 shrink-0 text-interactive" />
           <span className="truncate text-sm font-semibold text-text-primary">
@@ -46,11 +46,11 @@ export default function ArtifactViewer() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <div className="mr-2 flex rounded-md border border-white/5 bg-background p-0.5">
+          <div className="mr-2 flex rounded-md border border-border-subtle bg-background p-0.5">
             <button
               onClick={() => setViewMode('preview')}
               className={`rounded-sm px-2 py-1 text-[11px] font-medium transition-colors ${
-                viewMode === 'preview' ? 'bg-layer text-white' : 'text-text-secondary hover:text-text-primary'
+                viewMode === 'preview' ? 'bg-layer text-text-primary' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
               Preview
@@ -58,7 +58,7 @@ export default function ArtifactViewer() {
             <button
               onClick={() => setViewMode('code')}
               className={`rounded-sm px-2 py-1 text-[11px] font-medium transition-colors ${
-                viewMode === 'code' ? 'bg-layer text-white' : 'text-text-secondary hover:text-text-primary'
+                viewMode === 'code' ? 'bg-layer text-text-primary' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
               Code
