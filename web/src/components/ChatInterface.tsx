@@ -88,7 +88,7 @@ export default function ChatInterface({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean; has_provider: boolean; tools_enabled: boolean }
+      return res.data as { has_provider: boolean; tools_enabled: boolean }
     },
   })
   const scroll = useChatScroll(effectiveChatId)
@@ -177,7 +177,7 @@ export default function ChatInterface({
     if (!text || streaming) return
 
     // Check if user has a provider before sending
-    if (userData && !userData.has_provider && !userData.has_nim_key) {
+    if (userData && !userData.has_provider) {
       setProviderOverlayDismissed(false)
       showError('Add an AI provider in Settings to start chatting.')
       return
@@ -337,7 +337,7 @@ export default function ChatInterface({
 
       {/* API Key Required Overlay */}
       <AnimatePresence>
-        {userData && !userData.has_provider && !userData.has_nim_key && !providerOverlayDismissed && (
+        {userData && !userData.has_provider && !providerOverlayDismissed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

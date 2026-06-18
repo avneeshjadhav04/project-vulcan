@@ -53,25 +53,12 @@ async fn resolve_chat_provider(
             api_key,
         })
     } else {
-        // Legacy fallback: use user's NIM key + global NIM base URL
-        let nim_key = match user.encrypted_nim_key.clone() {
-            Some(enc) => {
-                decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?
-            }
-            None => return Err(StatusCode::PRECONDITION_FAILED),
-        };
-
-        Ok(ResolvedProvider {
-            id: "legacy".to_string(),
-            base_url: state.config.nim_base_url.clone(),
-            api_key: nim_key,
-        })
+        Err(StatusCode::PRECONDITION_FAILED)
     }
 }
 
 const MAX_MESSAGE_LENGTH: usize = 100_000;
 const MAX_TITLE_LENGTH: usize = 255;
-const MAX_API_KEY_LENGTH: usize = 512;
 
 // Memory summarization settings
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
@@ -912,8 +899,6 @@ pub fn router() -> Router<AppState> {
         .route("/search", get(search_chats))
         .route("/usage", get(get_usage))
         .route("/me", get(get_me))
-        .route("/me/key", post(update_nim_key))
-        .route("/me/key/validate", get(validate_nim_key))
         .route("/me/memory", post(toggle_memory))
         .route("/me/summarization", post(toggle_summarization))
         .route("/me/cross-chat-memory", post(toggle_cross_chat_memory))
@@ -938,18 +923,16 @@ async fn get_me(
             .fetch_one(&state.db)
             .await
             .unwrap_or(0);
+    let has_provider = provider_count > 0;
 
     Ok(Json(json!({
-        "id": user.id,
         "email": user.email,
         "role": user.role,
-        "has_nim_key": user.encrypted_nim_key.is_some(),
-        "has_provider": provider_count > 0,
-        "provider_count": provider_count,
+        "has_provider": has_provider,
+        "tools_enabled": user.tools_enabled == 1,
         "memory_enabled": user.memory_enabled == 1,
         "summarization_enabled": user.summarization_enabled == 1,
         "cross_chat_memory_enabled": user.cross_chat_memory_enabled == 1,
-        "tools_enabled": user.tools_enabled == 1,
         "max_agent_steps": user.max_agent_steps,
     })))
 }
@@ -1070,139 +1053,6 @@ async fn toggle_cross_chat_memory(
     Ok(Json(json!({
         "cross_chat_memory_enabled": new_value == 1,
     })))
-}
-
-async fn update_nim_key(
-    State(state): State<AppState>,
-    claims: axum::Extension<Claims>,
-    Json(req): Json<crate::models::UpdateNimKeyRequest>,
-) -> Result<StatusCode, StatusCode> {
-    if req.api_key.len() > MAX_API_KEY_LENGTH {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Legacy endpoint: map to a "nvidia" provider for backward compatibility
-    let trimmed = req.api_key.trim();
-    if trimmed.is_empty() {
-        // Remove legacy key and delete nvidia provider
-        sqlx::query("UPDATE users SET encrypted_nim_key = NULL WHERE id = ?1")
-            .bind(&claims.sub)
-            .execute(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let _ =
-            sqlx::query("DELETE FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia'")
-                .bind(&claims.sub)
-                .execute(&state.db)
-                .await;
-    } else {
-        let encrypted = crate::auth::encrypt_key(trimmed, &state.config.master_key)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        // Update legacy field too
-        sqlx::query("UPDATE users SET encrypted_nim_key = ?1 WHERE id = ?2")
-            .bind(&encrypted)
-            .bind(&claims.sub)
-            .execute(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        // Upsert nvidia provider
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1",
-        )
-        .bind(&claims.sub)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        if let Some((id,)) = existing {
-            sqlx::query("UPDATE providers SET encrypted_api_key = ?1, updated_at = datetime('now') WHERE id = ?2")
-                .bind(&encrypted)
-                .bind(&id)
-                .execute(&state.db)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        } else {
-            sqlx::query("INSERT INTO providers (user_id, name, provider_type, base_url, encrypted_api_key) VALUES (?1, 'NVIDIA NIM', 'nvidia', ?2, ?3)")
-                .bind(&claims.sub)
-                .bind(&state.config.nim_base_url)
-                .bind(&encrypted)
-                .execute(&state.db)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        }
-    }
-
-    Ok(StatusCode::OK)
-}
-
-async fn validate_nim_key(
-    State(state): State<AppState>,
-    claims: axum::Extension<Claims>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    // Legacy endpoint: validate the user's nvidia provider or legacy nim key
-    let provider: Option<Provider> = sqlx::query_as(
-        "SELECT * FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1",
-    )
-    .bind(&claims.sub)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let (base_url, api_key) = if let Some(p) = provider {
-        let key = decrypt_key(&p.encrypted_api_key, &state.config.master_key)
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        (p.base_url, key)
-    } else {
-        let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?1")
-            .bind(&claims.sub)
-            .fetch_one(&state.db)
-            .await
-            .map_err(|_| StatusCode::NOT_FOUND)?;
-        let nim_key = match user.encrypted_nim_key {
-            Some(enc) => {
-                decrypt_key(&enc, &state.config.master_key).map_err(|_| StatusCode::BAD_REQUEST)?
-            }
-            None => {
-                return Ok(Json(
-                    json!({"valid": false, "error": "No API key configured"}),
-                ))
-            }
-        };
-        (state.config.nim_base_url.clone(), nim_key)
-    };
-
-    let test_res = state
-        .http_client
-        .get(format!("{}/models", base_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await;
-
-    match test_res {
-        Ok(res) => {
-            let status = res.status();
-            if status.is_success() {
-                Ok(Json(json!({"valid": true, "status": status.as_u16()})))
-            } else {
-                let body = res.text().await.unwrap_or_default();
-                tracing::error!("NIM key validation failed: {} - {}", status, body);
-                Ok(Json(json!({
-                    "valid": false,
-                    "status": status.as_u16(),
-                    "error": format!("NIM API returned {}", status)
-                })))
-            }
-        }
-        Err(e) => {
-            tracing::error!("NIM key validation request failed: {}", e);
-            Ok(Json(json!({
-                "valid": false,
-                "error": format!("Connection failed: {}", e)
-            })))
-        }
-    }
 }
 
 async fn create_chat(

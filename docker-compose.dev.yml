@@ -7,7 +7,6 @@ services:
     environment:
       DATABASE_URL: sqlite:/data/vulcan.db
       MASTER_KEY: ${MASTER_KEY}
-      NIM_BASE_URL: ${NIM_BASE_URL:-https://integrate.api.nvidia.com/v1}
       RUST_LOG: ${RUST_LOG:-info}
       BIND_ADDR: 0.0.0.0:8080
     volumes:

@@ -155,7 +155,6 @@ async fn login(
             "id": user.id,
             "email": user.email,
             "role": user.role,
-            "has_nim_key": user.encrypted_nim_key.is_some(),
             "csrf_token": csrf,
         })),
     )

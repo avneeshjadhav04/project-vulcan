@@ -216,7 +216,7 @@ export default function Login() {
           </h2>
           <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
             A secure, self-hosted AI platform. Chat with the latest models,
-            execute terminal commands safely, and bring your own NVIDIA NIM key.
+            execute terminal commands safely, and bring your own AI provider API key.
           </p>
 
           <div className="space-y-3 pt-2">

@@ -4,7 +4,6 @@ interface User {
   id: string
   email: string
   role: string
-  has_nim_key: boolean
   has_provider: boolean
   provider_count: number
   memory_enabled: boolean
