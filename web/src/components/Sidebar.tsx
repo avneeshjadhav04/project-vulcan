@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
@@ -16,6 +16,7 @@ import {
   Star,
   ChevronDown,
   ChevronRight,
+  MoreVertical,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -45,6 +46,20 @@ export default function Sidebar({
   const [editTitle, setEditTitle] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['default']))
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement
+      const isMenu = target.closest('[data-chat-menu]')
+      const isTrigger = target.closest('[data-chat-menu-trigger]')
+      if (!isMenu && !isTrigger) {
+        setOpenMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const showError = (msg: string) => {
     setError(msg)
@@ -215,43 +230,72 @@ export default function Sidebar({
           </>
         )}
       </div>
-      <div className="hidden shrink-0 gap-0.5 group-hover:flex">
+      <div className="relative hidden shrink-0 group-hover:block">
         <button
-          onClick={(e) => togglePin(chat, e)}
-          className="p-1 text-text-helper transition-colors hover:text-support-warning"
-          title={chat.is_pinned ? 'Unpin' : 'Pin'}
-        >
-          <Star className={`h-3 w-3 ${chat.is_pinned ? 'fill-support-warning text-support-warning' : ''}`} />
-        </button>
-        <button
+          data-chat-menu-trigger
           onClick={(e) => {
             e.stopPropagation()
-            startEdit(chat)
+            setOpenMenuId(openMenuId === chat.id ? null : chat.id)
           }}
-          className="p-1 text-text-helper transition-colors hover:text-interactive"
-          title="Rename"
+          className="p-1 text-text-helper transition-colors hover:text-text-primary"
+          title="More actions"
         >
-          <Pencil className="h-3 w-3" />
+          <MoreVertical className="h-3.5 w-3.5" />
         </button>
-        <button
-          onClick={(e) => toggleArchive(chat, e)}
-          className="p-1 text-text-helper transition-colors hover:text-link-primary"
-          title="Archive"
-        >
-          <Archive className="h-3 w-3" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (confirm('Delete this chat?')) {
-              deleteChat.mutate(chat.id)
-            }
-          }}
-          className="p-1 text-text-helper transition-colors hover:text-support-error"
-          title="Delete"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
+
+        {openMenuId === chat.id && (
+          <div
+            data-chat-menu
+            className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                togglePin(chat, e)
+                setOpenMenuId(null)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+            >
+              <Star className={`h-3.5 w-3.5 shrink-0 ${chat.is_pinned ? 'fill-support-warning text-support-warning' : 'text-support-warning'}`} />
+              <span>{chat.is_pinned ? 'Unpin' : 'Pin'}</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                startEdit(chat)
+                setOpenMenuId(null)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0 text-interactive" />
+              <span>Rename</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleArchive(chat, e)
+                setOpenMenuId(null)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+            >
+              <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
+              <span>{chat.is_archived ? 'Unarchive' : 'Archive'}</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpenMenuId(null)
+                if (confirm('Delete this chat?')) {
+                  deleteChat.mutate(chat.id)
+                }
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+              <span>Delete</span>
+            </button>
+          </div>
+        )}
       </div>
     </motion.div>
   )
