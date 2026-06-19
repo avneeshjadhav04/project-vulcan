@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -73,6 +73,8 @@ export default function ChatMessages({
     return -1
   }, [visibleMessages])
 
+  const lastUserMessageIdRef = useRef<string | null>(null)
+
   const scrollToLatestResponse = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
@@ -119,10 +121,20 @@ export default function ChatMessages({
     const container = scrollContainerRef.current
     if (!container) return
 
+    const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    const lastUserMessageId = lastUserMessage?.id || null
+
+    // If a new user message was just added, force scroll to it
+    if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
+      scrollToLatestResponse()
+      lastUserMessageIdRef.current = lastUserMessageId
+      return
+    }
+
     if (wasNearBottomRef.current) {
       container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
     }
-  }, [visibleMessages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse])
 
   return (
     <div
