@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import ToolPermissionsPanel from '../components/ToolPermissionsPanel'
+import ThemeLogo from '../components/ThemeLogo'
 import {
   ArrowLeft,
   Key,
@@ -362,7 +363,7 @@ export default function Settings() {
           Back
         </button>
         <div className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-14 w-14" />
+          <ThemeLogo className="h-14 w-14" alt="" />
           <h1 className="text-sm font-semibold text-text-primary">Settings</h1>
         </div>
       </header>

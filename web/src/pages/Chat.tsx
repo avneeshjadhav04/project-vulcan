@@ -8,6 +8,7 @@ import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
 import WorkspacePanel from '../components/chat/WorkspacePanel'
 import ArtifactViewer from '../components/chat/ArtifactViewer'
+import ThemeLogo from '../components/ThemeLogo'
 import {
   Settings,
   Terminal as TerminalIcon,
@@ -246,7 +247,7 @@ export default function Chat() {
                 onClick={() => navigate('/chat')}
                 className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
               >
-                <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-sm" />
+                <ThemeLogo className="h-10 w-10 drop-shadow-sm" alt="" />
                 <div>
                   <span className="text-sm font-semibold text-text-primary">Project Vulcan</span>
                   <p className="text-[10px] text-text-secondary">Personal AI Assistant</p>

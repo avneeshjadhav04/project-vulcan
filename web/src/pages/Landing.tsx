@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
+import ThemeLogo from '../components/ThemeLogo'
 import {
   MessageSquare,
   Terminal,
@@ -135,7 +136,7 @@ function Nav() {
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center gap-2"
         >
-          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-md" />
+          <ThemeLogo className="h-10 w-10 drop-shadow-md" alt="" />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-1">
@@ -656,7 +657,7 @@ function Footer() {
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="flex items-center gap-3"
         >
-          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" />
+          <ThemeLogo className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" alt="" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-4">
