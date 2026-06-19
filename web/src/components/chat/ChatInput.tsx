@@ -86,7 +86,7 @@ export default function ChatInput({
   }, [voiceState, onStopVoice])
 
   return (
-    <div className="border-t border-border-subtle bg-background/80 backdrop-blur-xl px-4 py-4">
+    <div className="bg-background/80 backdrop-blur-xl px-4 py-4">
       <div className="mx-auto max-w-3xl">
         <AnimatePresence>
           {sendError && (
