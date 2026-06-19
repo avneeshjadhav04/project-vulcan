@@ -82,7 +82,7 @@ export default function ChatHeader({ title, optimisticTitle, chatId, sidebarOpen
   }
 
   return (
-    <header className={`relative z-10 flex items-center justify-between border-b border-border-subtle bg-background/80 px-6 py-4 backdrop-blur-md ${sidebarOpen === false ? 'pl-32' : ''}`}>
+    <header className={`relative z-10 flex items-center justify-between border-b border-border-subtle/50 bg-background/80 px-6 py-4 backdrop-blur-md ${sidebarOpen === false ? 'pl-32' : ''}`}>
       <div className="flex items-center gap-3 min-w-0">
         <h2 className="truncate text-xs font-semibold text-text-primary">
           {title || optimisticTitle || 'New Chat'}

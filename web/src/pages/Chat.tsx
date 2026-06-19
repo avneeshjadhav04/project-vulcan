@@ -241,7 +241,7 @@ export default function Chat() {
             style={{ width: sidebarWidth }}
           >
             {/* Logo */}
-            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <div className="flex items-center justify-between px-4 py-3">
               <button
                 onClick={() => navigate('/chat')}
                 className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
