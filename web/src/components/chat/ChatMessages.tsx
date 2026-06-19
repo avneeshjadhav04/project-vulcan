@@ -86,9 +86,33 @@ export default function ChatMessages({
     } else {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
-    setShowScrollBtn(false)
-    wasNearBottomRef.current = false
-  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, setShowScrollBtn, wasNearBottomRef])
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
+
+  // IntersectionObserver to show/hide scroll button based on latest user message visibility
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current
+    const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    if (!container || !lastUserMsg) {
+      setShowScrollBtn(false)
+      return
+    }
+
+    const element = document.getElementById(`msg-${lastUserMsg.id}`)
+    if (!element) {
+      setShowScrollBtn(false)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowScrollBtn(!entry.isIntersecting)
+      },
+      { root: container, threshold: 0 }
+    )
+
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, setShowScrollBtn])
 
   // Auto-scroll when new content arrives (after DOM commit, before paint)
   useLayoutEffect(() => {

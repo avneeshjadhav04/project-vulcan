@@ -13,7 +13,6 @@ export function useChatScroll(chatId?: string) {
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
     const nearBottom = distanceFromBottom < SCROLL_THRESHOLD
     wasNearBottomRef.current = nearBottom
-    setShowScrollBtn(!nearBottom)
   }, [])
 
   const scrollToBottom = useCallback(() => {
