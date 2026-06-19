@@ -296,7 +296,7 @@ export default function ChatInterface({
     )
   }
 
-  const messages = chatData?.messages || []
+  const messages = effectiveChatId ? chatData?.messages || [] : []
 
   return (
     <div className="flex h-full w-full overflow-hidden">
