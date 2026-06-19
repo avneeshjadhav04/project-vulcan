@@ -230,6 +230,7 @@ export default function ChatInput({
               <button
                 onClick={onToggleTools}
                 aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
+                title={toolsEnabled ? 'Tools On — AI can run commands, create files, and search the web' : 'Tools Off — AI will not use any tools'}
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
                   toolsEnabled
                     ? 'bg-support-success/20 text-support-success'
@@ -277,25 +278,23 @@ export default function ChatInput({
           </div>
         </div>
 
-        <div className="mt-1.5 flex items-center justify-center gap-2">
-          {voiceState === 'connecting' ? (
-            <span className="text-[10px] text-interactive">
-              Connecting to transcription service...
-            </span>
-          ) : voiceState === 'recording' ? (
-            <span className="text-[10px] text-support-error">
-              Recording... speak clearly
-            </span>
-          ) : voiceState === 'error' ? (
-            <span className="text-[10px] text-support-error">
-              Voice input failed. Try again or type your message.
-            </span>
-          ) : (
-            <span className="text-[10px] text-text-helper">
-              {toolsEnabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
-            </span>
-          )}
-        </div>
+        {voiceState !== 'idle' && (
+          <div className="mt-1.5 flex items-center justify-center gap-2">
+            {voiceState === 'connecting' ? (
+              <span className="text-[10px] text-interactive">
+                Connecting to transcription service...
+              </span>
+            ) : voiceState === 'recording' ? (
+              <span className="text-[10px] text-support-error">
+                Recording... speak clearly
+              </span>
+            ) : (
+              <span className="text-[10px] text-support-error">
+                Voice input failed. Try again or type your message.
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
