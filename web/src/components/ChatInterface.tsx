@@ -54,6 +54,7 @@ export default function ChatInterface({
   const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
   const currentChatIdRef = useRef<string | undefined>(chatId)
   const lastSyncedChatIdRef = useRef<string | null>(null)
+  const previousChatIdRef = useRef<string | undefined>(chatId)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -67,10 +68,15 @@ export default function ChatInterface({
   const voice = useVoiceStreaming()
 
   useEffect(() => {
+    const previousChatId = previousChatIdRef.current
+    previousChatIdRef.current = chatId
+    if (previousChatId && previousChatId !== chatId) {
+      queryClient.removeQueries({ queryKey: ['chat', previousChatId] })
+    }
     setEffectiveChatId(chatId)
     setOptimisticTitle(undefined)
     currentChatIdRef.current = chatId
-  }, [chatId])
+  }, [chatId, queryClient])
 
   // Sync selected model to chat's stored provider+model when chat loads
   const { data: chatData, refetch, isError } = useQuery({
@@ -205,7 +211,7 @@ export default function ChatInterface({
       },
       windowHistoryReplace: (id) => {
         if (!currentChatIdRef.current || currentChatIdRef.current === id) {
-          window.history.replaceState({}, '', `/chat/${id}`)
+          navigate(`/chat/${id}`, { replace: true })
         }
       },
       onChatCreated: () => {
@@ -459,7 +465,7 @@ export default function ChatInterface({
           })
           const newId = createRes.data.id as string
           setEffectiveChatId(newId)
-          window.history.replaceState({}, '', `/chat/${newId}`)
+          navigate(`/chat/${newId}`, { replace: true })
           queryClient.invalidateQueries({ queryKey: ['chats'] })
           return newId
         }}

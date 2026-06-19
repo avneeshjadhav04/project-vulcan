@@ -330,7 +330,6 @@ export default function Chat() {
       <main className="flex flex-1 overflow-hidden">
         <div ref={mainRef} className="flex flex-1 flex-col overflow-hidden">
           <ChatInterface
-            key={chatId || 'new'}
             chatId={chatId}
             selectedModel={selectedModel}
             onModelChange={handleModelChange}
