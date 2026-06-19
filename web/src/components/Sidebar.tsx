@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
@@ -16,7 +17,7 @@ import {
   Star,
   ChevronDown,
   ChevronRight,
-  MoreVertical,
+  MoreHorizontal,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -47,6 +48,7 @@ export default function Sidebar({
   const [showArchived, setShowArchived] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['default']))
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -55,10 +57,20 @@ export default function Sidebar({
       const isTrigger = target.closest('[data-chat-menu-trigger]')
       if (!isMenu && !isTrigger) {
         setOpenMenuId(null)
+        setMenuPosition(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    function handleResize() {
+      setOpenMenuId(null)
+      setMenuPosition(null)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
   const showError = (msg: string) => {
@@ -175,6 +187,8 @@ export default function Sidebar({
     return acc
   }, {} as Record<string, ChatItem[]>)
 
+  const menuChat = chats?.find(c => c.id === openMenuId)
+
   const renderChatItem = (chat: ChatItem) => (
     <motion.div
       layout
@@ -230,72 +244,26 @@ export default function Sidebar({
           </>
         )}
       </div>
-      <div className="relative hidden shrink-0 group-hover:block">
+      <div className="hidden shrink-0 group-hover:block">
         <button
           data-chat-menu-trigger
           onClick={(e) => {
             e.stopPropagation()
-            setOpenMenuId(openMenuId === chat.id ? null : chat.id)
+            const trigger = e.currentTarget as HTMLButtonElement
+            const rect = trigger.getBoundingClientRect()
+            if (openMenuId === chat.id) {
+              setOpenMenuId(null)
+              setMenuPosition(null)
+            } else {
+              setOpenMenuId(chat.id)
+              setMenuPosition({ top: rect.bottom + 4, left: rect.left })
+            }
           }}
           className="p-1 text-text-helper transition-colors hover:text-text-primary"
           title="More actions"
         >
-          <MoreVertical className="h-3.5 w-3.5" />
+          <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
-
-        {openMenuId === chat.id && (
-          <div
-            data-chat-menu
-            className="absolute right-0 top-full z-50 mt-1 w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                togglePin(chat, e)
-                setOpenMenuId(null)
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
-            >
-              <Star className={`h-3.5 w-3.5 shrink-0 ${chat.is_pinned ? 'fill-support-warning text-support-warning' : 'text-support-warning'}`} />
-              <span>{chat.is_pinned ? 'Unpin' : 'Pin'}</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                startEdit(chat)
-                setOpenMenuId(null)
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
-            >
-              <Pencil className="h-3.5 w-3.5 shrink-0 text-interactive" />
-              <span>Rename</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleArchive(chat, e)
-                setOpenMenuId(null)
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
-            >
-              <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
-              <span>{chat.is_archived ? 'Unarchive' : 'Archive'}</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpenMenuId(null)
-                if (confirm('Delete this chat?')) {
-                  deleteChat.mutate(chat.id)
-                }
-              }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
-            >
-              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
-              <span>Delete</span>
-            </button>
-          </div>
-        )}
       </div>
     </motion.div>
   )
@@ -417,6 +385,66 @@ export default function Sidebar({
           <p className="text-xs text-text-helper">No chats yet</p>
           <p className="mt-1 text-[10px] text-text-helper/70">Click &quot;New Chat&quot; to start</p>
         </div>
+      )}
+
+      {menuChat && menuPosition && createPortal(
+        <div
+          data-chat-menu
+          className="fixed z-[100] w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
+          style={{ top: menuPosition.top, left: menuPosition.left }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              togglePin(menuChat, e)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Star className={`h-3.5 w-3.5 shrink-0 ${menuChat.is_pinned ? 'fill-support-warning text-support-warning' : 'text-support-warning'}`} />
+            <span>{menuChat.is_pinned ? 'Unpin' : 'Pin'}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              startEdit(menuChat)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Pencil className="h-3.5 w-3.5 shrink-0 text-interactive" />
+            <span>Rename</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleArchive(menuChat, e)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
+            <span>{menuChat.is_archived ? 'Unarchive' : 'Archive'}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpenMenuId(null)
+              setMenuPosition(null)
+              if (confirm('Delete this chat?')) {
+                deleteChat.mutate(menuChat.id)
+              }
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
+          >
+            <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+            <span>Delete</span>
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   )
