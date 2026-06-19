@@ -215,7 +215,7 @@ export default function Sidebar({
           </>
         )}
       </div>
-      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="hidden shrink-0 gap-0.5 group-hover:flex">
         <button
           onClick={(e) => togglePin(chat, e)}
           className="p-1 text-text-helper transition-colors hover:text-support-warning"
