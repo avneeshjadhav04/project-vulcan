@@ -45,6 +45,7 @@ export function useChatScroll(chatId?: string) {
   return {
     containerRef,
     showScrollBtn,
+    setShowScrollBtn,
     handleScroll,
     scrollToBottom,
     forceScrollToBottom,

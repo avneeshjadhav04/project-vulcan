@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect } from 'react'
+import { useMemo, useLayoutEffect, useCallback } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -27,8 +27,8 @@ interface ChatMessagesProps {
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
   wasNearBottomRef: React.MutableRefObject<boolean>
+  setShowScrollBtn: React.Dispatch<React.SetStateAction<boolean>>
   onScroll: () => void
-  onScrollToBottom: () => void
   onRegenerate: () => void
   onEditMessage: (id: string, content: string) => void
   onSuggestion: (text: string) => void
@@ -45,8 +45,8 @@ export default function ChatMessages({
   showScrollBtn,
   scrollContainerRef,
   wasNearBottomRef,
+  setShowScrollBtn,
   onScroll,
-  onScrollToBottom,
   onRegenerate,
   onEditMessage,
   onSuggestion,
@@ -65,6 +65,30 @@ export default function ChatMessages({
     }
     return -1
   }, [visibleMessages])
+
+  const lastUserMessageIndex = useMemo(() => {
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i].role === 'user') return i
+    }
+    return -1
+  }, [visibleMessages])
+
+  const scrollToLatestResponse = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
+
+    if (element) {
+      const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+      container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    }
+    setShowScrollBtn(false)
+    wasNearBottomRef.current = false
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, setShowScrollBtn, wasNearBottomRef])
 
   // Auto-scroll when new content arrives (after DOM commit, before paint)
   useLayoutEffect(() => {
@@ -133,7 +157,7 @@ export default function ChatMessages({
         )}
       </div>
 
-      <ScrollToBottom onClick={onScrollToBottom} visible={showScrollBtn} />
+      <ScrollToBottom onClick={scrollToLatestResponse} visible={showScrollBtn} />
     </div>
   )
 }
