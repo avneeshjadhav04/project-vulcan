@@ -49,6 +49,7 @@ export default function Sidebar({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['default']))
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -58,6 +59,7 @@ export default function Sidebar({
       if (!isMenu && !isTrigger) {
         setOpenMenuId(null)
         setMenuPosition(null)
+        setPendingDeleteId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -68,6 +70,7 @@ export default function Sidebar({
     function handleResize() {
       setOpenMenuId(null)
       setMenuPosition(null)
+      setPendingDeleteId(null)
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
@@ -399,6 +402,7 @@ export default function Sidebar({
               togglePin(menuChat, e)
               setOpenMenuId(null)
               setMenuPosition(null)
+              setPendingDeleteId(null)
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
           >
@@ -411,6 +415,7 @@ export default function Sidebar({
               startEdit(menuChat)
               setOpenMenuId(null)
               setMenuPosition(null)
+              setPendingDeleteId(null)
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
           >
@@ -423,26 +428,39 @@ export default function Sidebar({
               toggleArchive(menuChat, e)
               setOpenMenuId(null)
               setMenuPosition(null)
+              setPendingDeleteId(null)
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
           >
             <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
             <span>{menuChat.is_archived ? 'Unarchive' : 'Archive'}</span>
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setOpenMenuId(null)
-              setMenuPosition(null)
-              if (confirm('Delete this chat?')) {
+          {pendingDeleteId === openMenuId ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
                 deleteChat.mutate(menuChat.id)
-              }
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
-          >
-            <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
-            <span>Delete</span>
-          </button>
+                setOpenMenuId(null)
+                setMenuPosition(null)
+                setPendingDeleteId(null)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-support-error transition-colors hover:bg-support-error/10"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+              <span>Confirm Delete?</span>
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setPendingDeleteId(menuChat.id)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+              <span>Delete</span>
+            </button>
+          )}
         </div>,
         document.body
       )}
