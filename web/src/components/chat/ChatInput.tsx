@@ -231,7 +231,7 @@ export default function ChatInput({
                 onClick={onToggleTools}
                 aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
                 title={toolsEnabled ? 'Tools On — AI can run commands, create files, and search the web' : 'Tools Off — AI will not use any tools'}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
                   toolsEnabled
                     ? 'bg-support-success/20 text-support-success'
                     : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
@@ -244,7 +244,7 @@ export default function ChatInput({
                 <button
                   onClick={onStartVoice}
                   aria-label="Voice input"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors text-text-helper hover:bg-layer-hover hover:text-text-primary"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors text-text-helper hover:bg-layer-hover hover:text-text-primary"
                 >
                   <Mic className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -254,7 +254,7 @@ export default function ChatInput({
                 <button
                   onClick={onStop}
                   aria-label="Stop generating"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
                 >
                   <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
                   <StopCircle className="h-5 w-5" aria-hidden="true" />
@@ -269,7 +269,7 @@ export default function ChatInput({
                   }}
                   disabled={!input.trim() && !voiceTranscript.trim()}
                   aria-label="Send message"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
                 >
                   <ArrowUp className="h-5 w-5" aria-hidden="true" />
                 </button>
