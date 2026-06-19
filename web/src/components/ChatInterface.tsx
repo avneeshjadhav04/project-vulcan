@@ -441,8 +441,8 @@ export default function ChatInterface({
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.containerRef}
         wasNearBottomRef={scroll.wasNearBottomRef}
+        setShowScrollBtn={scroll.setShowScrollBtn}
         onScroll={scroll.handleScroll}
-        onScrollToBottom={scroll.scrollToBottom}
         onRegenerate={handleRegenerate}
         onEditMessage={handleEditMessage}
         onSuggestion={(text) => handleSend(text)}
