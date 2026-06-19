@@ -237,7 +237,7 @@ export default function Chat() {
             animate={{ width: sidebarWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="flex shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-layer/30 backdrop-blur-md"
+            className="flex shrink-0 flex-col overflow-hidden border-r border-border-subtle bg-layer"
             style={{ width: sidebarWidth }}
           >
             {/* Logo */}
