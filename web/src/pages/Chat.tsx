@@ -19,7 +19,7 @@ import type { SelectedModel } from '../components/ProviderModelSelector'
 
 const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
-const DEFAULT_SIDEBAR_WIDTH = 280
+const DEFAULT_SIDEBAR_WIDTH = 240
 
 const MIN_WORKSPACE_WIDTH = 360
 const MAX_WORKSPACE_WIDTH = 600
