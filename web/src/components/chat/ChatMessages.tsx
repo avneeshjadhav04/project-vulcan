@@ -85,13 +85,18 @@ function ChatMessagesInner({
   const pendingSnapRef = useRef(false)
   const snapLockRef = useRef(false)
   const [focusedExchange, setFocusedExchange] = useState(false)
+  const [responseMinHeight, setResponseMinHeight] = useState(0)
 
   const performSnapToLatestUserMessage = useCallback(() => {
     snapLockRef.current = true
     setFocusedExchange(true)
     // Treat the user as no longer near the bottom after the snap
     wasNearBottomRef.current = false
-  }, [wasNearBottomRef])
+
+    const container = scrollContainerRef.current
+    if (!container) return
+    setResponseMinHeight(container.clientHeight)
+  }, [scrollContainerRef, wasNearBottomRef])
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
@@ -178,6 +183,7 @@ function ChatMessagesInner({
       } else {
         // New message appeared without an explicit snap request (e.g. switching chats or receiving a response)
         setFocusedExchange(false)
+        setResponseMinHeight(0)
       }
       return
     }
@@ -230,6 +236,17 @@ function ChatMessagesInner({
     }
   }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement, performSnapToLatestUserMessage])
 
+  // Recalculate response min-height when the container resizes while focused
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container || !focusedExchange) return
+
+    const updateHeight = () => setResponseMinHeight(container.clientHeight)
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [focusedExchange, scrollContainerRef])
+
   return (
     <div
       ref={scrollContainerRef}
@@ -265,8 +282,8 @@ function ChatMessagesInner({
               )
             })}
 
-            {(focusedExchange || streaming) && (
-              <div className="flex flex-1 flex-col">
+            {(focusedExchange || streaming) && responseMinHeight > 0 && (
+              <div className="flex flex-col" style={{ minHeight: responseMinHeight }}>
                 {toolExecutions.length > 0 && streaming && (
                   <div className="space-y-2">
                     {toolExecutions.map((tool, index) => (
