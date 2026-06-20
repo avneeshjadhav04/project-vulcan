@@ -443,7 +443,7 @@ export default function Settings() {
                 {/* Profile Card */}
                 <div className="border border-border-subtle bg-layer p-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-on-interactive">
                       {user?.email?.charAt(0).toUpperCase() || 'U'}
                     </div>
                     <div>
@@ -490,7 +490,7 @@ export default function Settings() {
                           onClick={() => setTheme(t)}
                           className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
                             theme === t
-                              ? 'bg-interactive text-white'
+                              ? 'bg-interactive text-on-interactive'
                               : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
                           }`}
                         >
@@ -530,7 +530,7 @@ export default function Settings() {
                         setError('')
                         setApiKey('')
                       }}
-                      className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
+                      className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-on-interactive transition-colors hover:bg-interactive-hover"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add Provider
@@ -728,23 +728,9 @@ export default function Settings() {
                       <motion.div
                         animate={{ x: user?.summarization_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="absolute top-1 h-3 w-3 bg-white"
+                        className="absolute top-1 h-3 w-3 bg-color-white"
                       />
                     </button>
-                  </div>
-                  <div className="mt-2 space-y-1.5">
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Triggers when a chat exceeds 26 messages</span>
-                    </div>
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Keeps the last 6 messages verbatim for recent context</span>
-                    </div>
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Summaries are stored per-chat and updated automatically</span>
-                    </div>
                   </div>
                 </div>
 
@@ -782,7 +768,7 @@ export default function Settings() {
                       <motion.div
                         animate={{ x: user?.cross_chat_memory_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="absolute top-1 h-3 w-3 bg-white"
+                        className="absolute top-1 h-3 w-3 bg-color-white"
                       />
                     </button>
                   </div>
@@ -816,7 +802,7 @@ export default function Settings() {
                       <button
                         onClick={saveScratchpad}
                         disabled={scratchpadSaving}
-                        className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                        className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
                       >
                         {scratchpadSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                         Save Scratchpad
@@ -891,7 +877,7 @@ export default function Settings() {
                                     setClientSecret('')
                                     setShowConfigModal(true)
                                   }}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover"
                                 >
                                   <Key className="h-4 w-4" />
                                   Configure App
@@ -900,7 +886,7 @@ export default function Settings() {
                                 <button
                                   onClick={() => handleConnect(int.provider)}
                                   disabled={connectingProvider === int.provider}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
                                 >
                                   {connectingProvider === int.provider ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -960,7 +946,7 @@ export default function Settings() {
                     </div>
                     <button
                       onClick={logout}
-                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
+                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-on-support-error transition-colors hover:bg-support-error/80"
                     >
                       <LogOut className="h-3 w-3" />
                       Sign Out
@@ -1043,7 +1029,7 @@ export default function Settings() {
                 <button
                   onClick={handleSaveConfig}
                   disabled={configSaving || !clientId.trim() || !clientSecret.trim()}
-                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
                 >
                   {configSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Credentials
@@ -1156,7 +1142,7 @@ export default function Settings() {
                   <button
                     onClick={handleAddProvider}
                     disabled={loading}
-                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
                   >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

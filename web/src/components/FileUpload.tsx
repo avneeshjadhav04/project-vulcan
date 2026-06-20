@@ -210,27 +210,27 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
                   className="group relative flex items-center gap-1.5 overflow-hidden rounded-md border border-border-subtle bg-layer pr-1 shadow-sm"
                 >
                   {isImage && chatId ? (
-                    <div className="h-10 w-10 shrink-0 overflow-hidden bg-black/20">
-                      <img 
-                        src={`/api/chats/${chatId}/files/${file.id}`} 
+                    <div className="h-10 w-10 shrink-0 overflow-hidden bg-background">
+                      <img
+                        src={`/api/chats/${chatId}/files/${file.id}`}
                         alt={file.filename}
                         className="h-full w-full object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-black/10">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-layer-active">
                       <Icon className="h-4 w-4 text-text-helper" />
                     </div>
                   )}
-                  
+
                   <div className="flex flex-col py-1 pl-1 pr-2">
                     <span className="max-w-[120px] truncate text-[11px] font-medium text-text-secondary">{file.filename}</span>
                     <span className="text-[9px] text-text-helper">{formatSize(file.size_bytes)}</span>
                   </div>
-                  
+
                   <button
                     onClick={() => removeFile(file.id)}
-                    className="absolute right-1 top-1 hidden rounded bg-black/40 p-0.5 text-white backdrop-blur-sm transition-colors hover:bg-support-error group-hover:block"
+                    className="absolute right-1 top-1 hidden rounded bg-text-primary/40 p-0.5 text-background backdrop-blur-sm transition-colors hover:bg-support-error group-hover:block"
                   >
                     <X className="h-3 w-3" />
                   </button>

@@ -143,7 +143,7 @@ export default function ToolExecutionCard({
                       <a
                         href={`/api/chats/${chatId}/workspace/${tool.filename.split('/').pop()}`}
                         download={tool.filename.split('/').pop()}
-                        className="flex items-center gap-1 rounded bg-interactive/10 px-2 py-0.5 text-[10px] font-medium text-interactive hover:bg-interactive hover:text-white transition-colors"
+                        className="flex items-center gap-1 rounded bg-interactive/10 px-2 py-0.5 text-[10px] font-medium text-interactive hover:bg-interactive hover:text-on-interactive transition-colors"
                       >
                         <Download className="h-3 w-3" />
                         Download File

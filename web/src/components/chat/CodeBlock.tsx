@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Copy, Check } from 'lucide-react'
 import { codeToHtml } from 'shiki'
 import DOMPurify from 'dompurify'
+import { useThemeStore } from '../../stores/themeStore'
 
 interface CodeBlockProps {
   children: string
@@ -12,19 +13,21 @@ export default function CodeBlock({ children, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
   const [highlighted, setHighlighted] = useState('')
   const language = className?.replace('language-', '') || 'text'
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
+  const shikiTheme = resolvedTheme === 'light' ? 'github-light' : 'github-dark'
 
   useEffect(() => {
     let cancelled = false
     codeToHtml(children, {
       lang: language === 'text' ? 'plaintext' : language,
-      theme: 'github-dark',
+      theme: shikiTheme,
     }).then((html) => {
       if (!cancelled) setHighlighted(html)
     }).catch(() => {
       if (!cancelled) setHighlighted(`<pre><code>${escapeHtml(children)}</code></pre>`)
     })
     return () => { cancelled = true }
-  }, [children, language])
+  }, [children, language, shikiTheme])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(children).then(() => {

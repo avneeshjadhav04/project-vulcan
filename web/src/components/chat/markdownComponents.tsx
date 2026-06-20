@@ -26,7 +26,7 @@ export function ArtifactCard({ title, type, content }: { title: string, type: st
         </div>
         <button
           onClick={() => setActiveArtifact({ id: Math.random().toString(), title, type, content })}
-          className="flex items-center gap-1 rounded bg-interactive px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-interactive-hover shadow-sm"
+          className="flex items-center gap-1 rounded bg-interactive px-3 py-1.5 text-xs font-medium text-on-interactive transition-colors hover:bg-interactive-hover shadow-sm"
         >
           <ExternalLink className="h-3 w-3" />
           View Artifact

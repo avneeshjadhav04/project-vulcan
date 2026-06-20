@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal as XTerm } from 'xterm'
+import { Terminal as XTerm, type ITheme } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -18,6 +18,7 @@ import {
   Maximize2,
   Minimize2,
 } from 'lucide-react'
+import { useThemeStore } from '../stores/themeStore'
 
 export default function Terminal({ 
   isMaximized = false,
@@ -35,6 +36,53 @@ export default function Terminal({
   const wsRef = useRef<WebSocket | null>(null)
   const [reconnectKey, setReconnectKey] = useState(0)
   const [lastError, setLastError] = useState('')
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
+
+  const darkTheme: ITheme = {
+    background: '#161616',
+    foreground: '#c6c6c6',
+    cursor: '#0f62fe',
+    selectionBackground: 'rgba(15, 98, 254, 0.3)',
+    black: '#161616',
+    red: '#fa4d56',
+    green: '#42be65',
+    yellow: '#f1c21b',
+    blue: '#78a9ff',
+    magenta: '#be95ff',
+    cyan: '#33b1ff',
+    white: '#f4f4f4',
+    brightBlack: '#525252',
+    brightRed: '#ff8d8d',
+    brightGreen: '#6fdc8c',
+    brightYellow: '#f1c21b',
+    brightBlue: '#a6c8ff',
+    brightMagenta: '#d4bbff',
+    brightCyan: '#82cfff',
+    brightWhite: '#ffffff',
+  }
+
+  const lightTheme: ITheme = {
+    background: '#f0f1f5',
+    foreground: '#1f2937',
+    cursor: '#0f62fe',
+    selectionBackground: 'rgba(15, 98, 254, 0.2)',
+    black: '#1f2937',
+    red: '#dc2626',
+    green: '#15803d',
+    yellow: '#b45309',
+    blue: '#0f62fe',
+    magenta: '#7c3aed',
+    cyan: '#2563eb',
+    white: '#f8f9fb',
+    brightBlack: '#5a6573',
+    brightRed: '#ef4444',
+    brightGreen: '#22c55e',
+    brightYellow: '#d97706',
+    brightBlue: '#4589ff',
+    brightMagenta: '#8b5cf6',
+    brightCyan: '#3b82f6',
+    brightWhite: '#ffffff',
+  }
 
   const initTerminal = useCallback(() => {
     if (!containerRef.current) return () => {}
@@ -44,28 +92,7 @@ export default function Terminal({
     setLastError('')
 
     const term = new XTerm({
-      theme: {
-        background: '#161616',
-        foreground: '#c6c6c6',
-        cursor: '#0f62fe',
-        selectionBackground: 'rgba(15, 98, 254, 0.3)',
-        black: '#161616',
-        red: '#fa4d56',
-        green: '#42be65',
-        yellow: '#f1c21b',
-        blue: '#78a9ff',
-        magenta: '#be95ff',
-        cyan: '#33b1ff',
-        white: '#f4f4f4',
-        brightBlack: '#525252',
-        brightRed: '#ff8d8d',
-        brightGreen: '#6fdc8c',
-        brightYellow: '#f1c21b',
-        brightBlue: '#a6c8ff',
-        brightMagenta: '#d4bbff',
-        brightCyan: '#82cfff',
-        brightWhite: '#ffffff',
-      },
+      theme: resolvedTheme === 'light' ? lightTheme : darkTheme,
       fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Fira Code", monospace',
       fontSize: 13,
       lineHeight: 1.5,
@@ -217,6 +244,13 @@ export default function Terminal({
     const cleanup = initTerminal()
     return cleanup
   }, [initTerminal])
+
+  // Update terminal theme at runtime when the app theme changes.
+  useEffect(() => {
+    const term = xtermRef.current
+    if (!term) return
+    term.options.theme = resolvedTheme === 'light' ? { ...lightTheme } : { ...darkTheme }
+  }, [resolvedTheme])
 
   const handleClear = () => {
     xtermRef.current?.clear()

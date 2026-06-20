@@ -269,7 +269,7 @@ export default function ChatInput({
                   }}
                   disabled={!input.trim() && !voiceTranscript.trim()}
                   aria-label="Send message"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-vibrant-gradient text-on-interactive shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
                 >
                   <ArrowUp className="h-5 w-5" aria-hidden="true" />
                 </button>

@@ -19,6 +19,7 @@ import {
 import { markdownComponents } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
 import ToolExecutionCard from './ToolExecutionCard'
+import { useThemeStore } from '../../stores/themeStore'
 
 interface MessageItem {
   id: string
@@ -66,6 +67,7 @@ function MessageBubble({
   }, [msg.content])
 
   const [userReaction, setUserReaction] = useState<string | null>(null)
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
 
   const handleSave = useCallback(() => {
     if (editContent.trim() && editContent !== msg.content && onEdit) {
@@ -129,7 +131,7 @@ function MessageBubble({
           }`}
         >
           {isAssistant ? (
-            <Sparkles className="h-4 w-4 text-white" aria-hidden="true" />
+            <Sparkles className="h-4 w-4 text-on-interactive" aria-hidden="true" />
           ) : (
             <User className="h-4 w-4 text-text-secondary" aria-hidden="true" />
           )}
@@ -160,7 +162,7 @@ function MessageBubble({
         <div
           className={`inline-block text-left shadow-sm ${
             isUser
-              ? 'bg-interactive text-white rounded-2xl rounded-tr-sm px-5 py-3'
+              ? 'bg-interactive text-on-interactive rounded-2xl rounded-tr-sm px-5 py-3'
               : `border border-border-subtle bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary ${isStreamingReplacement ? 'opacity-60' : ''}`
           }`}
         >
@@ -184,14 +186,14 @@ function MessageBubble({
                 </button>
                 <button
                   onClick={handleSave}
-                  className="rounded-carbon bg-interactive px-2 py-1 text-xs text-white hover:bg-interactive-hover"
+                  className="rounded-carbon bg-interactive px-2 py-1 text-xs text-on-interactive hover:bg-interactive-hover"
                 >
                   Save
                 </button>
               </div>
             </div>
           ) : (
-            <div className="prose prose-invert prose-sm max-w-none">
+            <div className={`prose prose-sm max-w-none ${resolvedTheme === 'light' ? 'prose-slate' : 'prose-invert'}`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                 {msg.content}
               </ReactMarkdown>
