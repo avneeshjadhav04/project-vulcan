@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -14,6 +14,10 @@ interface MessageItem {
   created_at: string
   tokens_used?: number
   tool_name?: string
+}
+
+export interface ChatMessagesRef {
+  snapToLatestUserMessage: () => void
 }
 
 interface ChatMessagesProps {
@@ -34,7 +38,7 @@ interface ChatMessagesProps {
   onSuggestion: (text: string) => void
 }
 
-export default function ChatMessages({
+function ChatMessagesInner({
   messages,
   streaming,
   streamedContent,
@@ -50,7 +54,7 @@ export default function ChatMessages({
   onRegenerate,
   onEditMessage,
   onSuggestion,
-}: ChatMessagesProps) {
+}: ChatMessagesProps, ref: React.ForwardedRef<ChatMessagesRef>) {
   const visibleMessages = useMemo(
     () =>
       messages.filter(
@@ -79,6 +83,32 @@ export default function ChatMessages({
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const justSentMessageRef = useRef(false)
+
+  const performSnapToLatestUserMessage = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    justSentMessageRef.current = true
+    // Wait for DOM/motion to settle before measuring and scrolling
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+          const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
+          if (element) {
+            const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+            container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+          } else {
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+          }
+        })
+      })
+    })
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
+
+  useImperativeHandle(ref, () => ({
+    snapToLatestUserMessage: performSnapToLatestUserMessage,
+  }))
 
   const scrollToLatestResponse = useCallback(() => {
     const container = scrollContainerRef.current
@@ -138,13 +168,8 @@ export default function ChatMessages({
     const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
     const lastUserMessageId = lastUserMessage?.id || null
 
-    // If a new user message was just added, smooth-scroll to it and mark just-sent state
+    // Track latest user message id for the IntersectionObserver button
     if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
-      justSentMessageRef.current = true
-      // Defer scroll to next frame so DOM has settled after mount animation
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => scrollToLatestResponse())
-      })
       lastUserMessageIdRef.current = lastUserMessageId
       prevStreamingRef.current = streaming
       prevToolCountRef.current = toolExecutions.length
@@ -269,3 +294,6 @@ export default function ChatMessages({
     </div>
   )
 }
+
+const ChatMessages = forwardRef(ChatMessagesInner)
+export default ChatMessages
