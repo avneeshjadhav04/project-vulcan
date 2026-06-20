@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -84,9 +84,11 @@ function ChatMessagesInner({
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const pendingSnapRef = useRef(false)
   const snapLockRef = useRef(false)
+  const [focusedExchange, setFocusedExchange] = useState(false)
 
   const performSnapToLatestUserMessage = useCallback(() => {
     snapLockRef.current = true
+    setFocusedExchange(true)
     // Treat the user as no longer near the bottom after the snap
     wasNearBottomRef.current = false
   }, [wasNearBottomRef])
@@ -173,6 +175,9 @@ function ChatMessagesInner({
           const top = element.offsetTop - 16
           container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
         }
+      } else {
+        // New message appeared without an explicit snap request (e.g. switching chats or receiving a response)
+        setFocusedExchange(false)
       }
       return
     }
@@ -186,7 +191,7 @@ function ChatMessagesInner({
     prevToolCountRef.current = toolExecutions.length
     prevStreamedLenRef.current = streamedContent.length
 
-    // When stream ends, do nothing
+    // When stream ends, keep focused exchange so short responses don't reveal previous content
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
       return
@@ -260,28 +265,28 @@ function ChatMessagesInner({
               )
             })}
 
-            {toolExecutions.length > 0 && streaming && (
-              <div className="space-y-2 min-h-[100vh]">
-                {toolExecutions.map((tool, index) => (
-                  <ToolExecutionCard
-                    key={`${tool.tool_id}-${index}`}
-                    tool={tool}
-                    chatId={chatId}
-                    defaultExpanded={index === toolExecutions.length - 1}
-                  />
-                ))}
-              </div>
-            )}
-
-            {streamedContent && (
+            {(focusedExchange || streaming) && (
               <div className="min-h-[100vh]">
-                <StreamingMessage content={streamedContent} isStreaming={streaming} />
-              </div>
-            )}
+                {toolExecutions.length > 0 && streaming && (
+                  <div className="space-y-2">
+                    {toolExecutions.map((tool, index) => (
+                      <ToolExecutionCard
+                        key={`${tool.tool_id}-${index}`}
+                        tool={tool}
+                        chatId={chatId}
+                        defaultExpanded={index === toolExecutions.length - 1}
+                      />
+                    ))}
+                  </div>
+                )}
 
-            {streaming && !streamedContent && toolExecutions.length === 0 && (
-              <div className="min-h-[100vh]">
-                <TypingIndicator />
+                {streamedContent && (
+                  <StreamingMessage content={streamedContent} isStreaming={streaming} />
+                )}
+
+                {streaming && !streamedContent && toolExecutions.length === 0 && (
+                  <TypingIndicator />
+                )}
               </div>
             )}
           </>
