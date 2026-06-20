@@ -486,7 +486,6 @@ export default function ChatInterface({
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.containerRef}
-        wasNearBottomRef={scroll.wasNearBottomRef}
         setShowScrollBtn={scroll.setShowScrollBtn}
         onScroll={scroll.handleScroll}
         onRegenerate={handleRegenerate}
