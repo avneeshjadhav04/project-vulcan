@@ -266,7 +266,7 @@ function ChatMessagesInner({
             })}
 
             {(focusedExchange || streaming) && (
-              <div className="min-h-[100vh]">
+              <div className="min-h-full">
                 {toolExecutions.length > 0 && streaming && (
                   <div className="space-y-2">
                     {toolExecutions.map((tool, index) => (
