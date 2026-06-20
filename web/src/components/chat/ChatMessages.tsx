@@ -83,26 +83,28 @@ function ChatMessagesInner({
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const pendingSnapRef = useRef(false)
+  const snapLockRef = useRef(false)
 
   const performSnapToLatestUserMessage = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
 
-    // Wait for DOM/motion to settle before measuring and scrolling
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Live DOM scan: find the last rendered user message
-        const userMessages = container.querySelectorAll('[data-message-role="user"]')
-        const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-        if (lastUserElement) {
-          const top = lastUserElement.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-          container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
-        } else {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
-        }
-      })
-    })
-  }, [scrollContainerRef])
+    // Use a short timeout to let React + framer-motion settle the new message
+    window.setTimeout(() => {
+      // Live DOM scan: find the last rendered user message
+      const userMessages = container.querySelectorAll('[data-message-role="user"]')
+      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+      if (lastUserElement) {
+        const top = lastUserElement.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+        container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+      } else {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
+      }
+      snapLockRef.current = true
+      // Treat the user as no longer near the bottom after the snap
+      wasNearBottomRef.current = false
+    }, 80)
+  }, [scrollContainerRef, wasNearBottomRef])
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
@@ -206,6 +208,11 @@ function ChatMessagesInner({
 
     if (toolCountIncreased) {
       prevEventTypeRef.current = 'tool'
+      // On the first tool event after a snap, unlock and skip auto-follow so the user message stays pinned
+      if (snapLockRef.current) {
+        snapLockRef.current = false
+        return
+      }
       // Follow the tool chain only if user is already near the bottom
       if (wasNearBottomRef.current) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
@@ -216,6 +223,8 @@ function ChatMessagesInner({
     if (streamedLenIncreased) {
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
+      // Clear snap lock once response content begins
+      snapLockRef.current = false
 
       // Only jump back when the first text chunk arrives after tools, and only if user is near the bottom
       if (prevEventType === 'tool' && wasNearBottomRef.current) {
