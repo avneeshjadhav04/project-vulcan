@@ -269,7 +269,7 @@ export default function Chat() {
             {/* Footer */}
             <div className="border-t border-border-subtle p-3">
               <div className="mb-2 flex items-center gap-2 rounded-carbon border border-border-subtle bg-layer/50 px-3 py-2 shadow-sm transition-colors hover:bg-layer/80">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient text-white shadow-inner">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient text-on-interactive shadow-inner">
                   <span className="text-[11px] font-bold">
                     {user?.email?.charAt(0).toUpperCase() || 'U'}
                   </span>

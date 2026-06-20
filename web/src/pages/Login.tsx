@@ -63,7 +63,7 @@ function PasswordStrength({ password }: { password: string }) {
             key={i}
             className="h-0.5 flex-1 transition-all duration-200"
             style={{
-              backgroundColor: i <= strength ? colors[strength - 1] : '#393939',
+              backgroundColor: i <= strength ? colors[strength - 1] : 'var(--color-layer-active)',
             }}
           />
         ))}
@@ -353,7 +353,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 flex w-full items-center justify-center gap-2 bg-interactive py-3 text-sm font-normal text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                className="mt-2 flex w-full items-center justify-center gap-2 bg-interactive py-3 text-sm font-normal text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

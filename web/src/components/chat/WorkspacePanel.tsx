@@ -468,7 +468,7 @@ export default function WorkspacePanel({
           )}
           <button
             onClick={onClose}
-            className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-surface-elevated rounded transition-colors"
+            className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-layer-hover rounded transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -558,13 +558,13 @@ export default function WorkspacePanel({
                     <div className="flex items-center gap-2 mt-2">
                       <button
                         onClick={confirmOverwrite}
-                        className="px-2 py-1 text-[11px] bg-support-warning text-white rounded hover:opacity-90 transition-opacity"
+                        className="px-2 py-1 text-[11px] bg-support-warning text-on-support-warning rounded hover:opacity-90 transition-opacity"
                       >
                         Replace All
                       </button>
                       <button
                         onClick={cancelOverwrite}
-                        className="px-2 py-1 text-[11px] text-text-secondary hover:bg-surface-elevated rounded transition-colors"
+                        className="px-2 py-1 text-[11px] text-text-secondary hover:bg-layer-hover rounded transition-colors"
                       >
                         Cancel
                       </button>
@@ -627,7 +627,7 @@ export default function WorkspacePanel({
                     setIsCreating(null)
                     setCreateName('')
                   }}
-                  className="p-1 text-text-secondary hover:bg-surface-elevated rounded transition-colors"
+                  className="p-1 text-text-secondary hover:bg-layer-hover rounded transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -683,7 +683,7 @@ export default function WorkspacePanel({
                           setRenamingItem(null)
                           setRenameName('')
                         }}
-                        className="p-0.5 text-text-secondary hover:bg-surface-elevated rounded transition-colors"
+                        className="p-0.5 text-text-secondary hover:bg-layer-hover rounded transition-colors"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -737,17 +737,17 @@ export default function WorkspacePanel({
                       >
                         <Check className="w-3 h-3" />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDeleteConfirming(null)
-                        }}
-                        className="p-0.5 text-text-secondary hover:bg-surface-elevated rounded transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteConfirming(null)
+                          }}
+                          className="p-0.5 text-text-secondary hover:bg-layer-hover rounded transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
                 </div>
               ))
             )}
@@ -760,7 +760,7 @@ export default function WorkspacePanel({
                   onClick={() => setViewMode('preview')}
                   className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${
                     viewMode === 'preview'
-                      ? 'bg-interactive text-white'
+                      ? 'bg-interactive text-on-interactive'
                       : 'text-text-secondary hover:bg-interactive/10'
                   }`}
                 >
@@ -770,7 +770,7 @@ export default function WorkspacePanel({
                   onClick={() => setViewMode('code')}
                   className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${
                     viewMode === 'code'
-                      ? 'bg-interactive text-white'
+                      ? 'bg-interactive text-on-interactive'
                       : 'text-text-secondary hover:bg-interactive/10'
                   }`}
                 >
@@ -791,13 +791,13 @@ export default function WorkspacePanel({
                   <div className="flex items-center gap-2 mt-2">
                     <button
                       onClick={() => setIsEditing(false)}
-                      className="px-3 py-1 text-xs text-text-secondary hover:bg-surface-elevated rounded transition-colors"
+                      className="px-3 py-1 text-xs text-text-secondary hover:bg-layer-hover rounded transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleSave}
-                      className="px-3 py-1 text-xs bg-interactive text-white hover:opacity-90 rounded transition-colors"
+                      className="px-3 py-1 text-xs bg-interactive text-on-interactive hover:opacity-90 rounded transition-colors"
                     >
                       Save
                     </button>
@@ -806,14 +806,14 @@ export default function WorkspacePanel({
               ) : viewMode === 'preview' ? (
                 <iframe
                   src={`/api/workspace/${selectedFile}`}
-                  className="w-full h-full border-none bg-white"
+                  className="w-full h-full border-none bg-background"
                   title="Live Preview"
                   sandbox="allow-scripts allow-forms allow-same-origin"
                 />
               ) : (
                 <div className="p-4 h-full">
                   {isContentLoading ? (
-                    <div className="animate-pulse h-full bg-surface-elevated/50 rounded" />
+                    <div className="animate-pulse h-full bg-layer-hover/50 rounded" />
                   ) : (
                     <pre className="text-[11px] font-mono text-text-secondary whitespace-pre-wrap break-all">
                       {fileContent}

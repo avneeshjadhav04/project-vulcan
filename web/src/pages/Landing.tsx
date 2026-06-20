@@ -97,7 +97,6 @@ function TerminalWindow({
   return (
     <div
       className={`overflow-hidden rounded-glass border border-border-strong bg-layer/50 backdrop-blur-md shadow-2xl ${className}`}
-      style={{ boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}
     >
       <div className="flex items-center gap-2 border-b border-border-subtle bg-layer-hover/50 px-4 py-3">
         <div className="flex items-center gap-1.5">
@@ -115,7 +114,7 @@ function TerminalWindow({
           className="pointer-events-none absolute inset-0 z-10 opacity-[0.03]"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, var(--color-text-primary) 2px, var(--color-text-primary) 4px)',
           }}
         />
         {children}
@@ -338,7 +337,7 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
       transition={{ duration: 0.5, delay, ease: "easeOut" }}
       className="group relative overflow-hidden rounded-glass border border-border-subtle bg-layer/40 p-8 backdrop-blur-md transition-all hover:border-interactive/30 hover:bg-layer/60 hover:-translate-y-1 hover:shadow-2xl hover:shadow-interactive/10"
     >
-      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-carbon bg-vibrant-gradient text-on-interactive shadow-lg">
         <Icon className="h-6 w-6" />
       </div>
       <h3 className="mb-2 text-sm font-semibold text-text-primary">{title}</h3>
@@ -604,7 +603,7 @@ function CTASection() {
   return (
     <section className="px-6 py-24">
       <div className="mx-auto max-w-4xl relative">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/10 blur-[80px] mix-blend-screen" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/10 blur-[80px] mix-blend-normal" />
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -612,7 +611,7 @@ function CTASection() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="rounded-glass border border-border-subtle bg-layer/60 backdrop-blur-xl p-12 text-center shadow-2xl md:p-20"
         >
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-carbon bg-vibrant-gradient text-on-interactive shadow-lg">
             <Zap className="h-8 w-8" />
           </div>
           <h2 className="mb-4 text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
