@@ -86,25 +86,10 @@ function ChatMessagesInner({
   const snapLockRef = useRef(false)
 
   const performSnapToLatestUserMessage = useCallback(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-
-    // Use a short timeout to let React + framer-motion settle the new message
-    window.setTimeout(() => {
-      // Live DOM scan: find the last rendered user message
-      const userMessages = container.querySelectorAll('[data-message-role="user"]')
-      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-      if (lastUserElement) {
-        const top = lastUserElement.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-        container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
-      } else {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
-      }
-      snapLockRef.current = true
-      // Treat the user as no longer near the bottom after the snap
-      wasNearBottomRef.current = false
-    }, 80)
-  }, [scrollContainerRef, wasNearBottomRef])
+    snapLockRef.current = true
+    // Treat the user as no longer near the bottom after the snap
+    wasNearBottomRef.current = false
+  }, [wasNearBottomRef])
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
@@ -182,6 +167,12 @@ function ChatMessagesInner({
       if (pendingSnapRef.current) {
         pendingSnapRef.current = false
         performSnapToLatestUserMessage()
+
+        const element = document.getElementById(`msg-${lastUserMessageId}`)
+        if (container && element) {
+          const top = element.offsetTop - 16
+          container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+        }
       }
       return
     }
@@ -270,7 +261,7 @@ function ChatMessagesInner({
             })}
 
             {toolExecutions.length > 0 && streaming && (
-              <div className="space-y-2">
+              <div className="space-y-2 min-h-[100vh]">
                 {toolExecutions.map((tool, index) => (
                   <ToolExecutionCard
                     key={`${tool.tool_id}-${index}`}
@@ -283,10 +274,16 @@ function ChatMessagesInner({
             )}
 
             {streamedContent && (
-              <StreamingMessage content={streamedContent} isStreaming={streaming} />
+              <div className="min-h-[100vh]">
+                <StreamingMessage content={streamedContent} isStreaming={streaming} />
+              </div>
             )}
 
-            {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
+            {streaming && !streamedContent && toolExecutions.length === 0 && (
+              <div className="min-h-[100vh]">
+                <TypingIndicator />
+              </div>
+            )}
           </>
         )}
       </div>
