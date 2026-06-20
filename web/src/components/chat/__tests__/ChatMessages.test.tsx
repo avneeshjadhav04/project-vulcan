@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { describe, test, expect, vi, beforeAll, afterEach } from 'vitest';
 import { useRef, useEffect } from 'react';
@@ -209,5 +209,42 @@ describe('ChatMessages snap-to-latest-user-message', () => {
     const streaming = document.getElementById('msg-streaming');
     expect(streaming).toBeInTheDocument();
     expect(streaming).toHaveTextContent('Working...');
+  });
+
+  test('scrolling up exits focused mode and removes the pinned response fill', () => {
+    const initialMessages = [
+      { id: 'm1', role: 'user', content: 'Hello', created_at: '2024-01-01T00:00:00Z' },
+      { id: 'm2', role: 'assistant', content: 'Hi there', created_at: '2024-01-01T00:00:01Z' },
+    ];
+
+    const { rerender } = render(<TestHarness messages={initialMessages} />);
+
+    const container = (window as any).__testContainerRef as HTMLElement;
+    mockScrollContainer(container);
+
+    (window as any).__testChatMessagesRef?.requestSnapToLatestUserMessage();
+    const newMessages = [
+      ...initialMessages,
+      { id: 'm3', role: 'user', content: 'Follow-up', created_at: '2024-01-01T00:00:02Z' },
+    ];
+
+    rerender(
+      <TestHarness messages={newMessages} streaming={true} streamedContent="Working..." />,
+    );
+
+    const streamingBefore = document.getElementById('msg-streaming');
+    expect(streamingBefore).toBeInTheDocument();
+
+    // Simulate the user scrolling up away from the pinned exchange.
+    Object.defineProperty(container, 'scrollTop', { configurable: true, value: 200 });
+    act(() => {
+      container.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+
+    // The pinned response fill area should be gone, but the streaming message
+    // should still be rendered in the normal message flow.
+    const streamingAfter = document.getElementById('msg-streaming');
+    expect(streamingAfter).toBeInTheDocument();
+    expect(streamingAfter).toHaveTextContent('Working...');
   });
 });

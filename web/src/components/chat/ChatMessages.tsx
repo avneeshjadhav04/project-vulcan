@@ -85,6 +85,8 @@ function ChatMessagesInner({
   const pendingSnapRef = useRef(false)
   const snapLockRef = useRef(false)
   const responseAreaRef = useRef<HTMLDivElement>(null)
+  const lastScrollTopRef = useRef(0)
+  const userScrolledUpRef = useRef(false)
   const [focusedExchange, setFocusedExchange] = useState(false)
   const [responseMinHeight, setResponseMinHeight] = useState(0)
 
@@ -147,11 +149,16 @@ function ChatMessagesInner({
 
     if (element) {
       const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+      // Re-enter focused mode when the user explicitly wants to return to the
+      // latest exchange. This restores the viewport-filling response area.
+      if (!focusedExchange) {
+        setFocusedExchange(true)
+      }
       container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
     } else {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
-  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, focusedExchange])
 
   const scrollToElement = useCallback((id: string) => {
     const container = scrollContainerRef.current
@@ -161,6 +168,41 @@ function ChatMessagesInner({
     const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
     container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }, [scrollContainerRef])
+
+  // Handle scroll events: forward to parent and detect when the user scrolls
+  // up away from the focused latest exchange so we can release the pin.
+  const handleScroll = useCallback(() => {
+    onScroll()
+
+    const container = scrollContainerRef.current
+    if (!container || !focusedExchange) return
+
+    const scrollTop = container.scrollTop
+    const delta = lastScrollTopRef.current - scrollTop
+    lastScrollTopRef.current = scrollTop
+
+    // Detect a deliberate upward scroll away from the pinned exchange.
+    if (delta > 30) {
+      userScrolledUpRef.current = true
+    }
+
+    if (userScrolledUpRef.current) {
+      const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+      const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
+      // Once the latest user message is no longer near the top of the
+      // viewport, exit focused mode so older messages can be read freely.
+      if (element) {
+        const containerRect = container.getBoundingClientRect()
+        const elementRect = element.getBoundingClientRect()
+        const gap = elementRect.top - containerRect.top
+        if (gap > 80) {
+          setFocusedExchange(false)
+          setResponseMinHeight(0)
+          userScrolledUpRef.current = false
+        }
+      }
+    }
+  }, [onScroll, scrollContainerRef, focusedExchange, lastUserMessageIndex, visibleMessages])
 
   // IntersectionObserver to show/hide scroll button based on latest user message visibility
   useLayoutEffect(() => {
@@ -221,11 +263,17 @@ function ChatMessagesInner({
         // New message appeared without an explicit snap request (e.g. switching chats or receiving a response).
         // If streaming is active, this is the optimistic temp message being replaced by the real
         // server message — keep the focused exchange intact so the streaming area stays anchored,
-        // but recompute the fill height in case the real message renders at a slightly different size.
+        // but re-scroll to the real message and recompute the fill height so it stays pinned exactly
+        // at the top even if the real message renders at a slightly different size.
         if (!streaming) {
           setFocusedExchange(false)
           setResponseMinHeight(0)
         } else if (focusedExchange) {
+          const element = document.getElementById(`msg-${lastUserMessageId}`)
+          if (container && element) {
+            const top = element.offsetTop - 16
+            container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+          }
           computeResponseMinHeight()
         }
       }
@@ -307,7 +355,7 @@ function ChatMessagesInner({
   return (
     <div
       ref={scrollContainerRef}
-      onScroll={onScroll}
+      onScroll={handleScroll}
       role="log"
       aria-live="polite"
       aria-label="Chat messages"
@@ -339,29 +387,58 @@ function ChatMessagesInner({
               )
             })}
 
-            {(focusedExchange || streaming) && responseMinHeight > 0 && (
-              <div ref={responseAreaRef} className="flex flex-col" style={{ minHeight: responseMinHeight }}>
-                {toolExecutions.length > 0 && streaming && (
-                  <div className="space-y-2">
-                    {toolExecutions.map((tool, index) => (
-                      <ToolExecutionCard
-                        key={`${tool.tool_id}-${index}`}
-                        tool={tool}
-                        chatId={chatId}
-                        defaultExpanded={index === toolExecutions.length - 1}
-                      />
-                    ))}
+            {(focusedExchange || streaming) && (
+              <>
+                {focusedExchange && responseMinHeight > 0 && (
+                  <div ref={responseAreaRef} className="flex flex-col" style={{ minHeight: responseMinHeight }}>
+                    {toolExecutions.length > 0 && streaming && (
+                      <div className="space-y-2">
+                        {toolExecutions.map((tool, index) => (
+                          <ToolExecutionCard
+                            key={`${tool.tool_id}-${index}`}
+                            tool={tool}
+                            chatId={chatId}
+                            defaultExpanded={index === toolExecutions.length - 1}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {streamedContent && (
+                      <StreamingMessage content={streamedContent} isStreaming={streaming} />
+                    )}
+
+                    {streaming && !streamedContent && toolExecutions.length === 0 && (
+                      <TypingIndicator />
+                    )}
                   </div>
                 )}
 
-                {streamedContent && (
-                  <StreamingMessage content={streamedContent} isStreaming={streaming} />
-                )}
+                {streaming && !focusedExchange && (
+                  <>
+                    {toolExecutions.length > 0 && (
+                      <div className="space-y-2">
+                        {toolExecutions.map((tool, index) => (
+                          <ToolExecutionCard
+                            key={`${tool.tool_id}-${index}`}
+                            tool={tool}
+                            chatId={chatId}
+                            defaultExpanded={index === toolExecutions.length - 1}
+                          />
+                        ))}
+                      </div>
+                    )}
 
-                {streaming && !streamedContent && toolExecutions.length === 0 && (
-                  <TypingIndicator />
+                    {streamedContent && (
+                      <StreamingMessage content={streamedContent} isStreaming={streaming} />
+                    )}
+
+                    {streaming && !streamedContent && toolExecutions.length === 0 && (
+                      <TypingIndicator />
+                    )}
+                  </>
                 )}
-              </div>
+              </>
             )}
           </>
         )}
