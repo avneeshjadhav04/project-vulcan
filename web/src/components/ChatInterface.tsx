@@ -56,6 +56,7 @@ export default function ChatInterface({
   const lastSyncedChatIdRef = useRef<string | null>(null)
   const previousChatIdRef = useRef<string | undefined>(chatId)
   const chatMessagesRef = useRef<ChatMessagesRef>(null)
+  const suppressScrollResetRef = useRef(false)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -99,7 +100,7 @@ export default function ChatInterface({
       return res.data as { has_provider: boolean; tools_enabled: boolean }
     },
   })
-  const scroll = useChatScroll(effectiveChatId)
+  const scroll = useChatScroll(effectiveChatId, { suppressResetRef: suppressScrollResetRef })
   // Sync model from loaded chat only when switching chats, not on every refetch
   useEffect(() => {
     if (!effectiveChatId || !chatData?.chat.model_id) return
@@ -197,6 +198,14 @@ export default function ChatInterface({
       setInput('')
     }
     setAttachedFiles([])
+
+    // When creating a new chat, the effectiveChatId changes after the chat is
+    // created. Suppress the scroll-to-bottom reset that normally fires on chat
+    // switch so the pending snap-to-latest-user-message can pin the first
+    // message at the top instead of pushing it back to the bottom.
+    if (!effectiveChatId) {
+      suppressScrollResetRef.current = true
+    }
 
     // Optimistically insert the user message into the cache so it renders
     // immediately, before the server refetch/stream delivers it. This lets the
