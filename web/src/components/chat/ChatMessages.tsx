@@ -78,6 +78,7 @@ export default function ChatMessages({
   const prevToolCountRef = useRef(toolExecutions.length)
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
+  const justSentMessageRef = useRef(false)
 
   const scrollToLatestResponse = useCallback(() => {
     const container = scrollContainerRef.current
@@ -137,9 +138,13 @@ export default function ChatMessages({
     const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
     const lastUserMessageId = lastUserMessage?.id || null
 
-    // If a new user message was just added, smooth-scroll to it
+    // If a new user message was just added, smooth-scroll to it and mark just-sent state
     if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
-      scrollToLatestResponse()
+      justSentMessageRef.current = true
+      // Defer scroll to next frame so DOM has settled after mount animation
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => scrollToLatestResponse())
+      })
       lastUserMessageIdRef.current = lastUserMessageId
       prevStreamingRef.current = streaming
       prevToolCountRef.current = toolExecutions.length
@@ -157,9 +162,10 @@ export default function ChatMessages({
     prevToolCountRef.current = toolExecutions.length
     prevStreamedLenRef.current = streamedContent.length
 
-    // When stream ends, do nothing
+    // When stream ends, clear just-sent state and do nothing else
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
+      justSentMessageRef.current = false
       return
     }
 
@@ -170,6 +176,7 @@ export default function ChatMessages({
 
     if (toolCountIncreased) {
       prevEventTypeRef.current = 'tool'
+      justSentMessageRef.current = false
       // Follow the tool chain only if user is already near the bottom
       if (wasNearBottomRef.current) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
@@ -180,6 +187,7 @@ export default function ChatMessages({
     if (streamedLenIncreased) {
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
+      justSentMessageRef.current = false
 
       // Only scroll for the first text chunk of this response, and only if user is near the bottom
       if (prevEventType !== 'text' && wasNearBottomRef.current) {
@@ -248,6 +256,11 @@ export default function ChatMessages({
             )}
 
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
+
+            {/* Blank response area immediately after the latest user message while we wait for the first streamed content or tool */}
+            {streaming && justSentMessageRef.current && streamedContent.length === 0 && toolExecutions.length === 0 && (
+              <div className="min-h-[100vh]" aria-hidden="true" />
+            )}
           </>
         )}
       </div>
