@@ -2,7 +2,10 @@ import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 
 const SCROLL_THRESHOLD = 150
 
-export function useChatScroll(chatId?: string) {
+export function useChatScroll(
+  chatId?: string,
+  options?: { suppressResetRef?: React.MutableRefObject<boolean> }
+) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const wasNearBottomRef = useRef(true)
@@ -31,15 +34,22 @@ export function useChatScroll(chatId?: string) {
     wasNearBottomRef.current = true
   }, [])
 
-  // Reset scroll position when switching chats
+  // Reset scroll position when switching chats. When a new chat is being
+  // created, a snap-to-latest-user-message is pending, so we must not override
+  // it by scrolling to the bottom.
   useLayoutEffect(() => {
+    if (options?.suppressResetRef?.current) {
+      options.suppressResetRef.current = false
+      return
+    }
+
     const container = containerRef.current
     if (container) {
       container.scrollTop = container.scrollHeight
       setShowScrollBtn(false)
       wasNearBottomRef.current = true
     }
-  }, [chatId])
+  }, [chatId, options])
 
   return {
     containerRef,

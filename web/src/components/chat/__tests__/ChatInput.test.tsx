@@ -1,8 +1,22 @@
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { describe, test, expect, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatInput from '../ChatInput';
 import { ErrorToastProvider } from '../../ui/ErrorToast';
+
+const queryClient = new QueryClient();
+
+function Wrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <ErrorToastProvider>{children}</ErrorToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
+  );
+}
 
 describe('ChatInput component', () => {
   const defaultProps = {
@@ -31,11 +45,7 @@ describe('ChatInput component', () => {
   };
 
   test('shows loading spinner when streaming', async () => {
-    render(
-      <ErrorToastProvider>
-        <ChatInput {...{ ...defaultProps, streaming: true }} />
-      </ErrorToastProvider>
-    );
+    render(<ChatInput {...{ ...defaultProps, streaming: true }} />, { wrapper: Wrapper });
     // The stop button should have an animated Loader2 icon
     const stopBtn = screen.getByLabelText('Stop generating');
     expect(stopBtn).toBeInTheDocument();
@@ -44,11 +54,7 @@ describe('ChatInput component', () => {
   });
 
   test('displays error toast when sendError is set', () => {
-    render(
-      <ErrorToastProvider>
-        <ChatInput {...{ ...defaultProps, sendError: 'Something went wrong' }} />
-      </ErrorToastProvider>
-    );
+    render(<ChatInput {...{ ...defaultProps, sendError: 'Something went wrong' }} />, { wrapper: Wrapper });
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('Something went wrong');
   });
