@@ -92,20 +92,25 @@ function ChatMessagesInner({
     setFocusedExchange(true)
     // Treat the user as no longer near the bottom after the snap
     wasNearBottomRef.current = false
+  }, [wasNearBottomRef])
 
+  // Compute the min-height the streaming response area should occupy so it
+  // fills the viewport below the (now-pinned) latest user message. Called
+  // AFTER the snap scroll has landed so the message position is accurate.
+  const computeResponseMinHeight = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
-
     const userMessages = container.querySelectorAll('[data-message-role="user"]')
     const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
     if (lastUserElement) {
-      const messageBottom = lastUserElement.getBoundingClientRect().bottom - container.getBoundingClientRect().top
-      const availableHeight = container.clientHeight - messageBottom
-      setResponseMinHeight(Math.max(0, availableHeight))
+      const messageHeight = lastUserElement.getBoundingClientRect().height
+      // Fill the viewport below the pinned message; leave a small breathing gap.
+      const availableHeight = Math.max(0, container.clientHeight - messageHeight - 16)
+      setResponseMinHeight(availableHeight)
     } else {
       setResponseMinHeight(container.clientHeight)
     }
-  }, [scrollContainerRef, wasNearBottomRef])
+  }, [scrollContainerRef])
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
@@ -188,11 +193,21 @@ function ChatMessagesInner({
         if (container && element) {
           const top = element.offsetTop - 16
           container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+          // Compute the response fill height after the scroll lands so the
+          // pinned user message sits at the top and the streaming area fills below.
+          computeResponseMinHeight()
         }
       } else {
-        // New message appeared without an explicit snap request (e.g. switching chats or receiving a response)
-        setFocusedExchange(false)
-        setResponseMinHeight(0)
+        // New message appeared without an explicit snap request (e.g. switching chats or receiving a response).
+        // If streaming is active, this is the optimistic temp message being replaced by the real
+        // server message — keep the focused exchange intact so the streaming area stays anchored,
+        // but recompute the fill height in case the real message renders at a slightly different size.
+        if (!streaming) {
+          setFocusedExchange(false)
+          setResponseMinHeight(0)
+        } else if (focusedExchange) {
+          computeResponseMinHeight()
+        }
       }
       return
     }
@@ -213,6 +228,10 @@ function ChatMessagesInner({
     }
 
     if (!streaming) return
+
+    // If a snap is still pending (message not yet rendered), don't let stream
+    // chunks move the scroll before the snap has a chance to fire.
+    if (pendingSnapRef.current) return
 
     const toolCountIncreased = toolExecutions.length > prevToolCount
     const streamedLenIncreased = streamedContent.length > prevStreamedLen
@@ -243,28 +262,23 @@ function ChatMessagesInner({
       }
       return
     }
-  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement, performSnapToLatestUserMessage])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement, performSnapToLatestUserMessage, computeResponseMinHeight, focusedExchange])
 
   // Recalculate response min-height when the container resizes while focused
   useLayoutEffect(() => {
     const container = scrollContainerRef.current
     if (!container || !focusedExchange) return
 
-    const updateHeight = () => {
-      const userMessages = container.querySelectorAll('[data-message-role="user"]')
-      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-      if (lastUserElement) {
-        const messageBottom = lastUserElement.getBoundingClientRect().bottom - container.getBoundingClientRect().top
-        const availableHeight = container.clientHeight - messageBottom
-        setResponseMinHeight(Math.max(0, availableHeight))
-      } else {
-        setResponseMinHeight(container.clientHeight)
-      }
-    }
+    const updateHeight = () => computeResponseMinHeight()
     const observer = new ResizeObserver(updateHeight)
     observer.observe(container)
+    // Observe the inner content wrapper too, so a change in message count /
+    // streaming content (which grows the inner wrapper) triggers a recompute
+    // even when the scroll container itself doesn't resize.
+    const inner = container.firstElementChild as HTMLElement | null
+    if (inner) observer.observe(inner)
     return () => observer.disconnect()
-  }, [focusedExchange, scrollContainerRef])
+  }, [focusedExchange, scrollContainerRef, computeResponseMinHeight])
 
   return (
     <div
