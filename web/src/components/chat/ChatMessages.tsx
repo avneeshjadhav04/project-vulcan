@@ -74,6 +74,10 @@ export default function ChatMessages({
   }, [visibleMessages])
 
   const lastUserMessageIdRef = useRef<string | null>(null)
+  const prevStreamingRef = useRef(streaming)
+  const prevToolCountRef = useRef(toolExecutions.length)
+  const prevStreamedLenRef = useRef(streamedContent.length)
+  const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
 
   const scrollToLatestResponse = useCallback(() => {
     const container = scrollContainerRef.current
@@ -89,6 +93,15 @@ export default function ChatMessages({
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
   }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
+
+  const scrollToElement = useCallback((id: string) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const element = document.getElementById(id)
+    if (!element) return
+    const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }, [scrollContainerRef])
 
   // IntersectionObserver to show/hide scroll button based on latest user message visibility
   useLayoutEffect(() => {
@@ -124,17 +137,63 @@ export default function ChatMessages({
     const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
     const lastUserMessageId = lastUserMessage?.id || null
 
-    // If a new user message was just added, force scroll to it
+    // If a new user message was just added, smooth-scroll to it
     if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
       scrollToLatestResponse()
       lastUserMessageIdRef.current = lastUserMessageId
+      prevStreamingRef.current = streaming
+      prevToolCountRef.current = toolExecutions.length
+      prevStreamedLenRef.current = streamedContent.length
+      prevEventTypeRef.current = null
       return
     }
 
-    if (wasNearBottomRef.current) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
+    const wasStreaming = prevStreamingRef.current
+    const prevToolCount = prevToolCountRef.current
+    const prevStreamedLen = prevStreamedLenRef.current
+
+    // Update refs after reading previous values
+    prevStreamingRef.current = streaming
+    prevToolCountRef.current = toolExecutions.length
+    prevStreamedLenRef.current = streamedContent.length
+
+    // When stream ends, do nothing
+    if (wasStreaming && !streaming) {
+      prevEventTypeRef.current = null
+      return
     }
-  }, [visibleMessages.length, streamedContent, toolExecutions.length, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse])
+
+    if (!streaming) return
+
+    const toolCountIncreased = toolExecutions.length > prevToolCount
+    const streamedLenIncreased = streamedContent.length > prevStreamedLen
+
+    if (toolCountIncreased) {
+      prevEventTypeRef.current = 'tool'
+      // Follow the tool chain only if user is already near the bottom
+      if (wasNearBottomRef.current) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
+      }
+      return
+    }
+
+    if (streamedLenIncreased) {
+      const prevEventType = prevEventTypeRef.current
+      prevEventTypeRef.current = 'text'
+
+      // Only scroll for the first text chunk of this response, and only if user is near the bottom
+      if (prevEventType !== 'text' && wasNearBottomRef.current) {
+        if (prevEventType === 'tool') {
+          // First text after tools: jump back to the start of the streaming response
+          scrollToElement('msg-streaming')
+        } else {
+          // First text of a new response (no preceding tools): anchor at user message
+          scrollToLatestResponse()
+        }
+      }
+      return
+    }
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement])
 
   return (
     <div
