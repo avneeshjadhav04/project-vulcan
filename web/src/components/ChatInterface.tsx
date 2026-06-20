@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useErrorToast } from './ui/ErrorToast'
@@ -207,33 +208,39 @@ export default function ChatInterface({
       suppressScrollResetRef.current = true
     }
 
+    // Request the snap before the optimistic message is committed so the
+    // ChatMessages layout effect can scroll in the same paint and avoid a
+    // visible flash of the message at the bottom of the list.
+    chatMessagesRef.current?.requestSnapToLatestUserMessage()
+
     // Optimistically insert the user message into the cache so it renders
-    // immediately, before the server refetch/stream delivers it. This lets the
-    // snap-to-latest-user-message run before any stream chunks can move scroll.
+    // immediately, before the server refetch/stream delivers it. flushSync
+    // forces React to commit this update synchronously; the ChatMessages
+    // useLayoutEffect then runs before the browser paints, positioning the new
+    // message at the top of the response area with no visible jump.
     const optimisticId = `temp-${Date.now()}`
     if (effectiveChatId) {
-      queryClient.setQueryData<{ chat: any; messages: MessageItem[] }>(
-        ['chat', effectiveChatId],
-        (prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            messages: [
-              ...prev.messages.filter((m) => !m.id.startsWith('temp-')),
-              {
-                id: optimisticId,
-                role: 'user',
-                content: text,
-                created_at: new Date().toISOString(),
-              },
-            ],
+      flushSync(() => {
+        queryClient.setQueryData<{ chat: any; messages: MessageItem[] }>(
+          ['chat', effectiveChatId],
+          (prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              messages: [
+                ...prev.messages.filter((m) => !m.id.startsWith('temp-')),
+                {
+                  id: optimisticId,
+                  role: 'user',
+                  content: text,
+                  created_at: new Date().toISOString(),
+                },
+              ],
+            }
           }
-        }
-      )
+        )
+      })
     }
-
-    // Immediately focus view on the latest user message once it renders
-    chatMessagesRef.current?.requestSnapToLatestUserMessage()
 
     await startStream(text, {
       effectiveChatId,
