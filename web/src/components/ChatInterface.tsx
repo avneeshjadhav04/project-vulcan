@@ -198,6 +198,31 @@ export default function ChatInterface({
     }
     setAttachedFiles([])
 
+    // Optimistically insert the user message into the cache so it renders
+    // immediately, before the server refetch/stream delivers it. This lets the
+    // snap-to-latest-user-message run before any stream chunks can move scroll.
+    const optimisticId = `temp-${Date.now()}`
+    if (effectiveChatId) {
+      queryClient.setQueryData<{ chat: any; messages: MessageItem[] }>(
+        ['chat', effectiveChatId],
+        (prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            messages: [
+              ...prev.messages.filter((m) => !m.id.startsWith('temp-')),
+              {
+                id: optimisticId,
+                role: 'user',
+                content: text,
+                created_at: new Date().toISOString(),
+              },
+            ],
+          }
+        }
+      )
+    }
+
     // Immediately focus view on the latest user message once it renders
     chatMessagesRef.current?.requestSnapToLatestUserMessage()
 
