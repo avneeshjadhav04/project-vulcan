@@ -97,34 +97,38 @@ function ChatMessagesInner({
 
   // Compute the min-height the response area should occupy so its bottom
   // aligns exactly with the viewport bottom (minus the inner wrapper's pb-4).
-  // Measuring the response area's own visible top (rather than the user message
-  // height) makes this robust to the persisted assistant message rendering
-  // above it after stream completion — the fill shrinks so no scroll-down blank
-  // appears while the user message stays pinned and older content stays hidden.
-  // Falls back to the last user message's bottom (the fill div's adjacent
-  // sibling top) when the fill div isn't mounted yet (first snap commit).
+  // Uses CONTENT coordinates (scroll-invariant) rather than viewport
+  // coordinates so the result is stable across scroll-position changes — this
+  // avoids a feedback loop where shrinking the fill would clamp scrollTop
+  // upward and unpin the user message.
+  //
+  // During streaming the persisted assistant message isn't rendered yet, so
+  // the gap above the fill is 0 and this matches the working "fill below the
+  // user message" behavior. After stream-end the assistant message persists
+  // above the fill, so the gap grows by its height and the fill shrinks
+  // accordingly — keeping the fill bottom at the viewport bottom (no
+  // scroll-down blank) without shifting the user message off the top.
+  // Falls back to the last user message's content bottom when the fill div
+  // isn't mounted yet (first snap commit).
   const computeResponseMinHeight = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    const containerTop = container.getBoundingClientRect().top
-    let areaVisibleTop: number | null = null
-    const area = responseAreaRef.current
-    if (area) {
-      areaVisibleTop = area.getBoundingClientRect().top - containerTop
-    } else {
-      const userMessages = container.querySelectorAll('[data-message-role="user"]')
-      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-      if (lastUserElement) {
-        areaVisibleTop = lastUserElement.getBoundingClientRect().bottom - containerTop
-      }
-    }
-    if (areaVisibleTop === null) {
+    const containerRect = container.getBoundingClientRect()
+    const toContentY = (el: HTMLElement) => el.getBoundingClientRect().top - containerRect.top + container.scrollTop
+    const userMessages = container.querySelectorAll('[data-message-role="user"]')
+    const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+    if (!lastUserElement) {
       setResponseMinHeight(container.clientHeight)
       return
     }
+    // Intrinsic, scroll-invariant measurements (content coordinates):
+    const userMsgHeight = lastUserElement.getBoundingClientRect().height
+    const userBottomContentY = lastUserElement.getBoundingClientRect().bottom - containerRect.top + container.scrollTop
+    const fillTopContentY = responseAreaRef.current ? toContentY(responseAreaRef.current) : userBottomContentY
+    const gapBelowUserMsg = Math.max(0, fillTopContentY - userBottomContentY)
     // Subtract 16 to account for the inner wrapper's pb-4 padding so the
     // fill bottom + padding = container bottom (no scrollable overflow).
-    const availableHeight = Math.max(0, container.clientHeight - areaVisibleTop - 16)
+    const availableHeight = Math.max(0, container.clientHeight - userMsgHeight - gapBelowUserMsg - 16)
     setResponseMinHeight(availableHeight)
   }, [scrollContainerRef])
 
