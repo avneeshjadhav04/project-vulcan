@@ -7,6 +7,7 @@ import { markdownComponents } from './markdownComponents'
 export default function StreamingMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
   return (
     <motion.div
+      id="msg-streaming"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-3 py-3"
