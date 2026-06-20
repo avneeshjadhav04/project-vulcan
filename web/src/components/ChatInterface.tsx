@@ -11,7 +11,7 @@ import type { SelectedModel } from './ProviderModelSelector'
 import type { UploadedFile } from './FileUpload'
 
 import ChatHeader from './chat/ChatHeader'
-import ChatMessages from './chat/ChatMessages'
+import ChatMessages, { type ChatMessagesRef } from './chat/ChatMessages'
 import ChatInput from './chat/ChatInput'
 
 import {
@@ -55,6 +55,7 @@ export default function ChatInterface({
   const currentChatIdRef = useRef<string | undefined>(chatId)
   const lastSyncedChatIdRef = useRef<string | null>(null)
   const previousChatIdRef = useRef<string | undefined>(chatId)
+  const chatMessagesRef = useRef<ChatMessagesRef>(null)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -196,6 +197,9 @@ export default function ChatInterface({
       setInput('')
     }
     setAttachedFiles([])
+
+    // Immediately focus view on the latest user message
+    chatMessagesRef.current?.snapToLatestUserMessage()
 
     await startStream(text, {
       effectiveChatId,
@@ -431,6 +435,7 @@ export default function ChatInterface({
       </AnimatePresence>
 
       <ChatMessages
+        ref={chatMessagesRef}
         messages={messages}
         streaming={streaming}
         streamedContent={streamedContent}
