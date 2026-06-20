@@ -239,7 +239,7 @@ function ChatMessagesInner({
       aria-label="Chat messages"
       className="relative flex-1 overflow-y-auto"
     >
-      <div className="mx-auto max-w-3xl px-4 pb-4">
+      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pb-4">
         {creatingChat ? (
           <div className="flex flex-1 flex-col items-center justify-center py-20">
             <div className="h-5 w-5 animate-spin border-2 border-interactive border-t-transparent" />
@@ -266,7 +266,7 @@ function ChatMessagesInner({
             })}
 
             {(focusedExchange || streaming) && (
-              <div className="min-h-full">
+              <div className="flex flex-1 flex-col">
                 {toolExecutions.length > 0 && streaming && (
                   <div className="space-y-2">
                     {toolExecutions.map((tool, index) => (
