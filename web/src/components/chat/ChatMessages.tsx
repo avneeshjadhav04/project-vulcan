@@ -95,7 +95,16 @@ function ChatMessagesInner({
 
     const container = scrollContainerRef.current
     if (!container) return
-    setResponseMinHeight(container.clientHeight)
+
+    const userMessages = container.querySelectorAll('[data-message-role="user"]')
+    const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+    if (lastUserElement) {
+      const messageBottom = lastUserElement.getBoundingClientRect().bottom - container.getBoundingClientRect().top
+      const availableHeight = container.clientHeight - messageBottom
+      setResponseMinHeight(Math.max(0, availableHeight))
+    } else {
+      setResponseMinHeight(container.clientHeight)
+    }
   }, [scrollContainerRef, wasNearBottomRef])
 
   useImperativeHandle(ref, () => ({
@@ -241,7 +250,17 @@ function ChatMessagesInner({
     const container = scrollContainerRef.current
     if (!container || !focusedExchange) return
 
-    const updateHeight = () => setResponseMinHeight(container.clientHeight)
+    const updateHeight = () => {
+      const userMessages = container.querySelectorAll('[data-message-role="user"]')
+      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+      if (lastUserElement) {
+        const messageBottom = lastUserElement.getBoundingClientRect().bottom - container.getBoundingClientRect().top
+        const availableHeight = container.clientHeight - messageBottom
+        setResponseMinHeight(Math.max(0, availableHeight))
+      } else {
+        setResponseMinHeight(container.clientHeight)
+      }
+    }
     const observer = new ResizeObserver(updateHeight)
     observer.observe(container)
     return () => observer.disconnect()
