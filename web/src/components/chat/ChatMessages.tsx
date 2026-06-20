@@ -83,12 +83,34 @@ function ChatMessagesInner({
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const pendingSnapRef = useRef(false)
+  const snapTargetIdRef = useRef<string | null>(null)
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
       pendingSnapRef.current = true
     },
   }))
+
+  const latestUserMessageRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node || !pendingSnapRef.current) return
+      if (snapTargetIdRef.current && node.id !== `msg-${snapTargetIdRef.current}`) return
+
+      pendingSnapRef.current = false
+      snapTargetIdRef.current = null
+      wasNearBottomRef.current = false
+
+      const container = scrollContainerRef.current
+      if (!container) return
+
+      // Allow framer-motion initial animation to settle, then snap smoothly.
+      window.setTimeout(() => {
+        const top = node.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+        container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+      }, 50)
+    },
+    [scrollContainerRef, wasNearBottomRef]
+  )
 
   const scrollToLatestResponse = useCallback(() => {
     const container = scrollContainerRef.current
@@ -166,17 +188,10 @@ function ChatMessagesInner({
       prevStreamedLenRef.current = streamedContent.length
       prevEventTypeRef.current = null
 
-      // If a snap was explicitly requested (send/regenerate/edit), pin the message to the top
+      // If a snap was explicitly requested (send/regenerate/edit), record the target id so the
+      // ref callback on that message can perform the snap once it mounts.
       if (pendingSnapRef.current) {
-        pendingSnapRef.current = false
-        // Treat the user as no longer near the bottom after the snap
-        wasNearBottomRef.current = false
-
-        const element = document.getElementById(`msg-${lastUserMessageId}`)
-        if (element) {
-          const top = element.offsetTop - 16
-          container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-        }
+        snapTargetIdRef.current = lastUserMessageId
       }
       return
     }
@@ -211,7 +226,6 @@ function ChatMessagesInner({
     }
 
     if (streamedLenIncreased) {
-      const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
 
       // When text starts after tools, stay where the tool chain left off so the first text chunk is visible.
@@ -240,16 +254,17 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
-              const isLatestUser = msg.role === 'user' && index === lastUserMessageIndex && pendingSnapRef.current
+              const isSnapTarget = snapTargetIdRef.current !== null && msg.id === snapTargetIdRef.current
               return (
                 <MessageBubble
                   key={msg.id}
+                  ref={isSnapTarget ? latestUserMessageRef : undefined}
                   chatId={chatId}
                   msg={msg}
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(isLastAssistant && !streamedContent) && !isLatestUser}
+                  animateMount={!(isLastAssistant && !streamedContent)}
                   isStreamingReplacement={isLastAssistant && !!streamedContent}
                 />
               )
