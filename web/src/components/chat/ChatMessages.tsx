@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -17,7 +17,7 @@ interface MessageItem {
 }
 
 export interface ChatMessagesRef {
-  snapToLatestUserMessage: () => void
+  requestSnapToLatestUserMessage: () => void
 }
 
 interface ChatMessagesProps {
@@ -82,32 +82,34 @@ function ChatMessagesInner({
   const prevToolCountRef = useRef(toolExecutions.length)
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
-  const justSentMessageRef = useRef(false)
+  const [justSentMessage, setJustSentMessage] = useState(false)
+  const pendingSnapRef = useRef(false)
 
   const performSnapToLatestUserMessage = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
 
-    justSentMessageRef.current = true
+    setJustSentMessage(true)
     // Wait for DOM/motion to settle before measuring and scrolling
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
-          const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
-          if (element) {
-            const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-            container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-          } else {
-            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
-          }
-        })
+        // Live DOM scan: find the last rendered user message
+        const userMessages = container.querySelectorAll('[data-message-role="user"]')
+        const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+        if (lastUserElement) {
+          const top = lastUserElement.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+          container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+        } else {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
+        }
       })
     })
-  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
+  }, [scrollContainerRef])
 
   useImperativeHandle(ref, () => ({
-    snapToLatestUserMessage: performSnapToLatestUserMessage,
+    requestSnapToLatestUserMessage: () => {
+      pendingSnapRef.current = true
+    },
   }))
 
   const scrollToLatestResponse = useCallback(() => {
@@ -175,6 +177,12 @@ function ChatMessagesInner({
       prevToolCountRef.current = toolExecutions.length
       prevStreamedLenRef.current = streamedContent.length
       prevEventTypeRef.current = null
+
+      // If a snap was explicitly requested (e.g. send/regenerate/edit), perform it now that the message exists
+      if (pendingSnapRef.current) {
+        pendingSnapRef.current = false
+        performSnapToLatestUserMessage()
+      }
       return
     }
 
@@ -190,7 +198,7 @@ function ChatMessagesInner({
     // When stream ends, clear just-sent state and do nothing else
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
-      justSentMessageRef.current = false
+      setJustSentMessage(false)
       return
     }
 
@@ -201,7 +209,7 @@ function ChatMessagesInner({
 
     if (toolCountIncreased) {
       prevEventTypeRef.current = 'tool'
-      justSentMessageRef.current = false
+      setJustSentMessage(false)
       // Follow the tool chain only if user is already near the bottom
       if (wasNearBottomRef.current) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
@@ -212,7 +220,7 @@ function ChatMessagesInner({
     if (streamedLenIncreased) {
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
-      justSentMessageRef.current = false
+      setJustSentMessage(false)
 
       // Only scroll for the first text chunk of this response, and only if user is near the bottom
       if (prevEventType !== 'text' && wasNearBottomRef.current) {
@@ -226,7 +234,7 @@ function ChatMessagesInner({
       }
       return
     }
-  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement, performSnapToLatestUserMessage])
 
   return (
     <div
@@ -283,7 +291,7 @@ function ChatMessagesInner({
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
 
             {/* Blank response area immediately after the latest user message while we wait for the first streamed content or tool */}
-            {streaming && justSentMessageRef.current && streamedContent.length === 0 && toolExecutions.length === 0 && (
+            {streaming && justSentMessage && streamedContent.length === 0 && toolExecutions.length === 0 && (
               <div className="min-h-[100vh]" aria-hidden="true" />
             )}
           </>

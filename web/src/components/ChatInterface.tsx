@@ -198,8 +198,8 @@ export default function ChatInterface({
     }
     setAttachedFiles([])
 
-    // Immediately focus view on the latest user message
-    chatMessagesRef.current?.snapToLatestUserMessage()
+    // Immediately focus view on the latest user message once it renders
+    chatMessagesRef.current?.requestSnapToLatestUserMessage()
 
     await startStream(text, {
       effectiveChatId,
