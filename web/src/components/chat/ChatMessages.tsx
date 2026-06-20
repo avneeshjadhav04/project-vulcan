@@ -7,8 +7,6 @@ import EmptyState from './EmptyState'
 import ScrollToBottom from './ScrollToBottom'
 import type { ToolExecution } from '../../hooks/useChatStream'
 
-const LATEST_MESSAGE_TOP_OFFSET = 16
-
 interface MessageItem {
   id: string
   role: string
@@ -32,6 +30,7 @@ interface ChatMessagesProps {
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
+  wasNearBottomRef: React.MutableRefObject<boolean>
   setShowScrollBtn: React.Dispatch<React.SetStateAction<boolean>>
   onScroll: () => void
   onRegenerate: () => void
@@ -49,6 +48,7 @@ function ChatMessagesInner({
   messageMeta,
   showScrollBtn,
   scrollContainerRef,
+  wasNearBottomRef,
   setShowScrollBtn,
   onScroll,
   onRegenerate,
@@ -77,138 +77,59 @@ function ChatMessagesInner({
     return -1
   }, [visibleMessages])
 
-  const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
-  const lastUserMessageId = lastUserMessage?.id || null
-  const latestExchangeSpacerRef = useRef<HTMLDivElement>(null)
-  const pendingSnapRef = useRef(false)
-  const activeAnchorRef = useRef<{ id: string; content: string } | null>(null)
-  const userScrolledSinceAnchorRef = useRef(false)
-  const programmaticScrollRef = useRef(false)
-  const programmaticScrollTimeoutRef = useRef<number | null>(null)
+  const lastUserMessageIdRef = useRef<string | null>(null)
+  const prevStreamingRef = useRef(streaming)
+  const prevToolCountRef = useRef(toolExecutions.length)
+  const prevStreamedLenRef = useRef(streamedContent.length)
+  const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
 
   useImperativeHandle(ref, () => ({
-    requestSnapToLatestUserMessage: () => {
-      pendingSnapRef.current = true
-      activeAnchorRef.current = null
-      userScrolledSinceAnchorRef.current = false
-    },
+    requestSnapToLatestUserMessage: () => {},
   }))
 
-  const setProgrammaticScrollGuard = useCallback((durationMs = 160) => {
-    programmaticScrollRef.current = true
-    if (programmaticScrollTimeoutRef.current !== null) {
-      window.clearTimeout(programmaticScrollTimeoutRef.current)
-    }
-    programmaticScrollTimeoutRef.current = window.setTimeout(() => {
-      programmaticScrollRef.current = false
-      programmaticScrollTimeoutRef.current = null
-    }, durationMs)
-  }, [])
-
-  const clearLatestExchangeSpacer = useCallback(() => {
-    if (latestExchangeSpacerRef.current) {
-      latestExchangeSpacerRef.current.style.height = '0px'
-    }
-  }, [])
-
-  const syncLatestExchangeSpacer = useCallback(() => {
-    const container = scrollContainerRef.current
-    const spacer = latestExchangeSpacerRef.current
-    if (!container || !spacer || !lastUserMessageId) return null
-
-    const element = document.getElementById(`msg-${lastUserMessageId}`)
-    if (!element) return null
-
-    spacer.style.height = '0px'
-
-    const containerRect = container.getBoundingClientRect()
-    const elementRect = element.getBoundingClientRect()
-    const targetTop = Math.max(
-      0,
-      elementRect.top - containerRect.top + container.scrollTop - LATEST_MESSAGE_TOP_OFFSET
-    )
-    const missingSpace = targetTop + container.clientHeight - container.scrollHeight
-    const spacerHeight = Math.max(0, Math.ceil(missingSpace))
-    spacer.style.height = `${spacerHeight}px`
-
-    return targetTop
-  }, [lastUserMessageId, scrollContainerRef])
-
-  const scrollToLatestUserMessage = useCallback(
-    (behavior: ScrollBehavior) => {
-      const container = scrollContainerRef.current
-      if (!container || !lastUserMessage) return false
-
-      const targetTop = syncLatestExchangeSpacer()
-      if (targetTop === null) return false
-
-      setProgrammaticScrollGuard(behavior === 'smooth' ? 500 : 160)
-      container.scrollTo({ top: targetTop, behavior })
-      setShowScrollBtn(false)
-      return true
-    },
-    [
-      lastUserMessage,
-      scrollContainerRef,
-      setProgrammaticScrollGuard,
-      setShowScrollBtn,
-      syncLatestExchangeSpacer,
-    ]
-  )
-
   const scrollToLatestResponse = useCallback(() => {
-    if (lastUserMessage) {
-      activeAnchorRef.current = {
-        id: lastUserMessage.id,
-        content: lastUserMessage.content,
-      }
-      userScrolledSinceAnchorRef.current = false
-      if (scrollToLatestUserMessage('smooth')) return
-    }
-
     const container = scrollContainerRef.current
     if (!container) return
-    setProgrammaticScrollGuard(500)
-    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
-  }, [lastUserMessage, scrollContainerRef, scrollToLatestUserMessage, setProgrammaticScrollGuard])
 
-  const handleMessagesScroll = useCallback(() => {
-    onScroll()
-    if (!programmaticScrollRef.current) {
-      userScrolledSinceAnchorRef.current = true
+    const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
+
+    if (element) {
+      const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+      container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    } else {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
-  }, [onScroll])
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
 
-  // Reset active exchange bookkeeping when switching chats. A pending snap can
-  // intentionally survive this transition for newly-created chats.
+  const scrollToElement = useCallback((id: string) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const element = document.getElementById(id)
+    if (!element) return
+    const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }, [scrollContainerRef])
+
+  // Reset tracking refs when switching chats
   useEffect(() => {
-    activeAnchorRef.current = null
-    userScrolledSinceAnchorRef.current = false
-    programmaticScrollRef.current = false
-    if (programmaticScrollTimeoutRef.current !== null) {
-      window.clearTimeout(programmaticScrollTimeoutRef.current)
-      programmaticScrollTimeoutRef.current = null
-    }
-    clearLatestExchangeSpacer()
-  }, [chatId, clearLatestExchangeSpacer])
-
-  useEffect(() => {
-    return () => {
-      if (programmaticScrollTimeoutRef.current !== null) {
-        window.clearTimeout(programmaticScrollTimeoutRef.current)
-      }
-    }
-  }, [])
+    lastUserMessageIdRef.current = null
+    prevStreamingRef.current = false
+    prevToolCountRef.current = 0
+    prevStreamedLenRef.current = 0
+    prevEventTypeRef.current = null
+  }, [chatId])
 
   // IntersectionObserver to show/hide scroll button based on latest user message visibility
   useLayoutEffect(() => {
     const container = scrollContainerRef.current
-    if (!container || !lastUserMessage) {
+    const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    if (!container || !lastUserMsg) {
       setShowScrollBtn(false)
       return
     }
 
-    const element = document.getElementById(`msg-${lastUserMessage.id}`)
+    const element = document.getElementById(`msg-${lastUserMsg.id}`)
     if (!element) {
       setShowScrollBtn(false)
       return
@@ -223,63 +144,71 @@ function ChatMessagesInner({
 
     observer.observe(element)
     return () => observer.disconnect()
-  }, [lastUserMessage, scrollContainerRef, setShowScrollBtn])
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, setShowScrollBtn])
 
-  // Keep the latest exchange anchor scrollable, then snap only for explicit sends/regenerations.
+  // Auto-scroll when new content arrives (after DOM commit, before paint)
   useLayoutEffect(() => {
-    if (!lastUserMessage) {
-      clearLatestExchangeSpacer()
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
+    const lastUserMessageId = lastUserMessage?.id || null
+
+    // Track latest user message id for the IntersectionObserver button
+    if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
+      lastUserMessageIdRef.current = lastUserMessageId
+      prevStreamingRef.current = streaming
+      prevToolCountRef.current = toolExecutions.length
+      prevStreamedLenRef.current = streamedContent.length
+      prevEventTypeRef.current = null
       return
     }
 
-    if (pendingSnapRef.current) {
-      if (scrollToLatestUserMessage('auto')) {
-        pendingSnapRef.current = false
-        activeAnchorRef.current = {
-          id: lastUserMessage.id,
-          content: lastUserMessage.content,
-        }
+    const wasStreaming = prevStreamingRef.current
+    const prevToolCount = prevToolCountRef.current
+    const prevStreamedLen = prevStreamedLenRef.current
+
+    // Update refs after reading previous values
+    prevStreamingRef.current = streaming
+    prevToolCountRef.current = toolExecutions.length
+    prevStreamedLenRef.current = streamedContent.length
+
+    // When stream ends, do nothing
+    if (wasStreaming && !streaming) {
+      prevEventTypeRef.current = null
+      return
+    }
+
+    if (!streaming) return
+
+    const toolCountIncreased = toolExecutions.length > prevToolCount
+    const streamedLenIncreased = streamedContent.length > prevStreamedLen
+
+    if (toolCountIncreased) {
+      prevEventTypeRef.current = 'tool'
+      // Follow the tool chain only if user is already near the bottom
+      if (wasNearBottomRef.current) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
       }
       return
     }
 
-    const activeAnchor = activeAnchorRef.current
-    if (activeAnchor?.content === lastUserMessage.content) {
-      const targetTop = syncLatestExchangeSpacer()
-      const serverReplacedOptimisticMessage = activeAnchor.id !== lastUserMessage.id
+    if (streamedLenIncreased) {
+      const prevEventType = prevEventTypeRef.current
+      prevEventTypeRef.current = 'text'
 
-      if (
-        targetTop !== null &&
-        serverReplacedOptimisticMessage &&
-        !userScrolledSinceAnchorRef.current
-      ) {
-        setProgrammaticScrollGuard()
-        scrollContainerRef.current?.scrollTo({ top: targetTop, behavior: 'auto' })
-        activeAnchorRef.current = {
-          id: lastUserMessage.id,
-          content: lastUserMessage.content,
-        }
+      // Only jump back when the first text chunk arrives after tools, and only if user is near the bottom
+      if (prevEventType === 'tool' && wasNearBottomRef.current) {
+        scrollToElement('msg-streaming')
       }
       return
     }
-
-    clearLatestExchangeSpacer()
-  }, [
-    lastUserMessage,
-    streamedContent,
-    toolExecutions.length,
-    streaming,
-    scrollContainerRef,
-    scrollToLatestUserMessage,
-    setProgrammaticScrollGuard,
-    syncLatestExchangeSpacer,
-    clearLatestExchangeSpacer,
-  ])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement])
 
   return (
     <div
       ref={scrollContainerRef}
-      onScroll={handleMessagesScroll}
+      onScroll={onScroll}
       role="log"
       aria-live="polite"
       aria-label="Chat messages"
@@ -297,10 +226,6 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
-              const isLatestUserMessage = msg.role === 'user' && index === lastUserMessageIndex
-              const isActiveLatestUserMessage =
-                isLatestUserMessage &&
-                (pendingSnapRef.current || activeAnchorRef.current?.content === msg.content)
               return (
                 <MessageBubble
                   key={msg.id}
@@ -309,7 +234,7 @@ function ChatMessagesInner({
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!isActiveLatestUserMessage && !(isLastAssistant && !streamedContent)}
+                  animateMount={!(isLastAssistant && !streamedContent)}
                   isStreamingReplacement={isLastAssistant && !!streamedContent}
                 />
               )
@@ -333,8 +258,6 @@ function ChatMessagesInner({
             )}
 
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
-
-            <div ref={latestExchangeSpacerRef} aria-hidden="true" className="shrink-0" />
           </>
         )}
       </div>
