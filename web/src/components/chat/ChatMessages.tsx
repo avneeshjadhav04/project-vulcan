@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -82,14 +82,12 @@ function ChatMessagesInner({
   const prevToolCountRef = useRef(toolExecutions.length)
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
-  const [justSentMessage, setJustSentMessage] = useState(false)
   const pendingSnapRef = useRef(false)
 
   const performSnapToLatestUserMessage = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
 
-    setJustSentMessage(true)
     // Wait for DOM/motion to settle before measuring and scrolling
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -195,10 +193,9 @@ function ChatMessagesInner({
     prevToolCountRef.current = toolExecutions.length
     prevStreamedLenRef.current = streamedContent.length
 
-    // When stream ends, clear just-sent state and do nothing else
+    // When stream ends, do nothing
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
-      setJustSentMessage(false)
       return
     }
 
@@ -209,7 +206,6 @@ function ChatMessagesInner({
 
     if (toolCountIncreased) {
       prevEventTypeRef.current = 'tool'
-      setJustSentMessage(false)
       // Follow the tool chain only if user is already near the bottom
       if (wasNearBottomRef.current) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
@@ -220,17 +216,10 @@ function ChatMessagesInner({
     if (streamedLenIncreased) {
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
-      setJustSentMessage(false)
 
-      // Only scroll for the first text chunk of this response, and only if user is near the bottom
-      if (prevEventType !== 'text' && wasNearBottomRef.current) {
-        if (prevEventType === 'tool') {
-          // First text after tools: jump back to the start of the streaming response
-          scrollToElement('msg-streaming')
-        } else {
-          // First text of a new response (no preceding tools): anchor at user message
-          scrollToLatestResponse()
-        }
+      // Only jump back when the first text chunk arrives after tools, and only if user is near the bottom
+      if (prevEventType === 'tool' && wasNearBottomRef.current) {
+        scrollToElement('msg-streaming')
       }
       return
     }
@@ -289,11 +278,6 @@ function ChatMessagesInner({
             )}
 
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
-
-            {/* Blank response area immediately after the latest user message while we wait for the first streamed content or tool */}
-            {streaming && justSentMessage && streamedContent.length === 0 && toolExecutions.length === 0 && (
-              <div className="min-h-[100vh]" aria-hidden="true" />
-            )}
           </>
         )}
       </div>
