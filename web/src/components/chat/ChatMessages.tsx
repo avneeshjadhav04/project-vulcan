@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef, useState, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -83,56 +83,6 @@ function ChatMessagesInner({
   const prevStreamedLenRef = useRef(streamedContent.length)
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const pendingSnapRef = useRef(false)
-  const snapLockRef = useRef(false)
-  const responseAreaRef = useRef<HTMLDivElement>(null)
-  const lastScrollTopRef = useRef(0)
-  const userScrolledUpRef = useRef(false)
-  const [focusedExchange, setFocusedExchange] = useState(false)
-  const [responseMinHeight, setResponseMinHeight] = useState(0)
-
-  const performSnapToLatestUserMessage = useCallback(() => {
-    snapLockRef.current = true
-    setFocusedExchange(true)
-    // Treat the user as no longer near the bottom after the snap
-    wasNearBottomRef.current = false
-  }, [wasNearBottomRef])
-
-  // Compute the min-height the response area should occupy so its bottom
-  // aligns exactly with the viewport bottom (minus the inner wrapper's pb-4).
-  // Uses CONTENT coordinates (scroll-invariant) rather than viewport
-  // coordinates so the result is stable across scroll-position changes — this
-  // avoids a feedback loop where shrinking the fill would clamp scrollTop
-  // upward and unpin the user message.
-  //
-  // During streaming the persisted assistant message isn't rendered yet, so
-  // the gap above the fill is 0 and this matches the working "fill below the
-  // user message" behavior. After stream-end the assistant message persists
-  // above the fill, so the gap grows by its height and the fill shrinks
-  // accordingly — keeping the fill bottom at the viewport bottom (no
-  // scroll-down blank) without shifting the user message off the top.
-  // Falls back to the last user message's content bottom when the fill div
-  // isn't mounted yet (first snap commit).
-  const computeResponseMinHeight = useCallback(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
-    const containerRect = container.getBoundingClientRect()
-    const toContentY = (el: HTMLElement) => el.getBoundingClientRect().top - containerRect.top + container.scrollTop
-    const userMessages = container.querySelectorAll('[data-message-role="user"]')
-    const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-    if (!lastUserElement) {
-      setResponseMinHeight(container.clientHeight)
-      return
-    }
-    // Intrinsic, scroll-invariant measurements (content coordinates):
-    const userMsgHeight = lastUserElement.getBoundingClientRect().height
-    const userBottomContentY = lastUserElement.getBoundingClientRect().bottom - containerRect.top + container.scrollTop
-    const fillTopContentY = responseAreaRef.current ? toContentY(responseAreaRef.current) : userBottomContentY
-    const gapBelowUserMsg = Math.max(0, fillTopContentY - userBottomContentY)
-    // Subtract 16 to account for the inner wrapper's pb-4 padding so the
-    // fill bottom + padding = container bottom (no scrollable overflow).
-    const availableHeight = Math.max(0, container.clientHeight - userMsgHeight - gapBelowUserMsg - 16)
-    setResponseMinHeight(availableHeight)
-  }, [scrollContainerRef])
 
   useImperativeHandle(ref, () => ({
     requestSnapToLatestUserMessage: () => {
@@ -149,16 +99,11 @@ function ChatMessagesInner({
 
     if (element) {
       const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-      // Re-enter focused mode when the user explicitly wants to return to the
-      // latest exchange. This restores the viewport-filling response area.
-      if (!focusedExchange) {
-        setFocusedExchange(true)
-      }
       container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
     } else {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
     }
-  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef, focusedExchange])
+  }, [lastUserMessageIndex, visibleMessages, scrollContainerRef])
 
   const scrollToElement = useCallback((id: string) => {
     const container = scrollContainerRef.current
@@ -169,40 +114,15 @@ function ChatMessagesInner({
     container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }, [scrollContainerRef])
 
-  // Handle scroll events: forward to parent and detect when the user scrolls
-  // up away from the focused latest exchange so we can release the pin.
-  const handleScroll = useCallback(() => {
-    onScroll()
-
-    const container = scrollContainerRef.current
-    if (!container || !focusedExchange) return
-
-    const scrollTop = container.scrollTop
-    const delta = lastScrollTopRef.current - scrollTop
-    lastScrollTopRef.current = scrollTop
-
-    // Detect a deliberate upward scroll away from the pinned exchange.
-    if (delta > 30) {
-      userScrolledUpRef.current = true
-    }
-
-    if (userScrolledUpRef.current) {
-      const lastUserMsg = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
-      const element = lastUserMsg ? document.getElementById(`msg-${lastUserMsg.id}`) : null
-      // Once the latest user message is no longer near the top of the
-      // viewport, exit focused mode so older messages can be read freely.
-      if (element) {
-        const containerRect = container.getBoundingClientRect()
-        const elementRect = element.getBoundingClientRect()
-        const gap = elementRect.top - containerRect.top
-        if (gap > 80) {
-          setFocusedExchange(false)
-          setResponseMinHeight(0)
-          userScrolledUpRef.current = false
-        }
-      }
-    }
-  }, [onScroll, scrollContainerRef, focusedExchange, lastUserMessageIndex, visibleMessages])
+  // Reset tracking refs when switching chats
+  useEffect(() => {
+    lastUserMessageIdRef.current = null
+    pendingSnapRef.current = false
+    prevStreamingRef.current = false
+    prevToolCountRef.current = 0
+    prevStreamedLenRef.current = 0
+    prevEventTypeRef.current = null
+  }, [chatId])
 
   // IntersectionObserver to show/hide scroll button based on latest user message visibility
   useLayoutEffect(() => {
@@ -238,7 +158,7 @@ function ChatMessagesInner({
     const lastUserMessage = lastUserMessageIndex >= 0 ? visibleMessages[lastUserMessageIndex] : null
     const lastUserMessageId = lastUserMessage?.id || null
 
-    // Track latest user message id for the IntersectionObserver button
+    // Detect a new user message being rendered
     if (lastUserMessageId && lastUserMessageId !== lastUserMessageIdRef.current) {
       lastUserMessageIdRef.current = lastUserMessageId
       prevStreamingRef.current = streaming
@@ -246,35 +166,16 @@ function ChatMessagesInner({
       prevStreamedLenRef.current = streamedContent.length
       prevEventTypeRef.current = null
 
-      // If a snap was explicitly requested (e.g. send/regenerate/edit), perform it now that the message exists
+      // If a snap was explicitly requested (send/regenerate/edit), pin the message to the top
       if (pendingSnapRef.current) {
         pendingSnapRef.current = false
-        performSnapToLatestUserMessage()
+        // Treat the user as no longer near the bottom after the snap
+        wasNearBottomRef.current = false
 
         const element = document.getElementById(`msg-${lastUserMessageId}`)
-        if (container && element) {
-          const top = element.offsetTop - 16
+        if (element) {
+          const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
           container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
-          // Compute the response fill height after the scroll lands so the
-          // pinned user message sits at the top and the streaming area fills below.
-          computeResponseMinHeight()
-        }
-      } else {
-        // New message appeared without an explicit snap request (e.g. switching chats or receiving a response).
-        // If streaming is active, this is the optimistic temp message being replaced by the real
-        // server message — keep the focused exchange intact so the streaming area stays anchored,
-        // but re-scroll to the real message and recompute the fill height so it stays pinned exactly
-        // at the top even if the real message renders at a slightly different size.
-        if (!streaming) {
-          setFocusedExchange(false)
-          setResponseMinHeight(0)
-        } else if (focusedExchange) {
-          const element = document.getElementById(`msg-${lastUserMessageId}`)
-          if (container && element) {
-            const top = element.offsetTop - 16
-            container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
-          }
-          computeResponseMinHeight()
         }
       }
       return
@@ -289,32 +190,19 @@ function ChatMessagesInner({
     prevToolCountRef.current = toolExecutions.length
     prevStreamedLenRef.current = streamedContent.length
 
-    // When stream ends, keep focused exchange so short responses don't reveal
-    // previous content, but recompute the fill height — the persisted assistant
-    // message is about to render above the fill div, which lowers its top and
-    // must shrink the fill to keep its bottom aligned with the viewport bottom.
+    // Stream end: no-op
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
-      computeResponseMinHeight()
       return
     }
 
     if (!streaming) return
-
-    // If a snap is still pending (message not yet rendered), don't let stream
-    // chunks move the scroll before the snap has a chance to fire.
-    if (pendingSnapRef.current) return
 
     const toolCountIncreased = toolExecutions.length > prevToolCount
     const streamedLenIncreased = streamedContent.length > prevStreamedLen
 
     if (toolCountIncreased) {
       prevEventTypeRef.current = 'tool'
-      // On the first tool event after a snap, unlock and skip auto-follow so the user message stays pinned
-      if (snapLockRef.current) {
-        snapLockRef.current = false
-        return
-      }
       // Follow the tool chain only if user is already near the bottom
       if (wasNearBottomRef.current) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'auto' })
@@ -325,8 +213,6 @@ function ChatMessagesInner({
     if (streamedLenIncreased) {
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
-      // Clear snap lock once response content begins
-      snapLockRef.current = false
 
       // Only jump back when the first text chunk arrives after tools, and only if user is near the bottom
       if (prevEventType === 'tool' && wasNearBottomRef.current) {
@@ -334,34 +220,18 @@ function ChatMessagesInner({
       }
       return
     }
-  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement, performSnapToLatestUserMessage, computeResponseMinHeight, focusedExchange])
-
-  // Recalculate response min-height when the container resizes while focused
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container || !focusedExchange) return
-
-    const updateHeight = () => computeResponseMinHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(container)
-    // Observe the inner content wrapper too, so a change in message count /
-    // streaming content (which grows the inner wrapper) triggers a recompute
-    // even when the scroll container itself doesn't resize.
-    const inner = container.firstElementChild as HTMLElement | null
-    if (inner) observer.observe(inner)
-    return () => observer.disconnect()
-  }, [focusedExchange, scrollContainerRef, computeResponseMinHeight])
+  }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement])
 
   return (
     <div
       ref={scrollContainerRef}
-      onScroll={handleScroll}
+      onScroll={onScroll}
       role="log"
       aria-live="polite"
       aria-label="Chat messages"
       className="relative flex-1 overflow-y-auto"
     >
-      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pb-4">
+      <div className="mx-auto max-w-3xl px-4 pb-4">
         {creatingChat ? (
           <div className="flex flex-1 flex-col items-center justify-center py-20">
             <div className="h-5 w-5 animate-spin border-2 border-interactive border-t-transparent" />
@@ -387,59 +257,24 @@ function ChatMessagesInner({
               )
             })}
 
-            {(focusedExchange || streaming) && (
-              <>
-                {focusedExchange && responseMinHeight > 0 && (
-                  <div ref={responseAreaRef} className="flex flex-col" style={{ minHeight: responseMinHeight }}>
-                    {toolExecutions.length > 0 && streaming && (
-                      <div className="space-y-2">
-                        {toolExecutions.map((tool, index) => (
-                          <ToolExecutionCard
-                            key={`${tool.tool_id}-${index}`}
-                            tool={tool}
-                            chatId={chatId}
-                            defaultExpanded={index === toolExecutions.length - 1}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {streamedContent && (
-                      <StreamingMessage content={streamedContent} isStreaming={streaming} />
-                    )}
-
-                    {streaming && !streamedContent && toolExecutions.length === 0 && (
-                      <TypingIndicator />
-                    )}
-                  </div>
-                )}
-
-                {streaming && !focusedExchange && (
-                  <>
-                    {toolExecutions.length > 0 && (
-                      <div className="space-y-2">
-                        {toolExecutions.map((tool, index) => (
-                          <ToolExecutionCard
-                            key={`${tool.tool_id}-${index}`}
-                            tool={tool}
-                            chatId={chatId}
-                            defaultExpanded={index === toolExecutions.length - 1}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {streamedContent && (
-                      <StreamingMessage content={streamedContent} isStreaming={streaming} />
-                    )}
-
-                    {streaming && !streamedContent && toolExecutions.length === 0 && (
-                      <TypingIndicator />
-                    )}
-                  </>
-                )}
-              </>
+            {toolExecutions.length > 0 && streaming && (
+              <div className="space-y-2">
+                {toolExecutions.map((tool, index) => (
+                  <ToolExecutionCard
+                    key={`${tool.tool_id}-${index}`}
+                    tool={tool}
+                    chatId={chatId}
+                    defaultExpanded={index === toolExecutions.length - 1}
+                  />
+                ))}
+              </div>
             )}
+
+            {streamedContent && (
+              <StreamingMessage content={streamedContent} isStreaming={streaming} />
+            )}
+
+            {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
           </>
         )}
       </div>
