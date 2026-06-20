@@ -174,8 +174,8 @@ function ChatMessagesInner({
 
         const element = document.getElementById(`msg-${lastUserMessageId}`)
         if (element) {
-          const top = element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16
-          container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+          const top = element.offsetTop - 16
+          container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
         }
       }
       return
@@ -214,10 +214,7 @@ function ChatMessagesInner({
       const prevEventType = prevEventTypeRef.current
       prevEventTypeRef.current = 'text'
 
-      // Only jump back when the first text chunk arrives after tools, and only if user is near the bottom
-      if (prevEventType === 'tool' && wasNearBottomRef.current) {
-        scrollToElement('msg-streaming')
-      }
+      // When text starts after tools, stay where the tool chain left off so the first text chunk is visible.
       return
     }
   }, [visibleMessages.length, streamedContent, toolExecutions.length, streaming, scrollContainerRef, wasNearBottomRef, lastUserMessageIndex, visibleMessages, scrollToLatestResponse, scrollToElement])
@@ -243,6 +240,7 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
+              const isLatestUser = msg.role === 'user' && index === lastUserMessageIndex && pendingSnapRef.current
               return (
                 <MessageBubble
                   key={msg.id}
@@ -251,7 +249,7 @@ function ChatMessagesInner({
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(isLastAssistant && !streamedContent)}
+                  animateMount={!(isLastAssistant && !streamedContent) && !isLatestUser}
                   isStreamingReplacement={isLastAssistant && !!streamedContent}
                 />
               )
