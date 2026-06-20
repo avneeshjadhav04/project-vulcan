@@ -1,4 +1,4 @@
-import React, { useState, useCallback, forwardRef } from 'react'
+import React, { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion } from 'framer-motion'
@@ -14,11 +14,9 @@ import {
   Clock,
   ThumbsUp,
   ThumbsDown,
-  AlertTriangle,
-  RefreshCw,
   FileText,
 } from 'lucide-react'
-import { markdownComponents, extractArtifacts, stripArtifacts, ArtifactCard } from './markdownComponents'
+import { markdownComponents } from './markdownComponents'
 import { useRelativeTime } from '../../hooks/useRelativeTime'
 import ToolExecutionCard from './ToolExecutionCard'
 
@@ -39,22 +37,20 @@ interface MessageBubbleProps {
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
   onReact?: (id: string, reaction: string) => void
-  onRetry?: () => void
   messageMeta?: { provider: string; model: string; durationMs: number }
   animateMount?: boolean
   isStreamingReplacement?: boolean
 }
 
-function MessageBubbleInner({
+function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
   onReact,
-  onRetry,
   messageMeta,
   animateMount = true,
   isStreamingReplacement = false,
-}: MessageBubbleProps, ref: React.ForwardedRef<HTMLDivElement>) {
+}: MessageBubbleProps) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
   const [isEditing, setIsEditing] = useState(false)
@@ -116,7 +112,6 @@ function MessageBubbleInner({
 
   return (
     <motion.div
-      ref={ref}
       id={`msg-${msg.id}`}
       data-message-role={msg.role}
       initial={animateMount ? { opacity: 0, y: 8 } : false}
@@ -170,76 +165,52 @@ function MessageBubbleInner({
           }`}
         >
           {isEditing ? (
-            <div className="min-w-[200px]">
+            <div className="flex flex-col gap-2">
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
-                    e.preventDefault()
-                    handleSave()
-                  }
-                  if (e.key === 'Escape') {
-                    setIsEditing(false)
-                    setEditContent(msg.content)
-                  }
-                }}
-                className="w-full resize-none border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
-                rows={3}
+                className="w-full min-h-[80px] rounded-carbon border border-border-subtle bg-background p-2 text-sm text-text-primary focus:border-interactive focus:outline-none focus:ring-1 focus:ring-focus"
                 autoFocus
-                aria-label="Edit message"
               />
-              <div className="mt-2 flex items-center justify-end gap-2">
+              <div className="flex justify-end gap-2">
                 <button
                   onClick={() => {
-                    setIsEditing(false)
                     setEditContent(msg.content)
+                    setIsEditing(false)
                   }}
-                  className="px-3 py-1 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+                  className="px-2 py-1 text-xs text-text-helper hover:text-text-primary"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="bg-interactive px-3 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
+                  className="rounded-carbon bg-interactive px-2 py-1 text-xs text-white hover:bg-interactive-hover"
                 >
-                  Save & Regenerate
+                  Save
                 </button>
               </div>
             </div>
-          ) : isAssistant ? (
-            <div className="prose prose-invert prose-sm max-w-none">
-              {(() => {
-                const artifacts = extractArtifacts(msg.content)
-                const cleanContent = stripArtifacts(msg.content)
-                return (
-                  <>
-                    {artifacts.map((artifact) => (
-                      <ArtifactCard key={artifact.title + artifact.type} title={artifact.title} type={artifact.type} content={artifact.content} />
-                    ))}
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {cleanContent}
-                    </ReactMarkdown>
-                  </>
-                )
-              })()}
-            </div>
           ) : (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {msg.content}
+              </ReactMarkdown>
+            </div>
           )}
-          {/* Attachments */}
+
           {msg.attachments && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className={`mt-2 flex flex-wrap gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {(() => {
                 try {
-                  const attachments = JSON.parse(msg.attachments)
-                  return attachments.map((filename: string, index: number) => (
+                  const parsed = JSON.parse(msg.attachments)
+                  if (!Array.isArray(parsed)) return null
+                  return parsed.map((name: string, i: number) => (
                     <span
-                      key={index}
-                      className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-layer/60 px-2 py-0.5 text-[10px] text-text-secondary"
+                      key={i}
+                      className="inline-flex items-center gap-1 rounded-carbon border border-border-subtle bg-background/50 px-2 py-1 text-[10px] text-text-secondary"
                     >
-                      <FileText className="h-3 w-3" />
-                      {filename}
+                      <FileText className="h-3 w-3" aria-hidden="true" />
+                      {name}
                     </span>
                   ))
                 } catch {
@@ -250,81 +221,59 @@ function MessageBubbleInner({
           )}
         </div>
 
-        {/* Footer: model info + actions */}
-        <div className="mt-1 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {isAssistant && messageMeta && (
-              <div className="flex items-center gap-1.5 text-[10px] text-text-helper">
-                <Cpu className="h-2.5 w-2.5" aria-hidden="true" />
-                <span className="truncate max-w-[80px]" title={messageMeta.provider}>{messageMeta.provider}</span>
-                <span>/</span>
-                <span className="truncate max-w-[100px]" title={messageMeta.model}>{messageMeta.model}</span>
-                <span>·</span>
-                <Clock className="h-2.5 w-2.5" aria-hidden="true" />
-                <span>{(messageMeta.durationMs / 1000).toFixed(1)}s</span>
-              </div>
-            )}
-            {isStreamingReplacement && (
-              <span className="flex items-center gap-1 text-[10px] text-text-helper">
-                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
-                Updating...
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 opacity-100 transition-opacity">
-            <button
-              onClick={handleCopy}
-              aria-label="Copy message"
-              className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
-            >
-              {copied ? <Check className="h-3 w-3 text-support-success" /> : <Copy className="h-3 w-3" />}
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-            {isAssistant && onRegenerate && (
-              <button
-                onClick={onRegenerate}
-                aria-label="Regenerate response"
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
-              >
-                <RotateCcw className="h-3 w-3" />
-                Regenerate
-              </button>
-            )}
-            {isAssistant && onRetry && (
-              <button
-                onClick={onRetry}
-                aria-label="Retry failed response"
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:text-support-error/80 focus:outline-none focus:ring-1 focus:ring-focus"
-              >
-                <AlertTriangle className="h-3 w-3" />
-                Retry
-              </button>
-            )}
-            {isAssistant && onReact && (
+        {/* Actions */}
+        {!isEditing && (
+          <div className={`mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            {isAssistant && (
               <>
                 <button
-                  onClick={() => handleReact('thumbs_up')}
-                  aria-label="Thumbs up"
-                  aria-pressed={userReaction === 'thumbs_up'}
-                  className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
-                    userReaction === 'thumbs_up' ? 'text-support-success' : 'text-text-helper hover:text-text-primary'
-                  }`}
+                  onClick={handleCopy}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                  aria-label={copied ? 'Copied' : 'Copy response'}
                 >
-                  <ThumbsUp className={`h-3 w-3 ${userReaction === 'thumbs_up' ? 'fill-support-success' : ''}`} />
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? 'Copied' : 'Copy'}
                 </button>
                 <button
-                  onClick={() => handleReact('thumbs_down')}
-                  aria-label="Thumbs down"
-                  aria-pressed={userReaction === 'thumbs_down'}
-                  className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
-                    userReaction === 'thumbs_down' ? 'text-support-error' : 'text-text-helper hover:text-text-primary'
-                  }`}
+                  onClick={onRegenerate}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                  aria-label="Regenerate response"
                 >
-                  <ThumbsDown className={`h-3 w-3 ${userReaction === 'thumbs_down' ? 'fill-support-error' : ''}`} />
+                  <RotateCcw className="h-3 w-3" />
+                  Regenerate
+                </button>
+                <button
+                  onClick={() => {
+                    setEditContent(msg.content)
+                    setIsEditing(true)
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                  aria-label="Edit response"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleReact('up')}
+                  className={`p-1 transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
+                    userReaction === 'up' ? 'text-interactive' : 'text-text-helper hover:text-text-primary'
+                  }`}
+                  aria-label="Thumbs up"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => handleReact('down')}
+                  className={`p-1 transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
+                    userReaction === 'down' ? 'text-support-error' : 'text-text-helper hover:text-text-primary'
+                  }`}
+                  aria-label="Thumbs down"
+                >
+                  <ThumbsDown className="h-3 w-3" />
                 </button>
               </>
             )}
-            {isUser && onEdit && !isEditing && (
+            {isUser && (
               <button
                 onClick={() => {
                   setEditContent(msg.content)
@@ -338,11 +287,24 @@ function MessageBubbleInner({
               </button>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Message meta */}
+        {messageMeta && (
+          <div className={`mt-1 flex items-center gap-2 text-[10px] text-text-helper ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <span className="flex items-center gap-1">
+              <Cpu className="h-3 w-3" aria-hidden="true" />
+              {messageMeta.provider || 'Unknown'} / {messageMeta.model || 'Unknown'}
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3 w-3" aria-hidden="true" />
+              {messageMeta.durationMs}ms
+            </span>
+          </div>
+        )}
       </div>
     </motion.div>
   )
 }
 
-const MessageBubble = React.memo(forwardRef(MessageBubbleInner))
-export default MessageBubble
+export default React.memo(MessageBubble)

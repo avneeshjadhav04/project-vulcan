@@ -12,7 +12,7 @@ import type { SelectedModel } from './ProviderModelSelector'
 import type { UploadedFile } from './FileUpload'
 
 import ChatHeader from './chat/ChatHeader'
-import ChatMessages, { type ChatMessagesRef } from './chat/ChatMessages'
+import ChatMessages from './chat/ChatMessages'
 import ChatInput from './chat/ChatInput'
 
 import {
@@ -56,8 +56,6 @@ export default function ChatInterface({
   const currentChatIdRef = useRef<string | undefined>(chatId)
   const lastSyncedChatIdRef = useRef<string | null>(null)
   const previousChatIdRef = useRef<string | undefined>(chatId)
-  const chatMessagesRef = useRef<ChatMessagesRef>(null)
-  const suppressScrollResetRef = useRef(false)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -101,7 +99,7 @@ export default function ChatInterface({
       return res.data as { has_provider: boolean; tools_enabled: boolean }
     },
   })
-  const scroll = useChatScroll(effectiveChatId, { suppressResetRef: suppressScrollResetRef })
+  const scroll = useChatScroll(effectiveChatId)
   // Sync model from loaded chat only when switching chats, not on every refetch
   useEffect(() => {
     if (!effectiveChatId || !chatData?.chat.model_id) return
@@ -200,24 +198,8 @@ export default function ChatInterface({
     }
     setAttachedFiles([])
 
-    // When creating a new chat, the effectiveChatId changes after the chat is
-    // created. Suppress the scroll-to-bottom reset that normally fires on chat
-    // switch so the pending snap-to-latest-user-message can pin the first
-    // message at the top instead of pushing it back to the bottom.
-    if (!effectiveChatId) {
-      suppressScrollResetRef.current = true
-    }
-
-    // Request the snap before the optimistic message is committed so the
-    // ChatMessages layout effect can scroll in the same paint and avoid a
-    // visible flash of the message at the bottom of the list.
-    chatMessagesRef.current?.requestSnapToLatestUserMessage()
-
     // Optimistically insert the user message into the cache so it renders
-    // immediately, before the server refetch/stream delivers it. flushSync
-    // forces React to commit this update synchronously; the ChatMessages
-    // useLayoutEffect then runs before the browser paints, positioning the new
-    // message at the top of the response area with no visible jump.
+    // immediately, before the server refetch/stream delivers it.
     const optimisticId = `temp-${Date.now()}`
     if (effectiveChatId) {
       flushSync(() => {
@@ -476,7 +458,6 @@ export default function ChatInterface({
       </AnimatePresence>
 
       <ChatMessages
-        ref={chatMessagesRef}
         messages={messages}
         streaming={streaming}
         streamedContent={streamedContent}
@@ -487,6 +468,7 @@ export default function ChatInterface({
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.containerRef}
         setShowScrollBtn={scroll.setShowScrollBtn}
+        wasNearBottomRef={scroll.wasNearBottomRef}
         onScroll={scroll.handleScroll}
         onRegenerate={handleRegenerate}
         onEditMessage={handleEditMessage}
