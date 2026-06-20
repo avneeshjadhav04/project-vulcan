@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, forwardRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion } from 'framer-motion'
@@ -45,7 +45,7 @@ interface MessageBubbleProps {
   isStreamingReplacement?: boolean
 }
 
-function MessageBubble({
+function MessageBubbleInner({
   msg,
   onRegenerate,
   onEdit,
@@ -54,7 +54,7 @@ function MessageBubble({
   messageMeta,
   animateMount = true,
   isStreamingReplacement = false,
-}: MessageBubbleProps) {
+}: MessageBubbleProps, ref: React.ForwardedRef<HTMLDivElement>) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
   const [isEditing, setIsEditing] = useState(false)
@@ -116,6 +116,7 @@ function MessageBubble({
 
   return (
     <motion.div
+      ref={ref}
       id={`msg-${msg.id}`}
       data-message-role={msg.role}
       initial={animateMount ? { opacity: 0, y: 8 } : false}
@@ -343,4 +344,5 @@ function MessageBubble({
   )
 }
 
-export default React.memo(MessageBubble)
+const MessageBubble = React.memo(forwardRef(MessageBubbleInner))
+export default MessageBubble
