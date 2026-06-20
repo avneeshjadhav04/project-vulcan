@@ -84,6 +84,7 @@ function ChatMessagesInner({
   const prevEventTypeRef = useRef<'text' | 'tool' | null>(null)
   const pendingSnapRef = useRef(false)
   const snapLockRef = useRef(false)
+  const responseAreaRef = useRef<HTMLDivElement>(null)
   const [focusedExchange, setFocusedExchange] = useState(false)
   const [responseMinHeight, setResponseMinHeight] = useState(0)
 
@@ -94,22 +95,37 @@ function ChatMessagesInner({
     wasNearBottomRef.current = false
   }, [wasNearBottomRef])
 
-  // Compute the min-height the streaming response area should occupy so it
-  // fills the viewport below the (now-pinned) latest user message. Called
-  // AFTER the snap scroll has landed so the message position is accurate.
+  // Compute the min-height the response area should occupy so its bottom
+  // aligns exactly with the viewport bottom (minus the inner wrapper's pb-4).
+  // Measuring the response area's own visible top (rather than the user message
+  // height) makes this robust to the persisted assistant message rendering
+  // above it after stream completion — the fill shrinks so no scroll-down blank
+  // appears while the user message stays pinned and older content stays hidden.
+  // Falls back to the last user message's bottom (the fill div's adjacent
+  // sibling top) when the fill div isn't mounted yet (first snap commit).
   const computeResponseMinHeight = useCallback(() => {
     const container = scrollContainerRef.current
     if (!container) return
-    const userMessages = container.querySelectorAll('[data-message-role="user"]')
-    const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
-    if (lastUserElement) {
-      const messageHeight = lastUserElement.getBoundingClientRect().height
-      // Fill the viewport below the pinned message; leave a small breathing gap.
-      const availableHeight = Math.max(0, container.clientHeight - messageHeight - 16)
-      setResponseMinHeight(availableHeight)
+    const containerTop = container.getBoundingClientRect().top
+    let areaVisibleTop: number | null = null
+    const area = responseAreaRef.current
+    if (area) {
+      areaVisibleTop = area.getBoundingClientRect().top - containerTop
     } else {
-      setResponseMinHeight(container.clientHeight)
+      const userMessages = container.querySelectorAll('[data-message-role="user"]')
+      const lastUserElement = userMessages[userMessages.length - 1] as HTMLElement | undefined
+      if (lastUserElement) {
+        areaVisibleTop = lastUserElement.getBoundingClientRect().bottom - containerTop
+      }
     }
+    if (areaVisibleTop === null) {
+      setResponseMinHeight(container.clientHeight)
+      return
+    }
+    // Subtract 16 to account for the inner wrapper's pb-4 padding so the
+    // fill bottom + padding = container bottom (no scrollable overflow).
+    const availableHeight = Math.max(0, container.clientHeight - areaVisibleTop - 16)
+    setResponseMinHeight(availableHeight)
   }, [scrollContainerRef])
 
   useImperativeHandle(ref, () => ({
@@ -221,9 +237,13 @@ function ChatMessagesInner({
     prevToolCountRef.current = toolExecutions.length
     prevStreamedLenRef.current = streamedContent.length
 
-    // When stream ends, keep focused exchange so short responses don't reveal previous content
+    // When stream ends, keep focused exchange so short responses don't reveal
+    // previous content, but recompute the fill height — the persisted assistant
+    // message is about to render above the fill div, which lowers its top and
+    // must shrink the fill to keep its bottom aligned with the viewport bottom.
     if (wasStreaming && !streaming) {
       prevEventTypeRef.current = null
+      computeResponseMinHeight()
       return
     }
 
@@ -316,7 +336,7 @@ function ChatMessagesInner({
             })}
 
             {(focusedExchange || streaming) && responseMinHeight > 0 && (
-              <div className="flex flex-col" style={{ minHeight: responseMinHeight }}>
+              <div ref={responseAreaRef} className="flex flex-col" style={{ minHeight: responseMinHeight }}>
                 {toolExecutions.length > 0 && streaming && (
                   <div className="space-y-2">
                     {toolExecutions.map((tool, index) => (
