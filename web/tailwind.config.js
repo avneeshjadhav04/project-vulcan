@@ -33,6 +33,8 @@ export default {
         'on-support-error': 'var(--color-on-support-error)',
         'on-support-warning': 'var(--color-on-support-warning)',
         'surface-elevated': 'var(--color-surface-elevated)',
+        white: 'var(--color-white)',
+        black: 'var(--color-black)',
       },
       fontFamily: {
         sans: ['"Inter"', 'sans-serif'],
