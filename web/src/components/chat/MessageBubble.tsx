@@ -9,15 +9,11 @@ import {
   Pencil,
   Sparkles,
   User,
-  Hash,
   Cpu,
   Clock,
-  ThumbsUp,
-  ThumbsDown,
   FileText,
 } from 'lucide-react'
 import { markdownComponents } from './markdownComponents'
-import { useRelativeTime } from '../../hooks/useRelativeTime'
 import ToolExecutionCard from './ToolExecutionCard'
 import { useThemeStore } from '../../stores/themeStore'
 
@@ -37,7 +33,6 @@ interface MessageBubbleProps {
   chatId?: string
   onRegenerate?: () => void
   onEdit?: (id: string, content: string) => void
-  onReact?: (id: string, reaction: string) => void
   messageMeta?: { provider: string; model: string; durationMs: number }
   animateMount?: boolean
   isStreamingReplacement?: boolean
@@ -47,7 +42,6 @@ function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
-  onReact,
   messageMeta,
   animateMount = true,
   isStreamingReplacement = false,
@@ -57,7 +51,6 @@ function MessageBubble({
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(msg.content)
   const [copied, setCopied] = useState(false)
-  const relativeTime = useRelativeTime(msg.created_at)
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -66,7 +59,6 @@ function MessageBubble({
     })
   }, [msg.content])
 
-  const [userReaction, setUserReaction] = useState<string | null>(null)
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
 
   const handleSave = useCallback(() => {
@@ -75,11 +67,6 @@ function MessageBubble({
     }
     setIsEditing(false)
   }, [editContent, msg.content, msg.id, onEdit])
-
-  const handleReact = useCallback((reaction: string) => {
-    setUserReaction((prev) => (prev === reaction ? null : reaction))
-    onReact?.(msg.id, reaction)
-  }, [msg.id, onReact])
 
   // Skip empty assistant placeholders used for tool-call context
   if (
@@ -144,19 +131,6 @@ function MessageBubble({
           <span className="text-[11px] font-semibold text-text-primary">
             {isAssistant ? 'AI' : 'You'}
           </span>
-          <time
-            className="text-[10px] text-text-helper"
-            dateTime={msg.created_at}
-            title={new Date(msg.created_at).toLocaleString()}
-          >
-            {relativeTime}
-          </time>
-          {msg.tokens_used && (
-            <span className="flex items-center gap-0.5 text-[10px] text-text-helper">
-              <Hash className="h-2.5 w-2.5" aria-hidden="true" />
-              {msg.tokens_used}
-            </span>
-          )}
         </div>
 
         <div
@@ -244,49 +218,35 @@ function MessageBubble({
                   <RotateCcw className="h-3 w-3" />
                   Regenerate
                 </button>
+                {msg.tokens_used != null && (
+                  <span className="px-2 py-1 text-[11px] text-text-helper select-none">
+                    Tokens: {msg.tokens_used.toLocaleString()}
+                  </span>
+                )}
+              </>
+            )}
+            {isUser && (
+              <>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                  aria-label={copied ? 'Copied' : 'Copy message'}
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
                 <button
                   onClick={() => {
                     setEditContent(msg.content)
                     setIsEditing(true)
                   }}
+                  aria-label="Edit message"
                   className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
-                  aria-label="Edit response"
                 >
                   <Pencil className="h-3 w-3" />
                   Edit
                 </button>
-                <button
-                  onClick={() => handleReact('up')}
-                  className={`p-1 transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
-                    userReaction === 'up' ? 'text-interactive' : 'text-text-helper hover:text-text-primary'
-                  }`}
-                  aria-label="Thumbs up"
-                >
-                  <ThumbsUp className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={() => handleReact('down')}
-                  className={`p-1 transition-colors focus:outline-none focus:ring-1 focus:ring-focus ${
-                    userReaction === 'down' ? 'text-support-error' : 'text-text-helper hover:text-text-primary'
-                  }`}
-                  aria-label="Thumbs down"
-                >
-                  <ThumbsDown className="h-3 w-3" />
-                </button>
               </>
-            )}
-            {isUser && (
-              <button
-                onClick={() => {
-                  setEditContent(msg.content)
-                  setIsEditing(true)
-                }}
-                aria-label="Edit message"
-                className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
-              >
-                <Pencil className="h-3 w-3" />
-                Edit
-              </button>
             )}
           </div>
         )}
