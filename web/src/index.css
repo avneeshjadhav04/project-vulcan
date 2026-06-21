@@ -41,40 +41,40 @@
   }
 
   html.light {
-    /* Light mode - mature, duller palette that is easier on the eyes */
-    --color-background: #f0f1f5;
-    --color-layer: #f8f9fb;
-    --color-layer-hover: #eef0f4;
-    --color-layer-active: #e0e4ea;
-    --color-layer-selected: #eef0f4;
-    --color-border-subtle: #d6dbe1;
-    --color-border-strong: #8b96a3;
-    --color-text-primary: #1f2937;
-    --color-text-secondary: #5a6573;
-    --color-text-placeholder: #b8c2cc;
-    --color-text-helper: #7e8a97;
-    --color-text-disabled: #b8c2cc;
-    --color-icon-primary: #1f2937;
-    --color-icon-secondary: #5a6573;
-    --color-icon-disabled: #b8c2cc;
-    --color-interactive: #0f62fe;
-    --color-interactive-hover: #0353e9;
-    --color-link-primary: #0f62fe;
-    --color-link-hover: #1e5bd0;
-    --color-support-error: #dc2626;
-    --color-support-success: #15803d;
-    --color-support-warning: #b45309;
-    --color-support-info: #2563eb;
-    --color-focus: #60a5fa;
+    /* Light mode - mature, muted palette that is easier on the eyes */
+    --color-background: #eceef2;
+    --color-layer: #f3f4f7;
+    --color-layer-hover: #e8eaee;
+    --color-layer-active: #dadfe5;
+    --color-layer-selected: #e8eaee;
+    --color-border-subtle: #cfd5dc;
+    --color-border-strong: #7d8893;
+    --color-text-primary: #2a3441;
+    --color-text-secondary: #525b69;
+    --color-text-placeholder: #aeb6c0;
+    --color-text-helper: #6e7884;
+    --color-text-disabled: #aeb6c0;
+    --color-icon-primary: #2a3441;
+    --color-icon-secondary: #525b69;
+    --color-icon-disabled: #aeb6c0;
+    --color-interactive: #3b5b8c;
+    --color-interactive-hover: #324f78;
+    --color-link-primary: #3b5b8c;
+    --color-link-hover: #324f78;
+    --color-support-error: #b91c1c;
+    --color-support-success: #166534;
+    --color-support-warning: #9a4f0b;
+    --color-support-info: #2d4d8a;
+    --color-focus: #7d9ac4;
     --color-white: #ffffff;
     --color-black: #000000;
     --color-on-interactive: #ffffff;
     --color-on-support-error: #ffffff;
     --color-on-support-warning: #ffffff;
-    --color-surface-elevated: #eef0f4;
-    --shadow-interactive: rgba(15, 98, 254, 0.2);
+    --color-surface-elevated: #e8eaee;
+    --shadow-interactive: rgba(59, 91, 140, 0.18);
     --glass-gradient: linear-gradient(135deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.01) 100%);
-    --vibrant-gradient: linear-gradient(135deg, #0f62fe 0%, #4589ff 100%);
+    --vibrant-gradient: linear-gradient(135deg, #3b5b8c 0%, #5a7aa8 100%);
   }
 
   html {
