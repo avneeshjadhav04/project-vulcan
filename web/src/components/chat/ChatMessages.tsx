@@ -1,4 +1,4 @@
-import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react'
 import MessageBubble from './MessageBubble'
 import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
@@ -6,6 +6,7 @@ import ToolExecutionCard from './ToolExecutionCard'
 import EmptyState from './EmptyState'
 import ScrollToBottom from './ScrollToBottom'
 import type { ToolExecution } from '../../hooks/useChatStream'
+import { api } from '../../lib/api'
 
 interface MessageItem {
   id: string
@@ -14,6 +15,14 @@ interface MessageItem {
   created_at: string
   tokens_used?: number
   tool_name?: string
+  parent_id?: string
+}
+
+interface VariantInfo {
+  message_id: string
+  parent_id: string
+  total: number
+  role: string
 }
 
 export interface ChatMessagesRef {
@@ -22,6 +31,7 @@ export interface ChatMessagesRef {
 
 interface ChatMessagesProps {
   messages: MessageItem[]
+  variants: VariantInfo[]
   streaming: boolean
   streamedContent: string
   toolExecutions: ToolExecution[]
@@ -33,13 +43,15 @@ interface ChatMessagesProps {
   wasNearBottomRef: React.MutableRefObject<boolean>
   setShowScrollBtn: React.Dispatch<React.SetStateAction<boolean>>
   onScroll: () => void
-  onRegenerate: () => void
+  onRegenerate: (assistantMsgId?: string) => void
+  onActivateVariant: (msgId: string) => void
   onEditMessage: (id: string, content: string) => void
   onSuggestion: (text: string) => void
 }
 
 function ChatMessagesInner({
   messages,
+  variants,
   streaming,
   streamedContent,
   toolExecutions,
@@ -52,6 +64,7 @@ function ChatMessagesInner({
   setShowScrollBtn,
   onScroll,
   onRegenerate,
+  onActivateVariant,
   onEditMessage,
   onSuggestion,
 }: ChatMessagesProps, ref: React.ForwardedRef<ChatMessagesRef>) {
@@ -62,6 +75,36 @@ function ChatMessagesInner({
       ),
     [messages]
   )
+
+  // Fetch sibling lists for messages that have variants (total > 1).
+  // siblingCache: parent_id -> { ids: string[], activeIndex: number }
+  const [siblingCache, setSiblingCache] = useState<Record<string, { ids: string[]; activeIndex: number }>>({})
+
+  useEffect(() => {
+    if (!chatId || variants.length === 0) return
+    const parentIdsToFetch = variants
+      .map((v) => v.parent_id)
+      .filter((pid) => !siblingCache[pid])
+    if (parentIdsToFetch.length === 0) return
+
+    const fetchSiblings = async (pid: string, currentMsgId: string) => {
+      try {
+        // Use the first variant message for this parent to fetch siblings
+        const res = await api.get(`/chats/${chatId}/messages/${currentMsgId}/siblings`)
+        const siblings: Array<{ id: string; is_active: boolean }> = res.data.siblings || []
+        const ids = siblings.map((s) => s.id)
+        const activeIndex = Math.max(0, ids.indexOf(currentMsgId))
+        setSiblingCache((prev) => ({ ...prev, [pid]: { ids, activeIndex } }))
+      } catch {
+        // silently fail — navigator just won't show
+      }
+    }
+
+    for (const pid of parentIdsToFetch) {
+      const variant = variants.find((v) => v.parent_id === pid)
+      if (variant) fetchSiblings(pid, variant.message_id)
+    }
+  }, [chatId, variants, siblingCache])
 
   const lastAssistantIndex = useMemo(() => {
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -226,6 +269,15 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
+              const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
+                ? variants.find((v) => v.message_id === msg.id)
+                : undefined
+              const siblingData = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
+              const computedVariantInfo = variantInfo && siblingData
+                ? { total: variantInfo.total, activeIndex: siblingData.activeIndex, siblingIds: siblingData.ids }
+                : variantInfo
+                ? { total: variantInfo.total, activeIndex: 0, siblingIds: [msg.id] }
+                : undefined
               return (
                 <MessageBubble
                   key={msg.id}
@@ -233,9 +285,11 @@ function ChatMessagesInner({
                   msg={msg}
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
+                  onActivateVariant={onActivateVariant}
                   messageMeta={messageMeta[msg.id]}
                   animateMount={!(isLastAssistant && !streamedContent)}
                   isStreamingReplacement={isLastAssistant && !!streamedContent}
+                  variantInfo={computedVariantInfo}
                 />
               )
             })}

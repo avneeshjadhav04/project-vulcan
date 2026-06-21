@@ -10,7 +10,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{Json, Sse},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
     Router,
 };
 use base64::Engine;
@@ -789,15 +789,17 @@ async fn persist_tool_message(
     tool_call_id: &str,
     tool_name: &str,
     result: &serde_json::Value,
+    parent_id: &Option<String>,
 ) {
     let content = serde_json::to_string(result).unwrap_or_default();
     if let Err(e) = sqlx::query(
-        "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'tool', ?2, ?3, ?4)"
+        "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name, parent_id) VALUES (?1, 'tool', ?2, ?3, ?4, ?5)"
     )
     .bind(chat_id)
     .bind(content)
     .bind(tool_call_id)
     .bind(tool_name)
+    .bind(parent_id)
     .execute(db)
     .await
     {
@@ -886,10 +888,21 @@ pub fn router() -> Router<AppState> {
             get(get_chat).patch(rename_chat).delete(delete_chat),
         )
         .route("/chats/:id/message", post(send_message))
-        .route("/chats/:id/messages/:msg_id", patch(edit_message))
+        .route(
+            "/chats/:id/messages/:msg_id/edit-branch",
+            post(edit_message_branch),
+        )
         .route(
             "/chats/:id/messages/:msg_id/after",
             delete(delete_messages_after),
+        )
+        .route(
+            "/chats/:id/messages/:msg_id/siblings",
+            get(get_message_siblings),
+        )
+        .route(
+            "/chats/:id/messages/:msg_id/activate",
+            post(activate_message_variant),
         )
         .route(
             "/chats/:id/messages/:msg_id/react",
@@ -1113,16 +1126,62 @@ async fn get_chat(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
+    // Active path: root messages (parent_id IS NULL) + active variants.
+    // Tool messages have parent_id set to the assistant variant that spawned
+    // them, so they only show when their parent assistant is active.
     let messages: Vec<Message> =
-        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
+        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC")
             .bind(id.clone())
             .fetch_all(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Build sibling counts for each message on the active path.
+    // Group by (parent_id, role): count all messages sharing the same parent_id
+    // AND the same role. This lets both user messages and assistant messages have
+    // independent variant counts.
+    let sibling_rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT parent_id, role, COUNT(*) FROM messages
+         WHERE chat_id = ?1 AND parent_id IS NOT NULL AND role IN ('user', 'assistant')
+         AND (tool_name IS NULL OR tool_name != 'tool_calls_init')
+         GROUP BY parent_id, role",
+    )
+    .bind(id.clone())
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Key by (parent_id, role) -> count
+    let mut sibling_counts: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
+    for (parent_id, role, count) in sibling_rows {
+        sibling_counts.insert((parent_id, role), count);
+    }
+
+    // For each active message (user or assistant), look up its sibling count.
+    let variants: Vec<serde_json::Value> = messages
+        .iter()
+        .filter(|m| m.role == "user" || (m.role == "assistant" && m.tool_name.is_none()))
+        .filter_map(|m| {
+            m.parent_id.as_ref().and_then(|pid| {
+                let total = sibling_counts.get(&(pid.clone(), m.role.clone())).copied().unwrap_or(1);
+                if total > 1 {
+                    Some(serde_json::json!({
+                        "message_id": m.id,
+                        "parent_id": pid,
+                        "total": total,
+                        "role": m.role,
+                    }))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
     Ok(Json(json!({
         "chat": chat,
         "messages": messages,
+        "variants": variants,
     })))
 }
 
@@ -1197,36 +1256,80 @@ async fn delete_chat(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn edit_message(
+/// POST /chats/:id/messages/:msg_id/edit-branch
+/// Non-destructive edit: creates a new user message sibling, deactivates the
+/// old user message and its descendants, returns the new message id so the
+/// frontend can stream a fresh assistant response to it.
+#[derive(Debug, serde::Deserialize)]
+struct EditBranchRequest {
+    content: String,
+    attachments: Option<Vec<String>>,
+}
+
+async fn edit_message_branch(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
     Path((chat_id, msg_id)): Path<(String, String)>,
-    Json(req): Json<crate::models::EditMessageRequest>,
-) -> Result<StatusCode, StatusCode> {
+    Json(req): Json<EditBranchRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     let content = req.content.trim();
     if content.is_empty() || content.len() > MAX_MESSAGE_LENGTH {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let result = sqlx::query(
-        "UPDATE messages SET content = ?1 WHERE id = ?2 AND chat_id = ?3 AND role = 'user' AND EXISTS (SELECT 1 FROM chats WHERE id = ?3 AND user_id = ?4)"
+    // Fetch the old user message (verify ownership + role)
+    let old_msg: Message = sqlx::query_as(
+        "SELECT m.* FROM messages m
+         JOIN chats c ON m.chat_id = c.id
+         WHERE m.id = ?1 AND m.chat_id = ?2 AND c.user_id = ?3 AND m.role = 'user'",
     )
-    .bind(content)
     .bind(&msg_id)
     .bind(&chat_id)
     .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Deactivate the old user message and all its descendants (recursive)
+    let _ = sqlx::query(
+        "WITH RECURSIVE descendants(id) AS (
+            SELECT id FROM messages WHERE id = ?1
+            UNION ALL
+            SELECT m.id FROM messages m
+            JOIN descendants d ON m.parent_id = d.id
+            WHERE m.chat_id = ?2
+         )
+         UPDATE messages SET is_active = 0
+         WHERE id IN (SELECT id FROM descendants) AND chat_id = ?2",
+    )
+    .bind(&old_msg.id)
+    .bind(&chat_id)
     .execute(&state.db)
     .await
     .map_err(|e| {
-        tracing::error!("Edit message error: {}", e);
+        tracing::error!("Deactivate edit branch error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    if result.rows_affected() == 0 {
-        return Err(StatusCode::NOT_FOUND);
-    }
+    // Create the new user message as a sibling (same parent_id as the old one)
+    let attachments_json = req.attachments.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
+    let new_id: String = sqlx::query_scalar(
+        "INSERT INTO messages (chat_id, role, content, attachments, parent_id, is_active)
+         VALUES (?1, 'user', ?2, ?3, ?4, 1) RETURNING id",
+    )
+    .bind(&chat_id)
+    .bind(content)
+    .bind(attachments_json.as_deref())
+    .bind(&old_msg.parent_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Insert edited user message error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
-    Ok(StatusCode::OK)
+    Ok(Json(json!({ "new_message_id": new_id })))
 }
 
 async fn delete_messages_after(
@@ -1263,6 +1366,184 @@ async fn delete_messages_after(
         })?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /chats/:id/messages/:msg_id/siblings
+/// Returns all sibling assistant messages sharing the same parent_id as :msg_id,
+/// ordered by created_at. Used by the frontend to render the < > navigator.
+async fn get_message_siblings(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path((chat_id, msg_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Verify ownership
+    let msg: Message = sqlx::query_as(
+        "SELECT m.* FROM messages m
+         JOIN chats c ON m.chat_id = c.id
+         WHERE m.id = ?1 AND m.chat_id = ?2 AND c.user_id = ?3",
+    )
+    .bind(&msg_id)
+    .bind(&chat_id)
+    .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let parent_id = match msg.parent_id {
+        Some(ref pid) => pid.clone(),
+        None => return Ok(Json(json!({ "siblings": [] }))),
+    };
+
+    // Filter by the same role as the queried message so both user and assistant
+    // message siblings are supported.
+    let siblings: Vec<Message> = sqlx::query_as(
+        "SELECT * FROM messages WHERE chat_id = ?1 AND parent_id = ?2 AND role = ?3
+         AND (tool_name IS NULL OR tool_name != 'tool_calls_init')
+         ORDER BY created_at ASC",
+    )
+    .bind(&chat_id)
+    .bind(&parent_id)
+    .bind(&msg.role)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let sibling_data: Vec<serde_json::Value> = siblings
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "content": s.content,
+                "created_at": s.created_at,
+                "tokens_used": s.tokens_used,
+                "is_active": s.is_active == 1,
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({ "siblings": sibling_data })))
+}
+
+/// POST /chats/:id/messages/:msg_id/activate
+/// Switches the active variant to :msg_id by deactivating all siblings and
+/// their descendants, then activating :msg_id and its descendants.
+async fn activate_message_variant(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path((chat_id, msg_id)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Verify ownership and fetch the message
+    let msg: Message = sqlx::query_as(
+        "SELECT m.* FROM messages m
+         JOIN chats c ON m.chat_id = c.id
+         WHERE m.id = ?1 AND m.chat_id = ?2 AND c.user_id = ?3",
+    )
+    .bind(&msg_id)
+    .bind(&chat_id)
+    .bind(&claims.sub)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let parent_id = match msg.parent_id {
+        Some(ref pid) => pid.clone(),
+        None => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Deactivate all siblings (including :msg_id) and their descendants.
+    // A sibling is any message with the same parent_id. Descendants are found
+    // recursively via parent_id chain.
+    let _ = sqlx::query(
+        "WITH RECURSIVE
+         sibling_tree(id) AS (
+            SELECT id FROM messages WHERE chat_id = ?1 AND parent_id = ?2
+            UNION ALL
+            SELECT m.id FROM messages m JOIN sibling_tree s ON m.parent_id = s.id WHERE m.chat_id = ?1
+         )
+         UPDATE messages SET is_active = 0
+         WHERE id IN (SELECT id FROM sibling_tree) AND chat_id = ?1",
+    )
+    .bind(&chat_id)
+    .bind(&parent_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Deactivate siblings error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Activate :msg_id and its descendants (follow parent_id chain down).
+    let _ = sqlx::query(
+        "WITH RECURSIVE
+         active_tree(id) AS (
+            SELECT id FROM messages WHERE id = ?1
+            UNION ALL
+            SELECT m.id FROM messages m JOIN active_tree a ON m.parent_id = a.id WHERE m.chat_id = ?2
+         )
+         UPDATE messages SET is_active = 1
+         WHERE id IN (SELECT id FROM active_tree) AND chat_id = ?2",
+    )
+    .bind(&msg_id)
+    .bind(&chat_id)
+    .execute(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Activate variant error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Return the new active path so the frontend can refresh.
+    let active_messages: Vec<Message> = sqlx::query_as(
+        "SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC",
+    )
+    .bind(&chat_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Recompute variants
+    let sibling_rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT parent_id, role, COUNT(*) FROM messages
+         WHERE chat_id = ?1 AND parent_id IS NOT NULL AND role IN ('user', 'assistant')
+         AND (tool_name IS NULL OR tool_name != 'tool_calls_init')
+         GROUP BY parent_id, role",
+    )
+    .bind(&chat_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut sibling_counts: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
+    for (pid, role, count) in sibling_rows {
+        sibling_counts.insert((pid, role), count);
+    }
+
+    let variants: Vec<serde_json::Value> = active_messages
+        .iter()
+        .filter(|m| m.role == "user" || (m.role == "assistant" && m.tool_name.is_none()))
+        .filter_map(|m| {
+            m.parent_id.as_ref().and_then(|pid| {
+                let total = sibling_counts.get(&(pid.clone(), m.role.clone())).copied().unwrap_or(1);
+                if total > 1 {
+                    Some(serde_json::json!({
+                        "message_id": m.id,
+                        "parent_id": pid,
+                        "total": total,
+                        "role": m.role,
+                    }))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    Ok(Json(json!({
+        "messages": active_messages,
+        "variants": variants,
+    })))
 }
 
 async fn export_chat(
@@ -1635,19 +1916,74 @@ async fn send_message(
     let resolved = resolve_chat_provider(&state, &chat, &user).await?;
 
     let is_regenerate = req.is_regenerate.unwrap_or(false);
+    let regenerate_from_msg_id = req.regenerate_from_msg_id.clone();
+    let existing_user_msg_id = req.existing_user_msg_id.clone();
     let attachments_json = req.attachments.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
-    if !is_regenerate {
-        sqlx::query("INSERT INTO messages (chat_id, role, content, attachments) VALUES (?1, 'user', ?2, ?3)")
+
+    // For non-destructive regeneration: deactivate the old assistant message and
+    // its descendants (tool messages, downstream), then insert a new sibling.
+    // The user message is preserved (not deleted), the new assistant gets
+    // parent_id = the user message the old assistant followed.
+    if is_regenerate {
+        if let Some(ref old_assistant_id) = regenerate_from_msg_id {
+            // Look up the old assistant message to find its parent (the user message).
+            let old_msg: Option<Message> = sqlx::query_as(
+                "SELECT * FROM messages WHERE id = ?1 AND chat_id = ?2 AND role = 'assistant'
+                 AND EXISTS (SELECT 1 FROM chats WHERE id = ?2 AND user_id = ?3)",
+            )
+            .bind(old_assistant_id)
+            .bind(id.clone())
+            .bind(claims.sub.clone())
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            if let Some(old) = old_msg {
+                // Deactivate the old assistant + all its descendants (messages whose
+                // parent_id chain leads to the old assistant, including tool messages
+                // that have parent_id = old assistant id, and any downstream messages).
+                // Use a recursive CTE to find all descendants.
+                let _ = sqlx::query(
+                    "WITH RECURSIVE descendants(id) AS (
+                        SELECT id FROM messages WHERE id = ?1
+                        UNION ALL
+                        SELECT m.id FROM messages m
+                        JOIN descendants d ON m.parent_id = d.id
+                        WHERE m.chat_id = ?2
+                    )
+                    UPDATE messages SET is_active = 0
+                    WHERE id IN (SELECT id FROM descendants) AND chat_id = ?2",
+                )
+                .bind(&old.id)
+                .bind(id.clone())
+                .execute(&state.db)
+                .await;
+            }
+        }
+    } else if existing_user_msg_id.is_some() {
+        // Edit-branch flow: the user message was already created by the
+        // edit-branch endpoint. Skip the user INSERT — the new assistant
+        // will use existing_user_msg_id as its parent_id.
+    } else {
+        // Normal send: insert the user message.
+        // parent_id = the last active message in this chat (the current leaf).
+        let parent_id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM messages WHERE chat_id = ?1 AND is_active = 1
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(id.clone())
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        sqlx::query("INSERT INTO messages (chat_id, role, content, attachments, parent_id) VALUES (?1, 'user', ?2, ?3, ?4)")
             .bind(id.clone())
             .bind(content)
             .bind(attachments_json.as_deref())
+            .bind(parent_id)
             .execute(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    } else {
-        // Optionally, we could delete the last assistant message here if we want to be thorough,
-        // but the frontend will also call DELETE on the specific message it wants to replace.
-        // It's safer to rely on the frontend deleting the exact message and its descendants.
     }
 
     // Auto-update title on first user message if still "New Chat"
@@ -1670,7 +2006,7 @@ async fn send_message(
         .await;
 
     let mut history: Vec<Message> =
-        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 ORDER BY created_at ASC")
+        sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC")
             .bind(id.clone())
             .fetch_all(&state.db)
             .await
@@ -1833,6 +2169,46 @@ async fn send_message(
 
     let should_use_tools = std::env::var("DISABLE_TOOLS").is_err() && user.tools_enabled == 1;
 
+    // Determine the parent_id for the new assistant message:
+    // - Edit-branch: the newly created user message (existing_user_msg_id).
+    // - Regenerate: the user message that the old assistant followed (its parent_id).
+    // - Normal send: the just-inserted user message (last active message).
+    let new_assistant_parent_id: Option<String> = if let Some(ref eid) = existing_user_msg_id {
+        Some(eid.clone())
+    } else if is_regenerate {
+        if let Some(ref old_id) = regenerate_from_msg_id {
+            sqlx::query_scalar::<_, Option<String>>(
+                "SELECT parent_id FROM messages WHERE id = ?1 AND chat_id = ?2",
+            )
+            .bind(old_id)
+            .bind(id.clone())
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .flatten()
+        } else {
+            // Fallback: last active user message's id
+            sqlx::query_scalar::<_, String>(
+                "SELECT id FROM messages WHERE chat_id = ?1 AND role = 'user' AND is_active = 1
+                 ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(id.clone())
+            .fetch_optional(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        }
+    } else {
+        // The user message we just inserted (last active message).
+        sqlx::query_scalar::<_, String>(
+            "SELECT id FROM messages WHERE chat_id = ?1 AND is_active = 1
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(id.clone())
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+
     let (tx, rx) = mpsc::channel::<String>(64);
 
     let db = state.db.clone();
@@ -1844,6 +2220,7 @@ async fn send_message(
     let max_steps = user.max_agent_steps as usize;
     let state_clone = state.clone();
     let user_id = claims.sub.clone();
+    let assistant_parent_id = new_assistant_parent_id.clone();
 
     tokio::spawn(async move {
         if !should_use_tools {
@@ -1857,6 +2234,7 @@ async fn send_message(
                 chat_id: &chat_id,
                 db: &db,
                 tx: &tx,
+                parent_id: assistant_parent_id.as_deref(),
             })
             .await;
             return;
@@ -1953,15 +2331,17 @@ async fn send_message(
             // Persist the assistant's tool_calls message to the database
             let asst_content = asst_json["content"].as_str().unwrap_or("");
             let asst_tool_calls_str = serde_json::to_string(&tc_entries).unwrap_or_default();
-            let _ = sqlx::query(
-                "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name) VALUES (?1, 'assistant', ?2, ?3, ?4)"
+            let tool_init_id: Option<String> = sqlx::query_scalar(
+                "INSERT INTO messages (chat_id, role, content, tool_call_id, tool_name, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5) RETURNING id"
             )
             .bind(&chat_id)
             .bind(asst_content)
             .bind(&asst_tool_calls_str)
             .bind("tool_calls_init")
-            .execute(&db)
-            .await;
+            .bind(&assistant_parent_id)
+            .fetch_one(&db)
+            .await
+            .ok();
 
             let tool_results =
                 resolve_tool_calls(tool_calls, &chat_id, &user_id, &state_clone).await;
@@ -1978,7 +2358,7 @@ async fn send_message(
                 }
                 let _ = tx.send(format!("[TOOL]{}[/TOOL]", event_obj)).await;
 
-                persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result).await;
+                persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result, &tool_init_id).await;
 
                 current_messages.push(json!({
                     "role": "tool",
@@ -1998,6 +2378,7 @@ async fn send_message(
             chat_id: &chat_id,
             db: &db,
             tx: &tx,
+            parent_id: assistant_parent_id.as_deref(),
         })
         .await;
     });
@@ -2018,6 +2399,7 @@ struct LlmStreamContext<'a> {
     chat_id: &'a str,
     db: &'a sqlx::SqlitePool,
     tx: &'a mpsc::Sender<String>,
+    parent_id: Option<&'a str>,
 }
 
 async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
@@ -2031,6 +2413,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         chat_id,
         db,
         tx,
+        parent_id,
     } = ctx;
     let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
 
@@ -2112,6 +2495,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         let provider_id = provider_id.to_string();
         let model_id = model_id.to_string();
         let db = db.clone();
+        let parent_id = parent_id.map(|s| s.to_string());
 
         while let Some(chunk_result) = stream.next().await {
             match chunk_result {
@@ -2129,8 +2513,8 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                                 if data == "[DONE]" {
                                     let _ = tx.send("[DONE]".to_string()).await;
                                     let estimated_tokens = (full_content.len() / 4) as i32;
-                                    if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                                        .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                    if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
+                                        .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
                                         .execute(&db).await {
                                         tracing::error!("Failed to persist assistant message: {}", e);
                                     }
@@ -2149,8 +2533,8 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                                             );
                                             let _ = tx.send("[DONE]".to_string()).await;
                                             let estimated_tokens = (full_content.len() / 4) as i32;
-                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id)
+                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
+                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
                                                 .execute(&db).await;
                                             return;
                                         }
@@ -2169,8 +2553,8 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
 
         let _ = tx.send("[DONE]".to_string()).await;
         if !full_content.is_empty() {
-            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5)")
-                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id)
+            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
+                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id).bind(&parent_id)
                 .execute(&db).await {
                 tracing::error!("Failed to persist assistant message: {}", e);
             }

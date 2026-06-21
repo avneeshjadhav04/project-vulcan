@@ -61,6 +61,8 @@ export interface StreamOptions {
   windowHistoryReplace: (chatId: string) => void
   onChatCreated?: () => void
   isRegenerate?: boolean
+  regenerateFromMsgId?: string
+  existingUserMsgId?: string
 }
 
 const defaultStreamState: StreamState = {
@@ -123,6 +125,8 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
       windowHistoryReplace,
       onChatCreated,
       isRegenerate,
+      regenerateFromMsgId,
+      existingUserMsgId,
     } = options
 
     let currentChatId = effectiveChatId
@@ -191,6 +195,8 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           content: text,
           attachments: attachmentNames,
           is_regenerate: isRegenerate,
+          regenerate_from_msg_id: regenerateFromMsgId,
+          existing_user_msg_id: existingUserMsgId,
           provider_id: selectedModel.providerId || undefined,
           model_id: selectedModel.modelId,
         }),

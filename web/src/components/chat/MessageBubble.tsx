@@ -12,6 +12,8 @@ import {
   Cpu,
   Clock,
   FileText,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { markdownComponents } from './markdownComponents'
 import ToolExecutionCard from './ToolExecutionCard'
@@ -31,20 +33,24 @@ interface MessageItem {
 interface MessageBubbleProps {
   msg: MessageItem
   chatId?: string
-  onRegenerate?: () => void
+  onRegenerate?: (assistantMsgId?: string) => void
   onEdit?: (id: string, content: string) => void
+  onActivateVariant?: (msgId: string) => void
   messageMeta?: { provider: string; model: string; durationMs: number }
   animateMount?: boolean
   isStreamingReplacement?: boolean
+  variantInfo?: { total: number; activeIndex: number; siblingIds: string[] }
 }
 
 function MessageBubble({
   msg,
   onRegenerate,
   onEdit,
+  onActivateVariant,
   messageMeta,
   animateMount = true,
   isStreamingReplacement = false,
+  variantInfo,
 }: MessageBubbleProps) {
   const isAssistant = msg.role === 'assistant'
   const isUser = msg.role === 'user'
@@ -202,6 +208,47 @@ function MessageBubble({
           <div className={`mt-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 ${isUser ? 'justify-end' : 'justify-start'}`}>
             {isAssistant && (
               <>
+                {variantInfo && variantInfo.total > 1 && (
+                  <div className="flex items-center gap-0.5 mr-1">
+                    <button
+                      onClick={() => {
+                        const prevIndex = variantInfo.activeIndex - 1
+                        if (prevIndex >= 0 && onActivateVariant) {
+                          onActivateVariant(variantInfo.siblingIds[prevIndex])
+                        }
+                      }}
+                      disabled={variantInfo.activeIndex <= 0}
+                      className="p-1 text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Previous variant"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </button>
+                    <span className="px-1 text-[11px] text-text-helper select-none tabular-nums">
+                      {variantInfo.activeIndex + 1}/{variantInfo.total}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const nextIndex = variantInfo.activeIndex + 1
+                        if (nextIndex < variantInfo.total && onActivateVariant) {
+                          onActivateVariant(variantInfo.siblingIds[nextIndex])
+                        }
+                      }}
+                      disabled={variantInfo.activeIndex >= variantInfo.total - 1}
+                      className="p-1 text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Next variant"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => onRegenerate?.(msg.id)}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+                  aria-label="Regenerate response"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Regenerate
+                </button>
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
@@ -209,14 +256,6 @@ function MessageBubble({
                 >
                   {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                   {copied ? 'Copied' : 'Copy'}
-                </button>
-                <button
-                  onClick={onRegenerate}
-                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
-                  aria-label="Regenerate response"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Regenerate
                 </button>
                 {msg.tokens_used != null && (
                   <span className="px-2 py-1 text-[11px] text-text-helper select-none">
@@ -227,6 +266,39 @@ function MessageBubble({
             )}
             {isUser && (
               <>
+                {variantInfo && variantInfo.total > 1 && (
+                  <div className="flex items-center gap-0.5 mr-1">
+                    <button
+                      onClick={() => {
+                        const prevIndex = variantInfo.activeIndex - 1
+                        if (prevIndex >= 0 && onActivateVariant) {
+                          onActivateVariant(variantInfo.siblingIds[prevIndex])
+                        }
+                      }}
+                      disabled={variantInfo.activeIndex <= 0}
+                      className="p-1 text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Previous variant"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </button>
+                    <span className="px-1 text-[11px] text-text-helper select-none tabular-nums">
+                      {variantInfo.activeIndex + 1}/{variantInfo.total}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const nextIndex = variantInfo.activeIndex + 1
+                        if (nextIndex < variantInfo.total && onActivateVariant) {
+                          onActivateVariant(variantInfo.siblingIds[nextIndex])
+                        }
+                      }}
+                      disabled={variantInfo.activeIndex >= variantInfo.total - 1}
+                      className="p-1 text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus disabled:opacity-30 disabled:cursor-not-allowed"
+                      aria-label="Next variant"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-1 px-2 py-1 text-[11px] text-text-helper transition-colors hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"

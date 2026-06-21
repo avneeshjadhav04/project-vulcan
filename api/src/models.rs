@@ -50,6 +50,7 @@ pub struct Message {
     pub tool_name: Option<String>,
     pub parent_id: Option<String>,
     pub attachments: Option<String>,
+    pub is_active: i32,
     pub created_at: DateTime<Utc>,
 }
 
@@ -148,6 +149,8 @@ pub struct SendMessageRequest {
     pub attachments: Option<Vec<String>>,
     pub provider_id: Option<String>,
     pub model_id: Option<String>,
+    pub regenerate_from_msg_id: Option<String>,
+    pub existing_user_msg_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
