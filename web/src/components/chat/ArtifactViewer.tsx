@@ -29,8 +29,8 @@ export default function ArtifactViewer() {
   // Safe HTML rendering for the iframe - follow app theme when no preview available
   const htmlContent = useMemo(() => {
     if (isHtml) return activeArtifact.content
-    const fg = isLight ? '#1f2937' : '#f4f4f4'
-    const bg = isLight ? '#f8f9fb' : '#0f1115'
+    const fg = isLight ? '#2a3441' : '#f4f4f4'
+    const bg = isLight ? '#f3f4f7' : '#0f1115'
     return `<html><body style="font-family: sans-serif; color: ${fg}; background: ${bg}; padding: 20px;">
         <h2>Preview not supported for ${activeArtifact.type} yet.</h2>
         <p>Switch to Code view to see the raw artifact content.</p>
