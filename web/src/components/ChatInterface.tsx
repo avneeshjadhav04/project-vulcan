@@ -30,6 +30,15 @@ interface MessageItem {
   content: string
   created_at: string
   tokens_used?: number
+  tool_name?: string
+  parent_id?: string
+}
+
+interface VariantInfo {
+  message_id: string
+  parent_id: string
+  total: number
+  role: string
 }
 
 export default function ChatInterface({
@@ -87,6 +96,7 @@ export default function ChatInterface({
       return res.data as {
         chat: { title: string; model_id: string; provider_id: string | null }
         messages: MessageItem[]
+        variants: VariantInfo[]
       }
     },
     enabled: !!effectiveChatId,
@@ -181,7 +191,7 @@ export default function ChatInterface({
     }
   }, [streaming, streamedContent, chatData?.messages, clearStreamedContent, effectiveChatId])
 
-  const handleSend = useCallback(async (textOverride?: string, isRegenerate = false) => {
+  const handleSend = useCallback(async (textOverride?: string, isRegenerate = false, regenerateFromMsgId?: string, existingUserMsgId?: string) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
 
@@ -245,35 +255,48 @@ export default function ChatInterface({
         queryClient.invalidateQueries({ queryKey: ['chats'] })
       },
       isRegenerate,
+      regenerateFromMsgId,
+      existingUserMsgId,
     })
   }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, startStream, queryClient, chatId, userData, showError])
 
 
-  const handleRegenerate = useCallback(async () => {
+  const handleRegenerate = useCallback(async (assistantMsgId?: string) => {
+    // Non-destructive regenerate: the backend handles deactivating the old
+    // assistant message and inserting a new sibling. We just need to find the
+    // user message content to resend.
     const lastUserMessage = chatData?.messages?.slice().reverse().find((m) => m.role === 'user')
 
     if (lastUserMessage) {
-      if (effectiveChatId) {
-        try {
-          await api.delete(`/chats/${effectiveChatId}/messages/${lastUserMessage.id}/after`)
-        } catch (e: any) {
-            showError(e?.message ?? 'Failed to delete messages after regenerate');
-          }
-      }
-      handleSend(lastUserMessage.content, true)
+      handleSend(lastUserMessage.content, true, assistantMsgId)
     }
-  }, [chatData?.messages, handleSend, effectiveChatId])
+  }, [chatData?.messages, handleSend])
 
   const handleEditMessage = useCallback(async (msgId: string, newContent: string) => {
+    if (!effectiveChatId) return
     try {
-      await api.patch(`/chats/${effectiveChatId}/messages/${msgId}`, { content: newContent })
-      await api.delete(`/chats/${effectiveChatId}/messages/${msgId}/after`)
+      // Non-destructive edit: create a new user message sibling, deactivate
+      // the old branch, then stream a fresh assistant response.
+      const res = await api.post(`/chats/${effectiveChatId}/messages/${msgId}/edit-branch`, {
+        content: newContent,
+      })
+      const newMsgId: string = res.data.new_message_id
       await refetch()
-      handleSend(newContent, true)
+      handleSend(newContent, false, undefined, newMsgId)
     } catch (err: any) {
       showError(err?.message ?? 'Failed to edit message')
     }
-  }, [effectiveChatId, refetch, handleSend])
+  }, [effectiveChatId, refetch, handleSend, showError])
+
+  const handleActivateVariant = useCallback(async (msgId: string) => {
+    if (!effectiveChatId) return
+    try {
+      await api.post(`/chats/${effectiveChatId}/messages/${msgId}/activate`)
+      await refetch()
+    } catch (err: any) {
+      showError(err?.message ?? 'Failed to switch variant')
+    }
+  }, [effectiveChatId, refetch, showError])
 
   const dragCounterRef = useRef(0)
 
@@ -459,6 +482,7 @@ export default function ChatInterface({
 
       <ChatMessages
         messages={messages}
+        variants={chatData?.variants || []}
         streaming={streaming}
         streamedContent={streamedContent}
         toolExecutions={toolExecutions}
@@ -471,6 +495,7 @@ export default function ChatInterface({
         wasNearBottomRef={scroll.wasNearBottomRef}
         onScroll={scroll.handleScroll}
         onRegenerate={handleRegenerate}
+        onActivateVariant={handleActivateVariant}
         onEditMessage={handleEditMessage}
         onSuggestion={(text) => handleSend(text)}
       />
