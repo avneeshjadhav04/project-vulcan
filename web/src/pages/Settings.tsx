@@ -728,7 +728,7 @@ export default function Settings() {
                       <motion.div
                         animate={{ x: user?.summarization_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="absolute top-1 h-3 w-3 bg-color-white"
+                        className="absolute top-1 h-3 w-3 bg-white"
                       />
                     </button>
                   </div>
@@ -768,7 +768,7 @@ export default function Settings() {
                       <motion.div
                         animate={{ x: user?.cross_chat_memory_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        className="absolute top-1 h-3 w-3 bg-color-white"
+                        className="absolute top-1 h-3 w-3 bg-white"
                       />
                     </button>
                   </div>
