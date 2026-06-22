@@ -77,8 +77,10 @@ function ChatMessagesInner({
   )
 
   // Fetch sibling lists for messages that have variants (total > 1).
-  // siblingCache: parent_id -> { ids: string[], activeIndex: number }
-  const [siblingCache, setSiblingCache] = useState<Record<string, { ids: string[]; activeIndex: number }>>({})
+  // siblingCache: parent_id -> string[] (sibling ids, static — order by created_at)
+  // activeIndex is computed at render time from the current msg.id, which is
+  // always the active message in visibleMessages. This avoids stale index bugs.
+  const [siblingCache, setSiblingCache] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     if (!chatId || variants.length === 0) return
@@ -89,12 +91,10 @@ function ChatMessagesInner({
 
     const fetchSiblings = async (pid: string, currentMsgId: string) => {
       try {
-        // Use the first variant message for this parent to fetch siblings
         const res = await api.get(`/chats/${chatId}/messages/${currentMsgId}/siblings`)
         const siblings: Array<{ id: string; is_active: boolean }> = res.data.siblings || []
         const ids = siblings.map((s) => s.id)
-        const activeIndex = Math.max(0, ids.indexOf(currentMsgId))
-        setSiblingCache((prev) => ({ ...prev, [pid]: { ids, activeIndex } }))
+        setSiblingCache((prev) => ({ ...prev, [pid]: ids }))
       } catch {
         // silently fail — navigator just won't show
       }
@@ -272,9 +272,9 @@ function ChatMessagesInner({
               const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
                 ? variants.find((v) => v.message_id === msg.id)
                 : undefined
-              const siblingData = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
-              const computedVariantInfo = variantInfo && siblingData
-                ? { total: variantInfo.total, activeIndex: siblingData.activeIndex, siblingIds: siblingData.ids }
+              const siblingIds = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
+              const computedVariantInfo = variantInfo && siblingIds
+                ? { total: variantInfo.total, activeIndex: Math.max(0, siblingIds.indexOf(msg.id)), siblingIds }
                 : variantInfo
                 ? { total: variantInfo.total, activeIndex: 0, siblingIds: [msg.id] }
                 : undefined

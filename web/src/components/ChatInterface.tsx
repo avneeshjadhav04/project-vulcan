@@ -275,14 +275,13 @@ export default function ChatInterface({
   const handleEditMessage = useCallback(async (msgId: string, newContent: string) => {
     if (!effectiveChatId) return
     try {
-      // Non-destructive edit: create a new user message sibling, deactivate
-      // the old branch, then stream a fresh assistant response.
-      const res = await api.post(`/chats/${effectiveChatId}/messages/${msgId}/edit-branch`, {
+      // Destructive edit: update content in-place, hard-delete all descendants
+      // (old responses + tool messages), then stream a fresh assistant response.
+      await api.post(`/chats/${effectiveChatId}/messages/${msgId}/edit-replace`, {
         content: newContent,
       })
-      const newMsgId: string = res.data.new_message_id
       await refetch()
-      handleSend(newContent, false, undefined, newMsgId)
+      handleSend(newContent, false, undefined, msgId)
     } catch (err: any) {
       showError(err?.message ?? 'Failed to edit message')
     }
