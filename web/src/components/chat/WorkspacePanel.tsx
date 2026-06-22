@@ -426,11 +426,15 @@ export default function WorkspacePanel({
                 <FilePlus className="w-4 h-4" />
               </button>
               <button
-                onClick={() => refetchWorkspace()}
-                className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors"
+                onClick={async () => {
+                  await queryClient.invalidateQueries({ queryKey: ['workspace'] })
+                  await refetchWorkspace()
+                }}
+                disabled={isLoading}
+                className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors disabled:opacity-50"
                 title="Refresh workspace"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
             </>
           )}
