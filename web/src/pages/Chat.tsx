@@ -56,10 +56,27 @@ export default function Chat() {
   })
   const [isResizingWorkspace, setIsResizingWorkspace] = useState(false)
   const mainRef = useRef<HTMLDivElement>(null)
-  const [selectedModel, setSelectedModel] = useState<SelectedModel>({
-    providerId: '',
-    modelId: '',
+  const [selectedModel, setSelectedModel] = useState<SelectedModel>(() => {
+    const saved = localStorage.getItem('selectedModel')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed.providerId && parsed.modelId) {
+          return { providerId: parsed.providerId, modelId: parsed.modelId }
+        }
+      } catch {
+        // ignore corrupt saved value
+      }
+    }
+    return { providerId: '', modelId: '' }
   })
+
+  // Persist selected model globally across refreshes and chats.
+  useEffect(() => {
+    if (selectedModel.providerId && selectedModel.modelId) {
+      localStorage.setItem('selectedModel', JSON.stringify(selectedModel))
+    }
+  }, [selectedModel])
   const user = useAuthStore((s) => s.user)
 
   // Auto-select first available model when providers load
