@@ -158,7 +158,7 @@ export default function ChatHeader({
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-carbon border border-border-subtle bg-layer/90 shadow-xl backdrop-blur-md"
+                className="absolute right-0 top-full z-50 mt-1 w-44 rounded-carbon border border-border-subtle bg-layer shadow-xl"
               >
                 <button
                   onClick={() => {
@@ -232,7 +232,7 @@ export default function ChatHeader({
                 initial={{ opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -4 }}
-                className="absolute right-full top-0 z-50 mr-1 w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer/90 shadow-xl backdrop-blur-md"
+                className="absolute right-full top-0 z-50 mr-1 w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
               >
                 <button
                   onClick={() => handleExport('markdown')}

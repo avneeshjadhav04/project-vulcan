@@ -397,7 +397,7 @@ export default function Sidebar({
       {menuChat && menuPosition && createPortal(
         <div
           data-chat-menu
-          className="fixed z-[100] w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
+          className="fixed z-[100] w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
           style={{ top: menuPosition.top, left: menuPosition.left }}
         >
           <button
@@ -426,6 +426,11 @@ export default function Sidebar({
             <Pencil className="h-3.5 w-3.5 shrink-0 text-interactive" />
             <span>Rename</span>
           </button>
+          <SidebarExportMenuItem chatId={menuChat.id} onClose={() => {
+            setOpenMenuId(null)
+            setMenuPosition(null)
+            setPendingDeleteId(null)
+          }} />
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -439,11 +444,6 @@ export default function Sidebar({
             <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
             <span>{menuChat.is_archived ? 'Unarchive' : 'Archive'}</span>
           </button>
-          <SidebarExportMenuItem chatId={menuChat.id} onClose={() => {
-            setOpenMenuId(null)
-            setMenuPosition(null)
-            setPendingDeleteId(null)
-          }} />
           {pendingDeleteId === openMenuId ? (
             <button
               onClick={(e) => {
@@ -508,7 +508,7 @@ function SidebarExportMenuItem({ chatId, onClose }: { chatId: string; onClose: (
       </button>
       {showSubmenu && (
         <div
-          className="absolute left-full top-0 z-[110] ml-1 w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
+          className="absolute left-full top-0 z-[110] ml-1 w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
         >
           <button
             onClick={(e) => {
