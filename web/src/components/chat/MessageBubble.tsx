@@ -7,8 +7,6 @@ import {
   Check,
   RotateCcw,
   Pencil,
-  Sparkles,
-  User,
   Cpu,
   Clock,
   FileText,
@@ -112,27 +110,10 @@ function MessageBubble({
       initial={animateMount ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`group flex gap-3 py-3 ${isUser ? 'flex-row-reverse' : ''}`}
+      className={`group py-3 ${isUser ? 'flex flex-row-reverse' : ''}`}
     >
-      {/* Avatar */}
-      <div className="flex shrink-0 flex-col items-center pt-0.5">
-        <div
-          className={`flex h-8 w-8 items-center justify-center rounded-full shadow-sm ${
-            isAssistant
-              ? 'bg-vibrant-gradient'
-              : 'border border-border-subtle bg-layer'
-          }`}
-        >
-          {isAssistant ? (
-            <Sparkles className="h-4 w-4 text-on-interactive" aria-hidden="true" />
-          ) : (
-            <User className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          )}
-        </div>
-      </div>
-
       {/* Content */}
-      <div className={`min-w-0 max-w-[85%] flex-1 ${isUser ? 'text-right' : ''}`}>
+      <div className={`min-w-0 max-w-[85%] ${isUser ? 'text-right' : ''}`}>
         <div className={`mb-1 flex items-center gap-2 ${isUser ? 'justify-end' : ''}`}>
           <span className="text-[11px] font-semibold text-text-primary">
             {isAssistant ? 'AI' : 'You'}
