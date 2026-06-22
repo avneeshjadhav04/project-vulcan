@@ -184,20 +184,42 @@ export default function ChatHeader({
                   <span>Rename</span>
                 </button>
 
-                <button
-                  onClick={() => setShowExportSubmenu(true)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
-                >
-                  <span className="flex items-center gap-2">
-                    {exporting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-text-helper" />
-                    ) : (
-                      <FileText className="h-3.5 w-3.5 shrink-0 text-text-helper" />
-                    )}
-                    <span>{exporting ? 'Exporting...' : 'Export'}</span>
-                  </span>
-                  <ChevronRight className="h-3 w-3 text-text-helper" />
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExportSubmenu(!showExportSubmenu)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+                  >
+                    <span className="flex items-center gap-2">
+                      {exporting ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-text-helper" />
+                      ) : (
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-text-helper" />
+                      )}
+                      <span>{exporting ? 'Exporting...' : 'Export'}</span>
+                    </span>
+                    <ChevronRight className="h-3 w-3 text-text-helper" />
+                  </button>
+                  {showExportSubmenu && (
+                    <div className="absolute right-full top-0 z-50 mr-1 w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl">
+                      <button
+                        onClick={() => handleExport('markdown')}
+                        disabled={exporting === 'markdown'}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        <span>{exporting === 'markdown' ? 'Exporting...' : 'Markdown'}</span>
+                      </button>
+                      <button
+                        onClick={() => handleExport('json')}
+                        disabled={exporting === 'json'}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                      >
+                        <FileJson className="h-3.5 w-3.5 shrink-0" />
+                        <span>{exporting === 'json' ? 'Exporting...' : 'JSON'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
                 <button
                   onClick={() => {
@@ -221,34 +243,6 @@ export default function ChatHeader({
                 >
                   <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
                   <span>{pendingDelete ? 'Confirm Delete?' : 'Delete'}</span>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-            {showExportSubmenu && showMenu && (
-              <motion.div
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -4 }}
-                className="absolute right-full top-0 z-50 mr-1 w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
-              >
-                <button
-                  onClick={() => handleExport('markdown')}
-                  disabled={exporting === 'markdown'}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  <span>{exporting === 'markdown' ? 'Exporting...' : 'Markdown'}</span>
-                </button>
-                <button
-                  onClick={() => handleExport('json')}
-                  disabled={exporting === 'json'}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                >
-                  <FileJson className="h-3.5 w-3.5 shrink-0" />
-                  <span>{exporting === 'json' ? 'Exporting...' : 'JSON'}</span>
                 </button>
               </motion.div>
             )}
