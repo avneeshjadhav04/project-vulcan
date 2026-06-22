@@ -37,6 +37,10 @@ import {
   Puzzle,
   BarChart3,
   LogOut,
+  MessageSquare,
+  Hash,
+  Clock,
+  TrendingUp,
 } from 'lucide-react'
 
 interface Provider {
@@ -66,9 +70,21 @@ const BUILT_IN_PROVIDERS = [
   { id: 'custom', name: 'Custom Provider', base_url: '' },
 ]
 
-type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'signout'
+interface UsageDay {
+  date: string
+  messages: number
+  tokens: number
+}
 
-const TAB_ITEMS: { id: SettingsTab | 'usage'; label: string; icon: React.ReactNode }[] = [
+interface UsageData {
+  total_messages: number
+  total_tokens: number
+  daily: UsageDay[]
+}
+
+type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'usage' | 'signout'
+
+const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
   { id: 'providers', label: 'AI Providers', icon: <Server className="h-4 w-4" /> },
   { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
@@ -88,6 +104,9 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const [usageError, setUsageError] = useState('')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations', 'signout']
@@ -153,12 +172,31 @@ export default function Settings() {
     }
   }, [user?.max_agent_steps])
 
+  useEffect(() => {
+    if (activeTab === 'usage') {
+      loadUsage()
+    }
+  }, [activeTab])
+
   // Sync active tab to URL
   useEffect(() => {
     if (activeTab !== searchParams.get('tab')) {
       setSearchParams({ tab: activeTab }, { replace: true })
     }
   }, [activeTab])
+
+  const loadUsage = async () => {
+    setUsageLoading(true)
+    setUsageError('')
+    try {
+      const res = await api.get('/usage')
+      setUsage(res.data || null)
+    } catch (err: any) {
+      setUsageError(err.response?.data?.error || 'Failed to load usage data')
+    } finally {
+      setUsageLoading(false)
+    }
+  }
 
   const loadProviders = async () => {
     setProvidersLoading(true)
@@ -376,10 +414,6 @@ export default function Settings() {
               <button
                 key={tab.id}
                 onClick={() => {
-                  if (tab.id === 'usage') {
-                    navigate('/usage')
-                    return
-                  }
                   setActiveTab(tab.id)
                   setError('')
                 }}
@@ -917,6 +951,76 @@ export default function Settings() {
               </motion.div>
             )}
 
+            {/* Usage Tab */}
+            {activeTab === 'usage' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4">
+                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                      <BarChart3 className="h-4 w-4" />
+                      Usage Dashboard
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      Track your message and token usage over the last 7 days.
+                    </p>
+                  </div>
+
+                  {usageError ? (
+                    <div className="border border-support-error/30 bg-support-error/10 px-4 py-3 text-sm text-support-error">
+                      {usageError}
+                    </div>
+                  ) : usageLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                    </div>
+                  ) : usage ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <UsageSummaryCard
+                          icon={<MessageSquare className="h-4 w-4 text-interactive" />}
+                          label="Total Messages"
+                          value={usage.total_messages.toLocaleString()}
+                        />
+                        <UsageSummaryCard
+                          icon={<Hash className="h-4 w-4 text-support-success" />}
+                          label="Total Tokens"
+                          value={usage.total_tokens.toLocaleString()}
+                        />
+                        <UsageSummaryCard
+                          icon={<TrendingUp className="h-4 w-4 text-support-warning" />}
+                          label="Daily Average"
+                          value={
+                            usage.daily.length > 0
+                              ? Math.round(usage.total_messages / usage.daily.length)
+                              : 0
+                          }
+                        />
+                      </div>
+
+                      <div className="border border-border-subtle bg-background p-5">
+                        <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                          <Clock className="h-4 w-4" />
+                          Daily Breakdown (Last 7 Days)
+                        </h3>
+
+                        {usage.daily.length === 0 ? (
+                          <div className="py-8 text-center text-sm text-text-helper">No usage data yet</div>
+                        ) : (
+                          <DailyUsageBars daily={usage.daily} />
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </motion.div>
+            )}
+
             {/* Sign Out Tab */}
             {activeTab === 'signout' && (
               <motion.div
@@ -1157,6 +1261,70 @@ export default function Settings() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function UsageSummaryCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className="border border-border-subtle bg-background p-4">
+      <div className="mb-2 flex items-center gap-2">
+        {icon}
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">{label}</span>
+      </div>
+      <p className="text-2xl font-semibold text-text-primary">{value}</p>
+    </div>
+  )
+}
+
+function DailyUsageBars({ daily }: { daily: UsageDay[] }) {
+  const maxMessages = Math.max(...daily.map((d) => d.messages), 1)
+  const maxTokens = Math.max(...daily.map((d) => d.tokens), 1)
+
+  return (
+    <div className="space-y-4">
+      {daily.map((day) => (
+        <div key={day.date} className="space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-text-secondary">
+              {new Date(day.date).toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+            <span className="text-text-helper">
+              {day.messages} msgs · {day.tokens.toLocaleString()} tokens
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 overflow-hidden rounded-full bg-border-subtle">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(day.messages / maxMessages) * 100}%` }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="h-2 rounded-full bg-interactive"
+              />
+            </div>
+            <div className="w-24 overflow-hidden rounded-full bg-border-subtle">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(day.tokens / maxTokens) * 100}%` }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="h-2 rounded-full bg-support-success"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
