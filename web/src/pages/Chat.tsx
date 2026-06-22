@@ -62,7 +62,11 @@ export default function Chat() {
       try {
         const parsed = JSON.parse(saved)
         if (parsed.providerId && parsed.modelId) {
-          return { providerId: parsed.providerId, modelId: parsed.modelId }
+          return {
+            providerId: parsed.providerId,
+            providerName: parsed.providerName,
+            modelId: parsed.modelId,
+          }
         }
       } catch {
         // ignore corrupt saved value
@@ -79,7 +83,7 @@ export default function Chat() {
   }, [selectedModel])
   const user = useAuthStore((s) => s.user)
 
-  // Auto-select first available model when providers load
+  // Auto-select first available model when providers load and none was saved.
   useEffect(() => {
     if (selectedModel.providerId) return
     api.get('/models')
@@ -87,7 +91,11 @@ export default function Chat() {
         const providers = res.data?.providers || []
         for (const p of providers) {
           if (p.models && Array.isArray(p.models) && p.models.length > 0 && p.models[0]?.id) {
-            setSelectedModel({ providerId: p.provider_id, modelId: p.models[0].id })
+            setSelectedModel({
+              providerId: p.provider_id,
+              providerName: p.provider_name,
+              modelId: p.models[0].id,
+            })
             break
           }
         }

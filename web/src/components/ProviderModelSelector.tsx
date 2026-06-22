@@ -19,6 +19,7 @@ interface ProviderModels {
 
 export interface SelectedModel {
   providerId: string
+  providerName?: string
   modelId: string
 }
 
@@ -103,9 +104,11 @@ export default function ProviderModelSelector({
           <span className="font-mono truncate text-[11px]">
             {selectedItem
               ? `${selectedItem.providerName} / ${selectedItem.model.id}`
-              : selected.providerId
-                ? selected.modelId || 'Select model'
-                : 'No provider'}
+              : selected.providerName
+                ? `${selected.providerName} / ${selected.modelId}`
+                : selected.providerId
+                  ? `${selected.providerId} / ${selected.modelId || 'Select model'}`
+                  : 'No provider'}
           </span>
         </div>
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
