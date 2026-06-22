@@ -167,6 +167,27 @@ export default function ProviderModelSelector({
               </div>
             )}
 
+            {/* Current selection pinned at top */}
+            {selectedItem && !search.trim() && (
+              <div>
+                <div className="sticky top-0 bg-layer px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-interactive">
+                  Current
+                </div>
+                <button
+                  key={`current:${selectedItem.providerId}:${selectedItem.model.id}`}
+                  onClick={() => {
+                    onSelect({ providerId: selectedItem.providerId, providerName: selectedItem.providerName, modelId: selectedItem.model.id })
+                    setOpen(false)
+                    setSearch('')
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs bg-interactive/10 text-interactive transition-colors hover:bg-layer-hover"
+                >
+                  <span className="font-mono break-all">{selectedItem.model.id}</span>
+                  <Check className="h-3.5 w-3.5 shrink-0 text-interactive ml-2" />
+                </button>
+              </div>
+            )}
+
             {Object.entries(grouped).map(([providerName, items]) => (
               <div key={providerName}>
                 <div className="sticky top-0 bg-layer px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">
