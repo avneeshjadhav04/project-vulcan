@@ -119,6 +119,7 @@ export default function WorkspacePanel({
 
   const queryClient = useQueryClient()
   const [autoRefresh] = useState(true)
+  const [manualRefreshing, setManualRefreshing] = useState(false)
 
   const {
     data: fileTree,
@@ -427,14 +428,16 @@ export default function WorkspacePanel({
               </button>
               <button
                 onClick={async () => {
+                  setManualRefreshing(true)
                   await queryClient.invalidateQueries({ queryKey: ['workspace'] })
                   await refetchWorkspace()
+                  setManualRefreshing(false)
                 }}
-                disabled={isLoading}
+                disabled={isLoading || manualRefreshing}
                 className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-interactive/10 rounded transition-colors disabled:opacity-50"
                 title="Refresh workspace"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${manualRefreshing ? 'animate-spin' : ''}`} />
               </button>
             </>
           )}
