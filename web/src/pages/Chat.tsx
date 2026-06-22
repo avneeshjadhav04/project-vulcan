@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import { api } from '../lib/api'
 import Sidebar from '../components/Sidebar'
@@ -17,6 +18,12 @@ import {
   PanelLeftOpen,
 } from 'lucide-react'
 import type { SelectedModel } from '../components/ProviderModelSelector'
+
+interface ProviderModels {
+  provider_id: string
+  provider_name: string
+  models: Array<{ id: string }>
+}
 
 const MIN_SIDEBAR_WIDTH = 240
 const MAX_SIDEBAR_WIDTH = 480
@@ -83,25 +90,48 @@ export default function Chat() {
   }, [selectedModel])
   const user = useAuthStore((s) => s.user)
 
-  // Auto-select first available model when providers load and none was saved.
+  // Watch provider list and keep selected model valid.
+  // Auto-select first available model when none was saved, and reset when
+  // the current provider/model is removed.
+  const { data: providersData } = useQuery({
+    queryKey: ['models'],
+    queryFn: async () => {
+      const res = await api.get('/models')
+      return (res.data?.providers || []) as ProviderModels[]
+    },
+  })
+
   useEffect(() => {
-    if (selectedModel.providerId) return
-    api.get('/models')
-      .then((res) => {
-        const providers = res.data?.providers || []
-        for (const p of providers) {
-          if (p.models && Array.isArray(p.models) && p.models.length > 0 && p.models[0]?.id) {
-            setSelectedModel({
-              providerId: p.provider_id,
-              providerName: p.provider_name,
-              modelId: p.models[0].id,
-            })
-            break
-          }
-        }
-      })
-      .catch(() => {})
-  }, [selectedModel.providerId])
+    if (!providersData) return
+
+    const providers = providersData
+    const firstAvailable = providers.find(
+      (p) => p.models && p.models.length > 0 && p.models[0]?.id
+    )
+
+    // No providers left: reset to empty state (shows 'No provider').
+    if (!firstAvailable) {
+      if (selectedModel.providerId) {
+        setSelectedModel({ providerId: '', modelId: '' })
+      }
+      return
+    }
+
+    // If a model is already selected, only change it when its provider/model
+    // is no longer available.
+    if (selectedModel.providerId) {
+      const providerStillAvailable = providers.some(
+        (p) => p.provider_id === selectedModel.providerId && p.models.some((m) => m.id === selectedModel.modelId)
+      )
+      if (providerStillAvailable) return
+    }
+
+    setSelectedModel({
+      providerId: firstAvailable.provider_id,
+      providerName: firstAvailable.provider_name,
+      modelId: firstAvailable.models[0].id,
+    })
+  }, [providersData])
 
   const handleModelChange = useCallback(async (sel: SelectedModel) => {
     if (sel.providerId === selectedModel.providerId && sel.modelId === selectedModel.modelId) return
