@@ -18,7 +18,11 @@ import {
   ChevronDown,
   ChevronRight,
   MoreHorizontal,
+  Download,
+  FileJson,
+  Loader2,
 } from 'lucide-react'
+import { useChatExport } from '../hooks/useChatExport'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface ChatItem {
@@ -435,6 +439,11 @@ export default function Sidebar({
             <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
             <span>{menuChat.is_archived ? 'Unarchive' : 'Archive'}</span>
           </button>
+          <SidebarExportMenuItem chatId={menuChat.id} onClose={() => {
+            setOpenMenuId(null)
+            setMenuPosition(null)
+            setPendingDeleteId(null)
+          }} />
           {pendingDeleteId === openMenuId ? (
             <button
               onClick={(e) => {
@@ -463,6 +472,67 @@ export default function Sidebar({
           )}
         </div>,
         document.body
+      )}
+    </div>
+  )
+}
+
+function SidebarExportMenuItem({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+  const [showSubmenu, setShowSubmenu] = useState(false)
+  const { exporting, exportChat } = useChatExport(chatId)
+
+  const handleExport = (format: string) => {
+    exportChat(format)
+    setShowSubmenu(false)
+    onClose()
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowSubmenu(!showSubmenu)
+        }}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+      >
+        <span className="flex items-center gap-2">
+          {exporting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-text-helper" />
+          ) : (
+            <Download className="h-3.5 w-3.5 shrink-0 text-text-helper" />
+          )}
+          <span>{exporting ? 'Exporting...' : 'Export'}</span>
+        </span>
+        <ChevronRight className="h-3 w-3 text-text-helper" />
+      </button>
+      {showSubmenu && (
+        <div
+          className="absolute left-full top-0 z-[110] ml-1 w-36 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl"
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExport('markdown')
+            }}
+            disabled={exporting === 'markdown'}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5 shrink-0" />
+            <span>{exporting === 'markdown' ? 'Exporting...' : 'Markdown'}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExport('json')
+            }}
+            disabled={exporting === 'json'}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+          >
+            <FileJson className="h-3.5 w-3.5 shrink-0" />
+            <span>{exporting === 'json' ? 'Exporting...' : 'JSON'}</span>
+          </button>
+        </div>
       )}
     </div>
   )

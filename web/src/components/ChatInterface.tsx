@@ -100,7 +100,7 @@ export default function ChatInterface({
     queryFn: async () => {
       const res = await api.get(`/chats/${effectiveChatId}`)
       return res.data as {
-        chat: { title: string; model_id: string; provider_id: string | null }
+        chat: { title: string; model_id: string; provider_id: string | null; is_pinned: number; is_archived: number }
         messages: MessageItem[]
         variants: VariantInfo[]
       }
@@ -402,6 +402,48 @@ export default function ChatInterface({
         optimisticTitle={optimisticTitle}
         chatId={effectiveChatId}
         sidebarOpen={sidebarOpen}
+        isPinned={chatData?.chat.is_pinned === 1}
+        isArchived={chatData?.chat.is_archived === 1}
+        onTogglePin={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { is_pinned: chatData?.chat.is_pinned === 1 ? 0 : 1 })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to update pin state')
+          }
+        }}
+        onToggleArchive={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { is_archived: chatData?.chat.is_archived === 1 ? 0 : 1 })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to update archive state')
+          }
+        }}
+        onRename={async (newTitle) => {
+          if (!effectiveChatId || !newTitle.trim()) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { title: newTitle.trim() })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to rename chat')
+          }
+        }}
+        onDelete={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.delete(`/chats/${effectiveChatId}`)
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+            navigate('/chat')
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to delete chat')
+          }
+        }}
       />
 
       {/* API Key Required Overlay */}
