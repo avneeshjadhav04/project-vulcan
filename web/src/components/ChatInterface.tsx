@@ -70,7 +70,6 @@ export default function ChatInterface({
   } | null>(null)
   const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
   const currentChatIdRef = useRef<string | undefined>(chatId)
-  const lastSyncedChatIdRef = useRef<string | null>(null)
   const previousChatIdRef = useRef<string | undefined>(chatId)
 
   const navigate = useNavigate()
@@ -117,16 +116,10 @@ export default function ChatInterface({
     },
   })
   const scroll = useChatScroll(effectiveChatId)
-  // Sync model from loaded chat only when switching chats, not on every refetch
-  useEffect(() => {
-    if (!effectiveChatId || !chatData?.chat.model_id) return
-    if (lastSyncedChatIdRef.current === effectiveChatId) return
-    lastSyncedChatIdRef.current = effectiveChatId
-    onModelChange?.({
-      providerId: chatData.chat.provider_id || '',
-      modelId: chatData.chat.model_id,
-    })
-  }, [effectiveChatId, chatData?.chat.model_id, chatData?.chat.provider_id, onModelChange])
+  // Model selection is global and persisted in localStorage. We no longer sync
+  // the selector to each chat's stored model on load, so refreshing a chat keeps
+  // the user's last globally selected model (and its providerName) instead of
+  // briefly flickering to the chat-stored ids.
 
   // Reset state when switching chats
   useEffect(() => {
