@@ -34,13 +34,17 @@ export default function ProviderModelSelector({
   const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
+  // Keep provider list loaded at all times so the collapsed button label can
+  // display the provider name alongside the model id consistently, even before
+  // the user opens the dropup.
   const { data, isLoading, error } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
       const res = await api.get('/models')
       return (res.data.providers || []) as ProviderModels[]
     },
-    enabled: open,
+    enabled: true,
+    staleTime: 5 * 60 * 1000,
     retry: false,
   })
 
