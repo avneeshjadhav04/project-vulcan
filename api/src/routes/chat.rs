@@ -889,8 +889,8 @@ pub fn router() -> Router<AppState> {
         )
         .route("/chats/:id/message", post(send_message))
         .route(
-            "/chats/:id/messages/:msg_id/edit-branch",
-            post(edit_message_branch),
+            "/chats/:id/messages/:msg_id/edit-replace",
+            post(edit_message_replace),
         )
         .route(
             "/chats/:id/messages/:msg_id/after",
@@ -1256,21 +1256,22 @@ async fn delete_chat(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /chats/:id/messages/:msg_id/edit-branch
-/// Non-destructive edit: creates a new user message sibling, deactivates the
-/// old user message and its descendants, returns the new message id so the
-/// frontend can stream a fresh assistant response to it.
+/// POST /chats/:id/messages/:msg_id/edit-replace
+/// Destructive edit: updates the user message content in-place and hard-deletes
+/// all descendant messages (assistant responses, tool messages, downstream).
+/// The edited message keeps its id and parent_id so it stays in the same position.
+/// Returns the same message id so the frontend can stream a fresh response.
 #[derive(Debug, serde::Deserialize)]
-struct EditBranchRequest {
+struct EditReplaceRequest {
     content: String,
     attachments: Option<Vec<String>>,
 }
 
-async fn edit_message_branch(
+async fn edit_message_replace(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
     Path((chat_id, msg_id)): Path<(String, String)>,
-    Json(req): Json<EditBranchRequest>,
+    Json(req): Json<EditReplaceRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let content = req.content.trim();
     if content.is_empty() || content.len() > MAX_MESSAGE_LENGTH {
@@ -1291,45 +1292,45 @@ async fn edit_message_branch(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Deactivate the old user message and all its descendants (recursive)
+    // Hard-delete all descendants of the old user message (recursive).
+    // This removes all assistant responses (including siblings/variants),
+    // tool messages, and any downstream messages.
     let _ = sqlx::query(
         "WITH RECURSIVE descendants(id) AS (
-            SELECT id FROM messages WHERE id = ?1
+            SELECT id FROM messages WHERE parent_id = ?1 AND chat_id = ?2
             UNION ALL
             SELECT m.id FROM messages m
             JOIN descendants d ON m.parent_id = d.id
             WHERE m.chat_id = ?2
          )
-         UPDATE messages SET is_active = 0
-         WHERE id IN (SELECT id FROM descendants) AND chat_id = ?2",
+         DELETE FROM messages WHERE id IN (SELECT id FROM descendants) AND chat_id = ?2",
     )
     .bind(&old_msg.id)
     .bind(&chat_id)
     .execute(&state.db)
     .await
     .map_err(|e| {
-        tracing::error!("Deactivate edit branch error: {}", e);
+        tracing::error!("Delete descendants error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Create the new user message as a sibling (same parent_id as the old one)
+    // Update the user message content in-place (same id, same parent_id)
     let attachments_json = req.attachments.as_ref().map(|a| serde_json::to_string(a).unwrap_or_default());
-    let new_id: String = sqlx::query_scalar(
-        "INSERT INTO messages (chat_id, role, content, attachments, parent_id, is_active)
-         VALUES (?1, 'user', ?2, ?3, ?4, 1) RETURNING id",
+    let _ = sqlx::query(
+        "UPDATE messages SET content = ?1, attachments = ?2 WHERE id = ?3 AND chat_id = ?4",
     )
-    .bind(&chat_id)
     .bind(content)
     .bind(attachments_json.as_deref())
-    .bind(&old_msg.parent_id)
-    .fetch_one(&state.db)
+    .bind(&msg_id)
+    .bind(&chat_id)
+    .execute(&state.db)
     .await
     .map_err(|e| {
-        tracing::error!("Insert edited user message error: {}", e);
+        tracing::error!("Update edited user message error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(json!({ "new_message_id": new_id })))
+    Ok(Json(json!({ "new_message_id": msg_id })))
 }
 
 async fn delete_messages_after(
