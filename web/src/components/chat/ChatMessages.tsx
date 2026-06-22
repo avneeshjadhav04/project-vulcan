@@ -37,6 +37,7 @@ interface ChatMessagesProps {
   toolExecutions: ToolExecution[]
   creatingChat: boolean
   chatId?: string
+  navigatedData?: { messages: MessageItem[]; variants: VariantInfo[] } | null
   messageMeta: Record<string, { provider: string; model: string; durationMs: number }>
   showScrollBtn: boolean
   scrollContainerRef: React.RefObject<HTMLDivElement>
@@ -57,6 +58,7 @@ function ChatMessagesInner({
   toolExecutions,
   creatingChat,
   chatId,
+  navigatedData,
   messageMeta,
   showScrollBtn,
   scrollContainerRef,
@@ -68,15 +70,18 @@ function ChatMessagesInner({
   onEditMessage,
   onSuggestion,
 }: ChatMessagesProps, ref: React.ForwardedRef<ChatMessagesRef>) {
+  const activeMessages = navigatedData?.messages ?? messages
+  const activeVariants = navigatedData?.variants ?? variants
+
   const visibleMessages = useMemo(
     () =>
-      messages.filter(
+      activeMessages.filter(
         (m) => !(m.role === 'assistant' && m.tool_name === 'tool_calls_init' && !m.content.trim())
       ),
-    [messages]
+    [activeMessages]
   )
 
-  // Fetch sibling lists for messages that have variants (total > 1).
+  // Fetch sibling lists for messages that have activeVariants (total > 1).
   // siblingCache: parent_id -> { ids: string[], total: number }
   // total is stored so we can detect when regeneration adds a new sibling
   // (total increases) and refetch the updated id list.
@@ -89,10 +94,10 @@ function ChatMessagesInner({
   }, [chatId])
 
   useEffect(() => {
-    if (!chatId || variants.length === 0) return
+    if (!chatId || activeVariants.length === 0) return
     // Refetch when: parent_id not in cache, OR cached total differs from
     // variant total (new sibling added by regeneration).
-    const toFetch = variants.filter((v) => {
+    const toFetch = activeVariants.filter((v) => {
       const cached = siblingCache[v.parent_id]
       return !cached || cached.total !== v.total
     })
@@ -112,7 +117,7 @@ function ChatMessagesInner({
     for (const v of toFetch) {
       fetchSiblings(v.parent_id, v.message_id, v.total)
     }
-  }, [chatId, variants, siblingCache])
+  }, [chatId, activeVariants, siblingCache])
 
   const lastAssistantIndex = useMemo(() => {
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
@@ -278,7 +283,7 @@ function ChatMessagesInner({
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
               const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
-                ? variants.find((v) => v.message_id === msg.id)
+                ? activeVariants.find((v) => v.message_id === msg.id)
                 : undefined
               const cached = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
               const siblingIds = cached?.ids

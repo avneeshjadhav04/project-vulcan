@@ -61,6 +61,13 @@ export default function ChatInterface({
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
   const [isGlobalDragging, setIsGlobalDragging] = useState(false)
   const [providerOverlayDismissed, setProviderOverlayDismissed] = useState(false)
+  // Frontend-only navigation state. When the user clicks < > we store the
+  // requested variant view here so it does not persist to the DB. Refreshing
+  // clears this state and get_chat returns the latest generated path again.
+  const [navigatedData, setNavigatedData] = useState<{
+    messages: MessageItem[]
+    variants: VariantInfo[]
+  } | null>(null)
   const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
   const currentChatIdRef = useRef<string | undefined>(chatId)
   const lastSyncedChatIdRef = useRef<string | null>(null)
@@ -127,6 +134,7 @@ export default function ChatInterface({
     setAttachedFiles([])
     setModelValidation(null)
     setValidatingModel(false)
+    setNavigatedData(null)
   }, [chatId])
 
   // Removed: We no longer load all past files into the input box.
@@ -194,6 +202,10 @@ export default function ChatInterface({
   const handleSend = useCallback(async (textOverride?: string, isRegenerate = false, regenerateFromMsgId?: string, existingUserMsgId?: string) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
+
+    // New messages/regenerations always extend the latest branch, not whatever
+    // older variant the user may be browsing in-session.
+    setNavigatedData(null)
 
     // Check if user has a provider before sending
     if (userData && !userData.has_provider) {
@@ -265,6 +277,7 @@ export default function ChatInterface({
     // Non-destructive regenerate: the backend handles deactivating the old
     // assistant message and inserting a new sibling. We just need to find the
     // user message content to resend.
+    setNavigatedData(null)
     const lastUserMessage = chatData?.messages?.slice().reverse().find((m) => m.role === 'user')
 
     if (lastUserMessage) {
@@ -277,6 +290,7 @@ export default function ChatInterface({
     try {
       // Destructive edit: update content in-place, hard-delete all descendants
       // (old responses + tool messages), then stream a fresh assistant response.
+      setNavigatedData(null)
       await api.post(`/chats/${effectiveChatId}/messages/${msgId}/edit-replace`, {
         content: newContent,
       })
@@ -290,12 +304,17 @@ export default function ChatInterface({
   const handleActivateVariant = useCallback(async (msgId: string) => {
     if (!effectiveChatId) return
     try {
-      await api.post(`/chats/${effectiveChatId}/messages/${msgId}/activate`)
-      await refetch()
+      // Navigation is frontend-only: load the selected variant view into memory
+      // without persisting is_active to the DB.
+      const res = await api.post(`/chats/${effectiveChatId}/messages/${msgId}/activate`)
+      setNavigatedData({
+        messages: res.data.messages || [],
+        variants: res.data.variants || [],
+      })
     } catch (err: any) {
       showError(err?.message ?? 'Failed to switch variant')
     }
-  }, [effectiveChatId, refetch, showError])
+  }, [effectiveChatId, showError])
 
   const dragCounterRef = useRef(0)
 
@@ -487,6 +506,7 @@ export default function ChatInterface({
         toolExecutions={toolExecutions}
         creatingChat={creatingChat}
         chatId={effectiveChatId}
+        navigatedData={navigatedData}
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
         scrollContainerRef={scroll.containerRef}
