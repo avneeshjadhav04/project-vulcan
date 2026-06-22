@@ -149,48 +149,5 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     println!("[DB] Running migrations...");
     sqlx::migrate!("../db/migrations").run(pool).await?;
     println!("[DB] Migrations complete");
-    migrate_legacy_nim_keys(pool).await?;
-    Ok(())
-}
-
-/// Migrate legacy user.encrypted_nim_key values into the providers table.
-async fn migrate_legacy_nim_keys(pool: &SqlitePool) -> Result<()> {
-    let users_with_nim: Vec<(String, String)> = sqlx::query_as(
-        "SELECT id, encrypted_nim_key FROM users WHERE encrypted_nim_key IS NOT NULL",
-    )
-    .fetch_all(pool)
-    .await?;
-
-    if users_with_nim.is_empty() {
-        return Ok(());
-    }
-
-    println!(
-        "[DB] Migrating {} legacy NIM keys to providers table...",
-        users_with_nim.len()
-    );
-
-    for (user_id, encrypted_key) in users_with_nim {
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM providers WHERE user_id = ?1 AND provider_type = 'nvidia' LIMIT 1",
-        )
-        .bind(&user_id)
-        .fetch_optional(pool)
-        .await?;
-
-        if existing.is_none() {
-            sqlx::query(
-                "INSERT INTO providers (user_id, name, provider_type, base_url, encrypted_api_key) VALUES (?1, 'NVIDIA NIM', 'nvidia', ?2, ?3)"
-            )
-            .bind(&user_id)
-            .bind("https://integrate.api.nvidia.com/v1")
-            .bind(&encrypted_key)
-            .execute(pool)
-            .await?;
-            println!("[DB] Migrated NIM key to provider for user {}", user_id);
-        }
-    }
-
-    println!("[DB] Legacy NIM key migration complete");
     Ok(())
 }

@@ -118,7 +118,7 @@ async fn auth_url(
 
     let cookie_value = format!("{}:{}", state_param, _verifier);
     let cookie_str = format!(
-        "oauth_state={}; HttpOnly; Path=/; Max-Age=600; SameSite=Lax",
+        "oauth_state={}; HttpOnly; Secure; Path=/; Max-Age=600; SameSite=Lax",
         cookie_value
     );
 
@@ -217,7 +217,7 @@ async fn oauth_callback(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let clear_cookie = "oauth_state=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax";
+    let clear_cookie = "oauth_state=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax";
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         axum::http::header::SET_COOKIE,

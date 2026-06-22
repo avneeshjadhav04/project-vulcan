@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useInView, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
+import ThemeLogo from '../components/ThemeLogo'
 import {
   MessageSquare,
   Terminal,
@@ -96,9 +97,8 @@ function TerminalWindow({
   return (
     <div
       className={`overflow-hidden rounded-glass border border-border-strong bg-layer/50 backdrop-blur-md shadow-2xl ${className}`}
-      style={{ boxShadow: '0 0 0 1px rgba(255,255,255,0.05), 0 25px 50px -12px rgba(0,0,0,0.5)' }}
     >
-      <div className="flex items-center gap-2 border-b border-white/5 bg-layer-hover/50 px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer-hover/50 px-4 py-3">
         <div className="flex items-center gap-1.5">
           <div className="h-3 w-3 rounded-full bg-[#ff5f56]" />
           <div className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
@@ -114,7 +114,7 @@ function TerminalWindow({
           className="pointer-events-none absolute inset-0 z-10 opacity-[0.03]"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+              'repeating-linear-gradient(0deg, transparent, transparent 2px, var(--color-text-primary) 2px, var(--color-text-primary) 4px)',
           }}
         />
         {children}
@@ -129,10 +129,13 @@ function Nav() {
   const navigate = useNavigate()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-background/60 backdrop-blur-xl transition-all">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border-subtle bg-background/60 backdrop-blur-xl transition-all">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <button onClick={() => navigate('/')} className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 drop-shadow-md" />
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="flex items-center gap-2"
+        >
+          <ThemeLogo className="h-10 w-10 drop-shadow-md" alt="" />
           <span className="text-sm font-semibold tracking-tight text-text-primary">Project Vulcan</span>
         </button>
         <div className="flex items-center gap-1">
@@ -262,7 +265,7 @@ function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
         >
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-white/10">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-layer/50 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-layer-hover">
             <Sparkles className="h-3.5 w-3.5 text-interactive" />
             <span className="text-interactive">Multi-Provider AI Platform</span>
           </div>
@@ -332,9 +335,9 @@ function FeatureCard({ icon: Icon, title, description, delay }: { icon: any; tit
       initial={{ opacity: 0, y: 16 }}
       animate={isInView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.5, delay, ease: "easeOut" }}
-      className="group relative overflow-hidden rounded-glass border border-white/5 bg-layer/40 p-8 backdrop-blur-md transition-all hover:border-interactive/30 hover:bg-layer/60 hover:-translate-y-1 hover:shadow-2xl hover:shadow-interactive/10"
+      className="group relative overflow-hidden rounded-glass border border-border-subtle bg-layer/40 p-8 backdrop-blur-md transition-all hover:border-interactive/30 hover:bg-layer/60 hover:-translate-y-1 hover:shadow-2xl hover:shadow-interactive/10"
     >
-      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-carbon bg-vibrant-gradient text-on-interactive shadow-lg">
         <Icon className="h-6 w-6" />
       </div>
       <h3 className="mb-2 text-sm font-semibold text-text-primary">{title}</h3>
@@ -483,11 +486,11 @@ function TerminalDemo() {
           initial={{ opacity: 0, y: 24 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="overflow-hidden rounded-glass border border-white/5 bg-layer/40 backdrop-blur-md shadow-2xl"
+          className="overflow-hidden rounded-glass border border-border-subtle bg-layer/40 backdrop-blur-md shadow-2xl"
         >
           <div className="grid items-center lg:grid-cols-2">
             <div className="p-10 lg:p-14">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-text-secondary">
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-layer/50 px-4 py-2 text-xs font-medium text-text-secondary">
                 <Terminal className="h-4 w-4 text-interactive" />
                 Sandboxed Environment
               </div>
@@ -514,8 +517,8 @@ function TerminalDemo() {
                 ))}
               </ul>
             </div>
-            <div className="border-t border-white/5 bg-layer/20 p-8 lg:border-t-0 lg:border-l lg:p-12">
-              <TerminalWindow title="sandbox — bash" className="border border-white/10 shadow-none">
+            <div className="border-t border-border-subtle bg-layer/20 p-8 lg:border-t-0 lg:border-l lg:p-12">
+              <TerminalWindow title="sandbox — bash" className="border border-border-subtle shadow-none">
                 <div className="h-[320px] overflow-y-auto p-5 font-mono text-[13px] leading-relaxed">
                   {commands.slice(0, currentStep).map((cmd, i) => (
                     <div key={i} className="mb-3">
@@ -600,15 +603,15 @@ function CTASection() {
   return (
     <section className="px-6 py-24">
       <div className="mx-auto max-w-4xl relative">
-        <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/10 blur-[80px] mix-blend-screen" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[400px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-interactive/10 blur-[80px] mix-blend-normal" />
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="rounded-glass border border-white/5 bg-layer/60 backdrop-blur-xl p-12 text-center shadow-2xl md:p-20"
+          className="rounded-glass border border-border-subtle bg-layer/60 backdrop-blur-xl p-12 text-center shadow-2xl md:p-20"
         >
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-lg">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-carbon bg-vibrant-gradient text-on-interactive shadow-lg">
             <Zap className="h-8 w-8" />
           </div>
           <h2 className="mb-4 text-3xl font-bold tracking-tight text-text-primary md:text-4xl">
@@ -647,12 +650,15 @@ function CTASection() {
 
 function Footer() {
   return (
-    <footer className="border-t border-white/5 bg-background/80 backdrop-blur-md px-6 py-10">
+    <footer className="border-t border-border-subtle bg-background/80 backdrop-blur-md px-6 py-10">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 md:flex-row">
-        <div className="flex items-center gap-3">
-          <img src="/VulcanLogo.png" alt="" className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" />
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="flex items-center gap-3"
+        >
+          <ThemeLogo className="h-10 w-10 opacity-80 transition-opacity hover:opacity-100" alt="" />
           <span className="text-xs font-semibold text-text-primary">Project Vulcan</span>
-        </div>
+        </button>
         <div className="flex items-center gap-4">
           <a
             href="https://github.com/avneeshjadhav04/project-vulcan"

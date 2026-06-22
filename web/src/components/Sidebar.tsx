@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
@@ -16,7 +17,12 @@ import {
   Star,
   ChevronDown,
   ChevronRight,
+  MoreHorizontal,
+  Download,
+  FileJson,
+  Loader2,
 } from 'lucide-react'
+import { useChatExport } from '../hooks/useChatExport'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface ChatItem {
@@ -45,6 +51,34 @@ export default function Sidebar({
   const [editTitle, setEditTitle] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['default']))
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement
+      const isMenu = target.closest('[data-chat-menu]')
+      const isTrigger = target.closest('[data-chat-menu-trigger]')
+      if (!isMenu && !isTrigger) {
+        setOpenMenuId(null)
+        setMenuPosition(null)
+        setPendingDeleteId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    function handleResize() {
+      setOpenMenuId(null)
+      setMenuPosition(null)
+      setPendingDeleteId(null)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const showError = (msg: string) => {
     setError(msg)
@@ -160,6 +194,8 @@ export default function Sidebar({
     return acc
   }, {} as Record<string, ChatItem[]>)
 
+  const menuChat = chats?.find(c => c.id === openMenuId)
+
   const renderChatItem = (chat: ChatItem) => (
     <motion.div
       layout
@@ -215,42 +251,25 @@ export default function Sidebar({
           </>
         )}
       </div>
-      <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="hidden shrink-0 group-hover:block">
         <button
-          onClick={(e) => togglePin(chat, e)}
-          className="p-1 text-text-helper transition-colors hover:text-support-warning"
-          title={chat.is_pinned ? 'Unpin' : 'Pin'}
-        >
-          <Star className={`h-3 w-3 ${chat.is_pinned ? 'fill-support-warning text-support-warning' : ''}`} />
-        </button>
-        <button
+          data-chat-menu-trigger
           onClick={(e) => {
             e.stopPropagation()
-            startEdit(chat)
-          }}
-          className="p-1 text-text-helper transition-colors hover:text-interactive"
-          title="Rename"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-        <button
-          onClick={(e) => toggleArchive(chat, e)}
-          className="p-1 text-text-helper transition-colors hover:text-link-primary"
-          title="Archive"
-        >
-          <Archive className="h-3 w-3" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (confirm('Delete this chat?')) {
-              deleteChat.mutate(chat.id)
+            const trigger = e.currentTarget as HTMLButtonElement
+            const rect = trigger.getBoundingClientRect()
+            if (openMenuId === chat.id) {
+              setOpenMenuId(null)
+              setMenuPosition(null)
+            } else {
+              setOpenMenuId(chat.id)
+              setMenuPosition({ top: rect.bottom + 4, left: rect.left })
             }
           }}
-          className="p-1 text-text-helper transition-colors hover:text-support-error"
-          title="Delete"
+          className="p-1 text-text-helper transition-colors hover:text-text-primary"
+          title="More actions"
         >
-          <Trash2 className="h-3 w-3" />
+          <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
       </div>
     </motion.div>
@@ -284,7 +303,7 @@ export default function Sidebar({
           createChat.mutate(selectedModel)
         }}
         disabled={createChat.isPending}
-        className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-carbon border border-white/10 bg-layer/50 py-2.5 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer/80 hover:shadow-md disabled:opacity-50"
+        className="mx-2 my-2 flex w-[calc(100%-1rem)] items-center justify-center gap-2 rounded-carbon border border-border-subtle bg-layer/50 py-2.5 text-sm font-medium text-text-primary shadow-sm transition-all hover:bg-layer/80 hover:shadow-md disabled:opacity-50"
       >
         <Plus className="h-4 w-4 text-interactive" />
         New Chat
@@ -372,6 +391,147 @@ export default function Sidebar({
           <MessageSquare className="mx-auto mb-3 h-8 w-8 text-border-subtle" />
           <p className="text-xs text-text-helper">No chats yet</p>
           <p className="mt-1 text-[10px] text-text-helper/70">Click &quot;New Chat&quot; to start</p>
+        </div>
+      )}
+
+      {menuChat && menuPosition && createPortal(
+        <div
+          data-chat-menu
+          className="fixed z-[100] w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
+          style={{ top: menuPosition.top, left: menuPosition.left }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              togglePin(menuChat, e)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+              setPendingDeleteId(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Star className={`h-3.5 w-3.5 shrink-0 ${menuChat.is_pinned ? 'fill-support-warning text-support-warning' : 'text-support-warning'}`} />
+            <span>{menuChat.is_pinned ? 'Unpin' : 'Pin'}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              startEdit(menuChat)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+              setPendingDeleteId(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Pencil className="h-3.5 w-3.5 shrink-0 text-interactive" />
+            <span>Rename</span>
+          </button>
+          <SidebarExportMenuItem chatId={menuChat.id} onClose={() => {
+            setOpenMenuId(null)
+            setMenuPosition(null)
+            setPendingDeleteId(null)
+          }} />
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleArchive(menuChat, e)
+              setOpenMenuId(null)
+              setMenuPosition(null)
+              setPendingDeleteId(null)
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+          >
+            <Archive className="h-3.5 w-3.5 shrink-0 text-link-primary" />
+            <span>{menuChat.is_archived ? 'Unarchive' : 'Archive'}</span>
+          </button>
+          {pendingDeleteId === openMenuId ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                deleteChat.mutate(menuChat.id)
+                setOpenMenuId(null)
+                setMenuPosition(null)
+                setPendingDeleteId(null)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-support-error transition-colors hover:bg-support-error/10"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+              <span>Confirm Delete?</span>
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setPendingDeleteId(menuChat.id)
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-support-error"
+            >
+              <Trash2 className="h-3.5 w-3.5 shrink-0 text-support-error" />
+              <span>Delete</span>
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+function SidebarExportMenuItem({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+  const [showSubmenu, setShowSubmenu] = useState(false)
+  const { exporting, exportChat } = useChatExport(chatId)
+
+  const handleExport = (format: string) => {
+    exportChat(format)
+    setShowSubmenu(false)
+    onClose()
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowSubmenu(!showSubmenu)
+        }}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary"
+      >
+        <span className="flex items-center gap-2">
+          {exporting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-text-helper" />
+          ) : (
+            <Download className="h-3.5 w-3.5 shrink-0 text-text-helper" />
+          )}
+          <span>{exporting ? 'Exporting...' : 'Export'}</span>
+        </span>
+        <ChevronRight className="h-3 w-3 text-text-helper" />
+      </button>
+      {showSubmenu && (
+        <div
+          className="absolute left-full top-0 z-[110] ml-1 w-36 rounded-carbon border border-border-subtle bg-layer shadow-xl"
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExport('markdown')
+            }}
+            disabled={exporting === 'markdown'}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5 shrink-0" />
+            <span>{exporting === 'markdown' ? 'Exporting...' : 'Markdown'}</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              handleExport('json')
+            }}
+            disabled={exporting === 'json'}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+          >
+            <FileJson className="h-3.5 w-3.5 shrink-0" />
+            <span>{exporting === 'json' ? 'Exporting...' : 'JSON'}</span>
+          </button>
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import ToolPermissionsPanel from '../components/ToolPermissionsPanel'
+import ThemeLogo from '../components/ThemeLogo'
 import {
   ArrowLeft,
   Key,
@@ -34,7 +35,12 @@ import {
   Settings2,
   MemoryStick,
   Puzzle,
+  BarChart3,
   LogOut,
+  MessageSquare,
+  Hash,
+  Clock,
+  TrendingUp,
 } from 'lucide-react'
 
 interface Provider {
@@ -64,7 +70,19 @@ const BUILT_IN_PROVIDERS = [
   { id: 'custom', name: 'Custom Provider', base_url: '' },
 ]
 
-type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'signout'
+interface UsageDay {
+  date: string
+  messages: number
+  tokens: number
+}
+
+interface UsageData {
+  total_messages: number
+  total_tokens: number
+  daily: UsageDay[]
+}
+
+type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'usage' | 'signout'
 
 const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
@@ -72,6 +90,7 @@ const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
   { id: 'memory', label: 'Memory', icon: <MemoryStick className="h-4 w-4" /> },
   { id: 'integrations', label: 'Integrations', icon: <Puzzle className="h-4 w-4" /> },
+  { id: 'usage', label: 'Usage', icon: <BarChart3 className="h-4 w-4" /> },
   { id: 'signout', label: 'Sign Out', icon: <LogOut className="h-4 w-4" /> },
 ]
 
@@ -85,6 +104,9 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const [usageError, setUsageError] = useState('')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations', 'signout']
@@ -150,12 +172,31 @@ export default function Settings() {
     }
   }, [user?.max_agent_steps])
 
+  useEffect(() => {
+    if (activeTab === 'usage') {
+      loadUsage()
+    }
+  }, [activeTab])
+
   // Sync active tab to URL
   useEffect(() => {
     if (activeTab !== searchParams.get('tab')) {
       setSearchParams({ tab: activeTab }, { replace: true })
     }
   }, [activeTab])
+
+  const loadUsage = async () => {
+    setUsageLoading(true)
+    setUsageError('')
+    try {
+      const res = await api.get('/usage')
+      setUsage(res.data || null)
+    } catch (err: any) {
+      setUsageError(err.response?.data?.error || 'Failed to load usage data')
+    } finally {
+      setUsageLoading(false)
+    }
+  }
 
   const loadProviders = async () => {
     setProvidersLoading(true)
@@ -316,12 +357,21 @@ export default function Settings() {
     }
   }
 
-  const handleToggleMemory = async () => {
+  const handleToggleSummarization = async () => {
     try {
-      await api.post('/me/memory')
+      await api.post('/me/summarization')
       await fetchMe()
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to toggle memory')
+      setError(err.response?.data?.error || 'Failed to toggle summarization')
+    }
+  }
+
+  const handleToggleCrossChatMemory = async () => {
+    try {
+      await api.post('/me/cross-chat-memory')
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to toggle cross-chat memory')
     }
   }
 
@@ -351,7 +401,7 @@ export default function Settings() {
           Back
         </button>
         <div className="flex items-center gap-2">
-          <img src="/VulcanLogo.png" alt="" className="h-14 w-14" />
+          <ThemeLogo className="h-14 w-14" alt="" />
           <h1 className="text-sm font-semibold text-text-primary">Settings</h1>
         </div>
       </header>
@@ -363,7 +413,10 @@ export default function Settings() {
             {TAB_ITEMS.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setError('') }}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setError('')
+                }}
                 className={`flex w-full items-center gap-2 rounded-carbon px-3 py-2.5 text-xs font-medium transition-all ${
                   activeTab === tab.id
                     ? 'bg-interactive/10 text-interactive shadow-inner'
@@ -424,7 +477,7 @@ export default function Settings() {
                 {/* Profile Card */}
                 <div className="border border-border-subtle bg-layer p-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center bg-interactive text-sm font-semibold text-on-interactive">
                       {user?.email?.charAt(0).toUpperCase() || 'U'}
                     </div>
                     <div>
@@ -471,7 +524,7 @@ export default function Settings() {
                           onClick={() => setTheme(t)}
                           className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
                             theme === t
-                              ? 'bg-interactive text-white'
+                              ? 'bg-interactive text-on-interactive'
                               : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
                           }`}
                         >
@@ -511,7 +564,7 @@ export default function Settings() {
                         setError('')
                         setApiKey('')
                       }}
-                      className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover"
+                      className="flex shrink-0 whitespace-nowrap items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-on-interactive transition-colors hover:bg-interactive-hover"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       Add Provider
@@ -675,13 +728,13 @@ export default function Settings() {
                 transition={{ duration: 0.2 }}
                 className="space-y-4"
               >
-                {/* Long-Term Memory */}
+                {/* Conversation Summarization */}
                 <div className="border border-border-subtle bg-layer p-5">
                   <div className="mb-4 flex items-start justify-between">
                     <div>
                       <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
                         <Brain className="h-4 w-4" />
-                        Long-Term Memory
+                        Conversation Summarization
                       </h2>
                       <p className="mt-1 text-xs text-text-helper">
                         Automatically summarize older conversations so the AI remembers context across long chats.
@@ -690,42 +743,68 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
                     <div className="flex items-center gap-3">
-                      <Brain className={`h-4 w-4 ${user?.memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                      <Brain className={`h-4 w-4 ${user?.summarization_enabled ? 'text-interactive' : 'text-text-helper'}`} />
                       <div>
-                        <p className="text-sm font-medium text-text-primary">Conversation Summarization</p>
+                        <p className="text-sm font-medium text-text-primary">Auto-Summarize</p>
                         <p className="text-[11px] text-text-helper">
-                          {user?.memory_enabled
+                          {user?.summarization_enabled
                             ? 'Enabled — AI will summarize older messages to maintain context'
                             : 'Disabled — AI sees all messages (may hit token limits)'}
                         </p>
                       </div>
                     </div>
                     <button
-                      onClick={handleToggleMemory}
+                      onClick={handleToggleSummarization}
                       className={`relative h-5 w-9 transition-colors ${
-                        user?.memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                        user?.summarization_enabled ? 'bg-interactive' : 'bg-border-subtle'
                       }`}
                     >
                       <motion.div
-                        animate={{ x: user?.memory_enabled ? 16 : 2 }}
+                        animate={{ x: user?.summarization_enabled ? 16 : 2 }}
                         transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                         className="absolute top-1 h-3 w-3 bg-white"
                       />
                     </button>
                   </div>
-                  <div className="mt-2 space-y-1.5">
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Triggers when a chat exceeds 26 messages</span>
+                </div>
+
+                {/* Cross-Chat Memory */}
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4 flex items-start justify-between">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                        <Brain className="h-4 w-4" />
+                        Cross-Chat Memory
+                      </h2>
+                      <p className="mt-1 text-xs text-text-helper">
+                        Allow the AI to remember facts across all your conversations. Disabled by default for privacy.
+                      </p>
                     </div>
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Keeps the last 6 messages verbatim for recent context</span>
+                  </div>
+                  <div className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <Brain className={`h-4 w-4 ${user?.cross_chat_memory_enabled ? 'text-interactive' : 'text-text-helper'}`} />
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">Cross-Chat Context</p>
+                        <p className="text-[11px] text-text-helper">
+                          {user?.cross_chat_memory_enabled
+                            ? 'Enabled — AI remembers facts across all chats'
+                            : 'Disabled — Each chat is completely isolated'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Summaries are stored per-chat and updated automatically</span>
-                    </div>
+                    <button
+                      onClick={handleToggleCrossChatMemory}
+                      className={`relative h-5 w-9 transition-colors ${
+                        user?.cross_chat_memory_enabled ? 'bg-interactive' : 'bg-border-subtle'
+                      }`}
+                    >
+                      <motion.div
+                        animate={{ x: user?.cross_chat_memory_enabled ? 16 : 2 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        className="absolute top-1 h-3 w-3 bg-white"
+                      />
+                    </button>
                   </div>
                 </div>
 
@@ -757,7 +836,7 @@ export default function Settings() {
                       <button
                         onClick={saveScratchpad}
                         disabled={scratchpadSaving}
-                        className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                        className="flex items-center gap-1 bg-interactive px-3 py-1.5 text-xs text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
                       >
                         {scratchpadSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                         Save Scratchpad
@@ -832,7 +911,7 @@ export default function Settings() {
                                     setClientSecret('')
                                     setShowConfigModal(true)
                                   }}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover"
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover"
                                 >
                                   <Key className="h-4 w-4" />
                                   Configure App
@@ -841,7 +920,7 @@ export default function Settings() {
                                 <button
                                   onClick={() => handleConnect(int.provider)}
                                   disabled={connectingProvider === int.provider}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
                                 >
                                   {connectingProvider === int.provider ? (
                                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -868,6 +947,76 @@ export default function Settings() {
                       <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
                     </div>
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Usage Tab */}
+            {activeTab === 'usage' && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                <div className="border border-border-subtle bg-layer p-5">
+                  <div className="mb-4">
+                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                      <BarChart3 className="h-4 w-4" />
+                      Usage Dashboard
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      Track your message and token usage over the last 7 days.
+                    </p>
+                  </div>
+
+                  {usageError ? (
+                    <div className="border border-support-error/30 bg-support-error/10 px-4 py-3 text-sm text-support-error">
+                      {usageError}
+                    </div>
+                  ) : usageLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                    </div>
+                  ) : usage ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <UsageSummaryCard
+                          icon={<MessageSquare className="h-4 w-4 text-interactive" />}
+                          label="Total Messages"
+                          value={usage.total_messages.toLocaleString()}
+                        />
+                        <UsageSummaryCard
+                          icon={<Hash className="h-4 w-4 text-support-success" />}
+                          label="Total Tokens"
+                          value={usage.total_tokens.toLocaleString()}
+                        />
+                        <UsageSummaryCard
+                          icon={<TrendingUp className="h-4 w-4 text-support-warning" />}
+                          label="Daily Average"
+                          value={
+                            usage.daily.length > 0
+                              ? Math.round(usage.total_messages / usage.daily.length)
+                              : 0
+                          }
+                        />
+                      </div>
+
+                      <div className="border border-border-subtle bg-background p-5">
+                        <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                          <Clock className="h-4 w-4" />
+                          Daily Breakdown (Last 7 Days)
+                        </h3>
+
+                        {usage.daily.length === 0 ? (
+                          <div className="py-8 text-center text-sm text-text-helper">No usage data yet</div>
+                        ) : (
+                          <DailyUsageBars daily={usage.daily} />
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </motion.div>
             )}
@@ -901,7 +1050,7 @@ export default function Settings() {
                     </div>
                     <button
                       onClick={logout}
-                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-white transition-colors hover:bg-support-error/80"
+                      className="flex items-center gap-1 bg-support-error px-3 py-1.5 text-xs text-on-support-error transition-colors hover:bg-support-error/80"
                     >
                       <LogOut className="h-3 w-3" />
                       Sign Out
@@ -984,7 +1133,7 @@ export default function Settings() {
                 <button
                   onClick={handleSaveConfig}
                   disabled={configSaving || !clientId.trim() || !clientSecret.trim()}
-                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
                 >
                   {configSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Save Credentials
@@ -1097,7 +1246,7 @@ export default function Settings() {
                   <button
                     onClick={handleAddProvider}
                     disabled={loading}
-                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-white transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
                   >
                     {loading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1112,6 +1261,70 @@ export default function Settings() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function UsageSummaryCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className="border border-border-subtle bg-background p-4">
+      <div className="mb-2 flex items-center gap-2">
+        {icon}
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-helper">{label}</span>
+      </div>
+      <p className="text-2xl font-semibold text-text-primary">{value}</p>
+    </div>
+  )
+}
+
+function DailyUsageBars({ daily }: { daily: UsageDay[] }) {
+  const maxMessages = Math.max(...daily.map((d) => d.messages), 1)
+  const maxTokens = Math.max(...daily.map((d) => d.tokens), 1)
+
+  return (
+    <div className="space-y-4">
+      {daily.map((day) => (
+        <div key={day.date} className="space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-text-secondary">
+              {new Date(day.date).toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </span>
+            <span className="text-text-helper">
+              {day.messages} msgs · {day.tokens.toLocaleString()} tokens
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 overflow-hidden rounded-full bg-border-subtle">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(day.messages / maxMessages) * 100}%` }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="h-2 rounded-full bg-interactive"
+              />
+            </div>
+            <div className="w-24 overflow-hidden rounded-full bg-border-subtle">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(day.tokens / maxTokens) * 100}%` }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+                className="h-2 rounded-full bg-support-success"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

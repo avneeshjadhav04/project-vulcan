@@ -3,17 +3,20 @@ import { Sparkles, Zap } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownComponents } from './markdownComponents'
+import { useThemeStore } from '../../stores/themeStore'
 
 export default function StreamingMessage({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
   return (
     <motion.div
+      id="msg-streaming"
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-3 py-3"
     >
       <div className="flex shrink-0 flex-col items-center pt-0.5">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-vibrant-gradient shadow-sm">
-          <Sparkles className="h-4 w-4 text-white" aria-hidden="true" />
+          <Sparkles className="h-4 w-4 text-on-interactive" aria-hidden="true" />
         </div>
       </div>
       <div className="min-w-0 max-w-[85%] flex-1">
@@ -26,8 +29,8 @@ export default function StreamingMessage({ content, isStreaming }: { content: st
             </span>
           )}
         </div>
-        <div className="inline-block border border-white/5 bg-layer/60 px-5 py-3 text-left text-text-primary shadow-sm backdrop-blur-md rounded-2xl rounded-tl-sm">
-          <div className="prose prose-invert prose-sm max-w-none">
+        <div className="inline-block border border-border-subtle bg-layer/60 px-5 py-3 text-left text-text-primary shadow-sm backdrop-blur-md rounded-2xl rounded-tl-sm">
+          <div className={`prose prose-sm max-w-none ${resolvedTheme === 'light' ? 'prose-slate' : 'prose-invert'}`}>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {content}
             </ReactMarkdown>

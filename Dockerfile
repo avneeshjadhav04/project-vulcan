@@ -10,9 +10,29 @@ RUN npm run build
 
 # Stage 2: Build Rust API
 FROM ubuntu:24.04 AS api-builder
-RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ \
+RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ unzip wget \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Vosk C library for linking
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
+        wget -q https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip \
+        && unzip -q vosk-linux-x86_64-0.3.45.zip \
+        && cp vosk-linux-x86_64-0.3.45/libvosk.so /usr/local/lib/ \
+        && ldconfig \
+        && rm -rf vosk-linux-x86_64-0.3.45*; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        wget -q https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-aarch64-0.3.45.zip \
+        && unzip -q vosk-linux-aarch64-0.3.45.zip \
+        && cp vosk-linux-aarch64-0.3.45/libvosk.so /usr/local/lib/ \
+        && ldconfig \
+        && rm -rf vosk-linux-aarch64-0.3.45*; \
+    fi
+
+# Ensure linker can find libvosk during compilation
+ENV LIBRARY_PATH=/usr/local/lib:$LIBRARY_PATH
+
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
@@ -21,7 +41,7 @@ RUN cargo build --release
 
 # Stage 3: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 python3 python3-pip unzip && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -30,6 +50,22 @@ RUN mkdir -p /data && chmod 777 /data
 
 # Create workspace directory for sandbox bind-mount
 RUN mkdir -p /app/workspace && chmod 755 /app/workspace
+
+# Install Vosk C library for runtime
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
+        wget -q https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip \
+        && unzip -q vosk-linux-x86_64-0.3.45.zip \
+        && cp vosk-linux-x86_64-0.3.45/libvosk.so /usr/local/lib/ \
+        && ldconfig \
+        && rm -rf vosk-linux-x86_64-0.3.45*; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        wget -q https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-aarch64-0.3.45.zip \
+        && unzip -q vosk-linux-aarch64-0.3.45.zip \
+        && cp vosk-linux-aarch64-0.3.45/libvosk.so /usr/local/lib/ \
+        && ldconfig \
+        && rm -rf vosk-linux-aarch64-0.3.45*; \
+    fi
 
 # Download and extract Ubuntu 24.04 LTS rootfs for proot sandbox
 # TARGETARCH is automatically set by Docker buildx for multi-arch builds
@@ -54,6 +90,15 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         libffi-dev libssl-dev python3-dev zlib1g-dev \
         file unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
+
+# Download Vosk model (40MB small English model)
+RUN mkdir -p /models/vosk \
+    && wget -q -O /tmp/vosk-model.zip \
+       https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+    && unzip -q /tmp/vosk-model.zip -d /tmp \
+    && mv /tmp/vosk-model-small-en-us-0.15/* /models/vosk/ \
+    && rm -rf /tmp/vosk-model.zip /tmp/vosk-model-small-en-us-0.15 \
+    && echo "Vosk model installed at /models/vosk"
 
 # Copy API binary
 COPY --from=api-builder /app/api/target/release/api /usr/local/bin/api

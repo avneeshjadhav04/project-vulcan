@@ -19,6 +19,7 @@ interface ProviderModels {
 
 export interface SelectedModel {
   providerId: string
+  providerName?: string
   modelId: string
 }
 
@@ -34,13 +35,17 @@ export default function ProviderModelSelector({
   const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
+  // Keep provider list loaded at all times so the collapsed button label can
+  // display the provider name alongside the model id consistently, even before
+  // the user opens the dropup.
   const { data, isLoading, error } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
       const res = await api.get('/models')
       return (res.data.providers || []) as ProviderModels[]
     },
-    enabled: open,
+    enabled: true,
+    staleTime: 5 * 60 * 1000,
     retry: false,
   })
 
@@ -92,21 +97,27 @@ export default function ProviderModelSelector({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-carbon border border-white/10 bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
+        className="flex w-full items-center justify-between gap-2 rounded-carbon border border-border-subtle bg-layer/50 px-3 py-2.5 text-left text-xs text-text-secondary shadow-sm backdrop-blur-md transition-all hover:bg-layer/70"
       >
         <div className="flex items-center gap-2 min-w-0">
           <Cpu className="h-3.5 w-3.5 shrink-0 text-interactive" />
           <span className="font-mono truncate text-[11px]">
-            {selectedItem ? `${selectedItem.providerName} / ${selectedItem.model.id}` : selected.modelId || 'Select model'}
+            {selectedItem
+              ? `${selectedItem.providerName} / ${selectedItem.model.id}`
+              : selected.providerName
+                ? `${selected.providerName} / ${selected.modelId}`
+                : selected.providerId
+                  ? `${selected.providerId} / ${selected.modelId || 'Select model'}`
+                  : 'No provider'}
           </span>
         </div>
         <ChevronUp className={`h-3.5 w-3.5 shrink-0 text-text-helper transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-hidden rounded-carbon border border-white/10 bg-layer/90 shadow-xl backdrop-blur-md">
+        <div className="absolute bottom-full right-0 z-50 mb-2 max-h-80 w-96 overflow-hidden rounded-carbon border border-border-subtle bg-layer shadow-xl">
           {/* Search */}
-          <div className="border-b border-white/5 p-2">
+          <div className="border-b border-border-subtle p-2">
             <div className="flex items-center gap-2 bg-background px-2.5 py-1.5">
               <Search className="h-3.5 w-3.5 text-text-helper" />
               <input
@@ -140,7 +151,7 @@ export default function ProviderModelSelector({
                 <button
                   onClick={() => {
                     setOpen(false)
-                    navigate('/settings')
+                    navigate('/settings?tab=providers')
                   }}
                   className="inline-flex items-center gap-1 text-xs text-interactive hover:text-link-hover"
                 >
@@ -156,6 +167,27 @@ export default function ProviderModelSelector({
               </div>
             )}
 
+            {/* Current selection pinned at top */}
+            {selectedItem && !search.trim() && (
+              <div>
+                <div className="sticky top-0 bg-layer px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-interactive">
+                  Current
+                </div>
+                <button
+                  key={`current:${selectedItem.providerId}:${selectedItem.model.id}`}
+                  onClick={() => {
+                    onSelect({ providerId: selectedItem.providerId, providerName: selectedItem.providerName, modelId: selectedItem.model.id })
+                    setOpen(false)
+                    setSearch('')
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs bg-interactive/10 text-interactive transition-colors hover:bg-layer-hover"
+                >
+                  <span className="font-mono break-all">{selectedItem.model.id}</span>
+                  <Check className="h-3.5 w-3.5 shrink-0 text-interactive ml-2" />
+                </button>
+              </div>
+            )}
+
             {Object.entries(grouped).map(([providerName, items]) => (
               <div key={providerName}>
                 <div className="sticky top-0 bg-layer px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">
@@ -165,7 +197,7 @@ export default function ProviderModelSelector({
                   <button
                     key={`${item.providerId}:${item.model.id}`}
                     onClick={() => {
-                      onSelect({ providerId: item.providerId, modelId: item.model.id })
+                      onSelect({ providerId: item.providerId, providerName: item.providerName, modelId: item.model.id })
                       setOpen(false)
                       setSearch('')
                     }}
@@ -175,9 +207,9 @@ export default function ProviderModelSelector({
                         : 'text-text-secondary'
                     }`}
                   >
-                    <span className="truncate font-mono">{item.model.id}</span>
+                    <span className="font-mono break-all">{item.model.id}</span>
                     {selected.providerId === item.providerId && selected.modelId === item.model.id && (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-interactive" />
+                      <Check className="h-3.5 w-3.5 shrink-0 text-interactive ml-2" />
                     )}
                   </button>
                 ))}

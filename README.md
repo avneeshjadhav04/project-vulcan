@@ -7,13 +7,16 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 ## Features
 
-- **AI Chat**: Real-time streaming chat with Server-Sent Events (SSE), smooth stream handoff, and live typing indicators
-- **Multi-Provider Support**: NVIDIA NIM, OpenAI, Groq, and any OpenAI-compatible provider — bring your own keys
-- **Syntax Highlighting**: Code blocks rendered with Shiki (`github-dark` theme) for 100+ languages
-- **Sandboxed Terminal**: Isolated command execution via `proot` + Ubuntu 24.04 LTS rootfs
-- **Mobile-First UX**: Responsive design with action buttons always visible, smart auto-scroll, and keyboard-friendly navigation
-- **Accessible**: ARIA labels, `aria-live` regions, focus rings, and keyboard navigation throughout
-- **Dark Mode Aesthetic**: IBM Plex fonts, strict dark mode, glassmorphism effects, smooth animations
+- **AI Chat**: Real-time streaming responses with Markdown rendering, Shiki syntax highlighting, message editing, regeneration, reactions, and file attachments
+- **Multi-Provider Models**: Bring your own keys for NVIDIA NIM, OpenAI, Groq, Anthropic, Ollama, OpenRouter, Together AI, or any OpenAI-compatible provider
+- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad, and Google Calendar/Gmail/Todoist integrations — with per-tool permissions (auto/ask/deny)
+- **Memory & Context**: Conversation summarization, opt-in cross-chat memory, and a persistent scratchpad the AI can read and update
+- **Workspace & Files**: User workspace file tree with upload/download, AI-generated artifact previews, and chat export to Markdown or JSON
+- **Sandboxed Terminal**: WebSocket terminal running commands inside an isolated Ubuntu/proot environment
+- **Integrations**: OAuth connections to Google (Calendar + Gmail) and Todoist
+- **Organization**: Pin, archive, folder, and tag chats; command palette; global chat search; and a usage dashboard
+- **Voice Input**: Browser microphone transcription via Vosk
+- **Accessible & Themed**: Dark/light/system theme, resizable panels, keyboard shortcuts (`Ctrl + `` for terminal), ARIA labels, and focus rings
 
 ## Tech Stack
 
@@ -31,7 +34,6 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 |----------|----------|---------|-------------|
 | `MASTER_KEY` | Yes | auto-generated | 32+ byte key for AES-256-GCM encryption |
 | `DATABASE_URL` | No | `sqlite:/data/vulcan.db` | SQLite database path |
-| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | Default NVIDIA NIM endpoint |
 | `APP_BASE_URL` | No | `http://localhost:8080` | Base URL for OAuth callbacks |
 | `PORT` | No | `8080` | HTTP port |
 | `DISABLE_TOOLS` | No | - | Set to `1` to disable AI tool execution |
@@ -60,29 +62,6 @@ cd api && cargo run
 cd web && npm install && npm run dev
 ```
 
-## Architecture
-
-```
-  CLIENT LAYER                    API LAYER                        DATA LAYER
-  ┌─────────────────┐             ┌─────────────────┐              ┌─────────────────┐
-  │                 │   HTTP/SSE  │                 │    SQLx      │                 │
-  │  React + Vite   │◄───────────►│  Rust / Axum    │◄────────────►│     SQLite      │
-  │  TypeScript     │   WebSocket │  Tokio async    │              │   (file DB)     │
-  │  Tailwind CSS   │             │                 │              │   (FTS5 search) │
-  └─────────────────┘             └────────┬────────┘              └─────────────────┘
-                                           │
-                           ┌───────────────┼───────────────┐
-                           │               │               │
-                           ▼               ▼               ▼
-                    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-                    │  NVIDIA /   │  │   proot +   │  │  JWT /      │
-                    │  OpenAI /   │  │ Ubuntu 24   │  │  Argon2     │
-                    │  Groq / etc │  │  (Sandbox)  │  │  AES-GCM    │
-                    │  (BYOK AI)  │  │             │  │             │
-                    └─────────────┘  └─────────────┘  └─────────────┘
-                     EXTERNAL            SANDBOX           SECURITY
-```
-
 ## Security
 
 - **Passwords**: Argon2id hashing
@@ -90,49 +69,6 @@ cd web && npm install && npm run dev
 - **Auth**: JWT via HttpOnly, SameSite=Strict cookies with CSRF tokens
 - **Terminal**: `proot` with Ubuntu 24.04 rootfs (filesystem isolation, no privileges required)
 - **JWT Fallback**: HS256 when RSA keys not available
-
-## Project Structure
-
-```
-├── api/                    # Rust API Gateway (Axum)
-│   ├── src/
-│   │   ├── main.rs         # Server & routing
-│   │   ├── auth.rs         # JWT, Argon2, AES-GCM
-│   │   ├── config.rs       # Environment config
-│   │   ├── db.rs           # SQLite connection
-│   │   ├── middleware.rs   # Auth guards, CSRF
-│   │   ├── models.rs       # Data types
-│   │   ├── providers/      # Multi-provider registry
-│   │   └── routes/
-│   │       ├── auth.rs     # Login/signup
-│   │       ├── chat.rs     # SSE streaming, tools, memory
-│   │       ├── models.rs   # Provider model fetcher
-│   │       └── terminal.rs # WS proxy
-│   ├── Cargo.toml
-│   └── Dockerfile
-├── web/                    # React Frontend
-│   ├── src/
-│   │   ├── pages/          # Landing, Login, Chat, Settings
-│   │   ├── components/
-│   │   │   ├── chat/       # Chat UI sub-components
-│   │   │   ├── ChatInterface.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── Terminal.tsx
-│   │   │   └── ProviderModelSelector.tsx
-│   │   ├── hooks/          # Reusable logic
-│   │   ├── stores/         # Zustand auth store
-│   │   └── lib/            # API client
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── Dockerfile
-├── db/migrations/          # SQLite schema
-├── secrets/                # JWT RSA keys (gitignored, local only)
-├── logos/                  # Brand assets
-├── docker-compose.dev.yml  # Development (build from source)
-├── Dockerfile              # Unified release build
-├── .env.example            # Environment template
-├── .gitignore              # Git exclusions
-```
 
 ## Branching Strategy
 

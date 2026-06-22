@@ -1,11 +1,12 @@
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::{delete, get, post},
     Router,
 };
 
+use calamine::Reader;
 use crate::{middleware::AppState, models::Claims};
 
 pub fn router() -> Router<AppState> {
@@ -26,6 +27,7 @@ pub fn router() -> Router<AppState> {
         .route("/workspace", get(list_user_workspace))
         .route("/workspace/folder", post(create_folder))
         .route("/workspace/file", post(create_file))
+        .route("/workspace/upload", post(upload_workspace_files))
         .route(
             "/workspace/*filename",
             get(download_user_workspace)
@@ -248,24 +250,149 @@ async fn download_file(
 }
 
 fn extract_text(data: &[u8], mime_type: &str, filename: &str) -> Option<String> {
+    // First, try MIME type detection
     match mime_type {
         "text/plain" | "text/markdown" | "text/x-markdown" => String::from_utf8(data.to_vec()).ok(),
         "text/csv" => String::from_utf8(data.to_vec()).ok(),
         "application/json" => String::from_utf8(data.to_vec()).ok(),
+        "application/pdf" => extract_pdf_text(data),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => extract_docx_text(data),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => extract_xlsx_text(data),
+        "application/vnd.ms-excel" => extract_xlsx_text(data),
         _ => {
             // For other types, try to detect by extension
             let ext = std::path::Path::new(filename)
                 .extension()
                 .and_then(|e| e.to_str())
-                .unwrap_or("");
-            match ext {
+                .unwrap_or("")
+                .to_lowercase();
+            match ext.as_str() {
                 "txt" | "md" | "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "json" | "csv"
                 | "yaml" | "yml" | "toml" | "html" | "css" | "sh" | "sql" | "go" | "c" | "cpp"
                 | "h" | "java" | "kt" | "swift" | "rb" | "php" | "xml" | "log" | "ini" | "cfg"
                 | "conf" => String::from_utf8(data.to_vec()).ok(),
+                "pdf" => extract_pdf_text(data),
+                "docx" => extract_docx_text(data),
+                "xlsx" | "xls" => extract_xlsx_text(data),
                 _ => None,
             }
         }
+    }
+}
+
+fn extract_pdf_text(data: &[u8]) -> Option<String> {
+    match lopdf::Document::load_mem(data) {
+        Ok(doc) => {
+            let mut text = String::new();
+            for (i, page) in doc.get_pages().iter().enumerate() {
+                if let Ok(page_text) = doc.extract_text(&[*page.0]) {
+                    if i > 0 {
+                        text.push('\n');
+                    }
+                    text.push_str(&page_text);
+                }
+            }
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        }
+        Err(e) => {
+            tracing::warn!("PDF extraction failed: {}", e);
+            None
+        }
+    }
+}
+
+fn extract_docx_text(data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    
+    // Read word/document.xml from the DOCX archive
+    let mut doc_xml = String::new();
+    {
+        let mut file = archive.by_name("word/document.xml").ok()?;
+        std::io::Read::read_to_string(&mut file, &mut doc_xml).ok()?;
+    }
+    
+    // Use xml-rs to parse the XML properly
+    let mut text = String::new();
+    let mut current_paragraph = String::new();
+    let mut in_text_element = false;
+    
+    let reader = xml::reader::EventReader::from_str(&doc_xml);
+    
+    for event in reader {
+        match event {
+            Ok(xml::reader::XmlEvent::StartElement { name, .. }) => {
+                if name.local_name == "t" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    in_text_element = true;
+                }
+            }
+            Ok(xml::reader::XmlEvent::EndElement { name }) => {
+                if name.local_name == "t" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    in_text_element = false;
+                } else if name.local_name == "p" && name.namespace.as_deref().unwrap_or("").contains("w") {
+                    // End of paragraph
+                    if !current_paragraph.is_empty() {
+                        if !text.is_empty() {
+                            text.push('\n');
+                        }
+                        text.push_str(&current_paragraph);
+                        current_paragraph.clear();
+                    }
+                }
+            }
+            Ok(xml::reader::XmlEvent::Characters(content)) => {
+                if in_text_element {
+                    current_paragraph.push_str(&content);
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    // Don't forget the last paragraph if it wasn't ended
+    if !current_paragraph.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&current_paragraph);
+    }
+    
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text.trim().to_string())
+    }
+}
+
+fn extract_xlsx_text(data: &[u8]) -> Option<String> {
+    let cursor = std::io::Cursor::new(data);
+    let mut workbook = calamine::Xlsx::new(cursor).ok()?;
+    
+    let mut text = String::new();
+    if let Some(Ok(range)) = workbook.worksheet_range_at(0) {
+        let rows = range.rows();
+        for row in rows {
+            let row_text: Vec<String> = row
+                .iter()
+                .map(|cell| cell.to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !row_text.is_empty() {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&row_text.join("\t"));
+            }
+        }
+    }
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
     }
 }
 
@@ -346,6 +473,110 @@ async fn create_file(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::CREATED)
+}
+
+#[derive(serde::Deserialize)]
+struct UploadWorkspaceQuery {
+    path: Option<String>,
+    overwrite: Option<bool>,
+}
+
+async fn upload_workspace_files(
+    _state: State<AppState>,
+    claims: axum::Extension<Claims>,
+    Query(query): Query<UploadWorkspaceQuery>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
+    let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
+    let user_workspace_dir = std::path::Path::new(&workspace_dir).join(&claims.sub);
+    tokio::fs::create_dir_all(&user_workspace_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let target_folder = query.path.unwrap_or_default();
+    let overwrite = query.overwrite.unwrap_or(false);
+    let base_dir = if target_folder.is_empty() {
+        user_workspace_dir.clone()
+    } else {
+        if !is_safe_path(&target_folder) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        user_workspace_dir.join(&target_folder)
+    };
+
+    // Collect all files first to check for conflicts
+    let mut files_to_write: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut conflicts: Vec<String> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?
+    {
+        let name = field.name().unwrap_or("unknown").to_string();
+        if name != "file" {
+            continue;
+        }
+
+        let raw_filename = field.file_name().unwrap_or("unnamed");
+        let _filename = std::path::Path::new(raw_filename)
+            .file_name()
+            .unwrap_or(std::ffi::OsStr::new("unnamed"))
+            .to_string_lossy()
+            .replace("\"", "")
+            .replace("\r", "")
+            .replace("\n", "");
+
+        let relative_path = raw_filename.replace("\\", "/").trim_start_matches('/').to_string();
+        if relative_path.is_empty() {
+            continue;
+        }
+
+        let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
+        let size = data.len() as i64;
+
+        if size > 50 * 1024 * 1024 {
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
+
+        let file_path = base_dir.join(&relative_path);
+        if file_path.exists() && !overwrite {
+            conflicts.push(relative_path.clone());
+        }
+        files_to_write.push((relative_path, data.to_vec()));
+    }
+
+    if !conflicts.is_empty() && !overwrite {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "conflicts": conflicts,
+                "message": "Some files already exist. Set overwrite=true to replace them."
+            })),
+        ));
+    }
+
+    let mut uploaded_files = Vec::new();
+    for (relative_path, data) in files_to_write {
+        let file_path = base_dir.join(&relative_path);
+        if let Some(parent) = file_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+        tokio::fs::write(&file_path, &data)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        uploaded_files.push(serde_json::json!({
+            "path": relative_path,
+            "size_bytes": data.len(),
+        }));
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "files": uploaded_files })),
+    ))
 }
 
 async fn save_user_workspace(

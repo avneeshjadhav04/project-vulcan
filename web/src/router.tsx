@@ -4,7 +4,6 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Chat from './pages/Chat'
 import Settings from './pages/Settings'
-import UsageDashboard from './pages/UsageDashboard'
 
 import CommandPalette from './components/CommandPalette'
 import GlobalSearch from './components/GlobalSearch'
@@ -53,10 +52,6 @@ export const router = createBrowserRouter([
       {
         path: '/settings',
         element: <Settings />,
-      },
-      {
-        path: '/usage',
-        element: <UsageDashboard />,
       },
     ],
   },

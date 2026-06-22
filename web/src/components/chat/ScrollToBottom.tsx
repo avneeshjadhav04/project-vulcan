@@ -6,13 +6,14 @@ export default function ScrollToBottom({ onClick, visible }: { onClick: () => vo
     <AnimatePresence>
       {visible && (
         <motion.button
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.9, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 10 }}
           onClick={onClick}
-          aria-label="Scroll to bottom"
-          className="absolute bottom-20 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center border border-border-subtle bg-layer shadow-md text-text-helper transition-colors hover:border-border-strong hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-focus"
+          aria-label="Scroll to latest messages"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-border-subtle bg-layer px-4 py-2.5 shadow-lg text-text-secondary transition-all hover:bg-layer-hover hover:text-text-primary hover:shadow-xl hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-interactive"
         >
+          <span className="text-xs font-medium">Latest</span>
           <ChevronDown className="h-4 w-4" />
         </motion.button>
       )}

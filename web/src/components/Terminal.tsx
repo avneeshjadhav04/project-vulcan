@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal as XTerm } from 'xterm'
+import { Terminal as XTerm, type ITheme } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -15,9 +15,18 @@ import {
   ChevronDown,
   ArrowUpToLine,
   ArrowDownToLine,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
+import { useThemeStore } from '../stores/themeStore'
 
-export default function Terminal() {
+export default function Terminal({ 
+  isMaximized = false,
+  onToggleMaximize,
+}: {
+  isMaximized?: boolean
+  onToggleMaximize?: () => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
@@ -27,6 +36,53 @@ export default function Terminal() {
   const wsRef = useRef<WebSocket | null>(null)
   const [reconnectKey, setReconnectKey] = useState(0)
   const [lastError, setLastError] = useState('')
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
+
+  const darkTheme: ITheme = {
+    background: '#161616',
+    foreground: '#c6c6c6',
+    cursor: '#0f62fe',
+    selectionBackground: 'rgba(15, 98, 254, 0.3)',
+    black: '#161616',
+    red: '#fa4d56',
+    green: '#42be65',
+    yellow: '#f1c21b',
+    blue: '#78a9ff',
+    magenta: '#be95ff',
+    cyan: '#33b1ff',
+    white: '#f4f4f4',
+    brightBlack: '#525252',
+    brightRed: '#ff8d8d',
+    brightGreen: '#6fdc8c',
+    brightYellow: '#f1c21b',
+    brightBlue: '#a6c8ff',
+    brightMagenta: '#d4bbff',
+    brightCyan: '#82cfff',
+    brightWhite: '#ffffff',
+  }
+
+  const lightTheme: ITheme = {
+    background: '#eceef2',
+    foreground: '#2a3441',
+    cursor: '#0f62fe',
+    selectionBackground: 'rgba(15, 98, 254, 0.2)',
+    black: '#2a3441',
+    red: '#b91c1c',
+    green: '#166534',
+    yellow: '#9a4f0b',
+    blue: '#0f62fe',
+    magenta: '#6d4d8c',
+    cyan: '#2563eb',
+    white: '#f3f4f7',
+    brightBlack: '#525b69',
+    brightRed: '#c2410c',
+    brightGreen: '#15803d',
+    brightYellow: '#b45309',
+    brightBlue: '#4589ff',
+    brightMagenta: '#7c5d9c',
+    brightCyan: '#3b82f6',
+    brightWhite: '#f7f8f9',
+  }
 
   const initTerminal = useCallback(() => {
     if (!containerRef.current) return () => {}
@@ -36,28 +92,7 @@ export default function Terminal() {
     setLastError('')
 
     const term = new XTerm({
-      theme: {
-        background: '#161616',
-        foreground: '#c6c6c6',
-        cursor: '#0f62fe',
-        selectionBackground: 'rgba(15, 98, 254, 0.3)',
-        black: '#161616',
-        red: '#fa4d56',
-        green: '#42be65',
-        yellow: '#f1c21b',
-        blue: '#78a9ff',
-        magenta: '#be95ff',
-        cyan: '#33b1ff',
-        white: '#f4f4f4',
-        brightBlack: '#525252',
-        brightRed: '#ff8d8d',
-        brightGreen: '#6fdc8c',
-        brightYellow: '#f1c21b',
-        brightBlue: '#a6c8ff',
-        brightMagenta: '#d4bbff',
-        brightCyan: '#82cfff',
-        brightWhite: '#ffffff',
-      },
+      theme: resolvedTheme === 'light' ? lightTheme : darkTheme,
       fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Fira Code", monospace',
       fontSize: 13,
       lineHeight: 1.5,
@@ -210,6 +245,13 @@ export default function Terminal() {
     return cleanup
   }, [initTerminal])
 
+  // Update terminal theme at runtime when the app theme changes.
+  useEffect(() => {
+    const term = xtermRef.current
+    if (!term) return
+    term.options.theme = resolvedTheme === 'light' ? { ...lightTheme } : { ...darkTheme }
+  }, [resolvedTheme])
+
   const handleClear = () => {
     xtermRef.current?.clear()
     if (connected) {
@@ -305,6 +347,15 @@ export default function Terminal() {
             <ArrowDownToLine className="h-3 w-3" />
           </button>
           <div className="mx-1 h-3 w-px bg-border-subtle" />
+          {onToggleMaximize && (
+            <button
+              onClick={onToggleMaximize}
+              className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+              title={isMaximized ? 'Minimize terminal' : 'Maximize terminal'}
+            >
+              {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+            </button>
+          )}
           <button
             onClick={handleClear}
             className="flex items-center gap-1 p-1.5 text-[11px] text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"

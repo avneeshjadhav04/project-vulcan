@@ -8,10 +8,10 @@ pub struct User {
     pub email: String,
     #[serde(skip_serializing)]
     pub password_hash: String,
-    #[serde(skip_serializing)]
-    pub encrypted_nim_key: Option<String>,
     pub role: String,
     pub memory_enabled: i32,
+    pub summarization_enabled: i32,
+    pub cross_chat_memory_enabled: i32,
     pub tools_enabled: i32,
     pub max_agent_steps: i32,
     pub created_at: DateTime<Utc>,
@@ -49,6 +49,8 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     pub tool_name: Option<String>,
     pub parent_id: Option<String>,
+    pub attachments: Option<String>,
+    pub is_active: i32,
     pub created_at: DateTime<Utc>,
 }
 
@@ -144,11 +146,11 @@ pub struct SendMessageRequest {
     pub content: String,
     pub is_regenerate: Option<bool>,
     pub parent_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateNimKeyRequest {
-    pub api_key: String,
+    pub attachments: Option<Vec<String>>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub regenerate_from_msg_id: Option<String>,
+    pub existing_user_msg_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

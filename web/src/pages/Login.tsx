@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+import ThemeLogo from '../components/ThemeLogo'
 import type { AxiosError } from 'axios'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -62,7 +63,7 @@ function PasswordStrength({ password }: { password: string }) {
             key={i}
             className="h-0.5 flex-1 transition-all duration-200"
             style={{
-              backgroundColor: i <= strength ? colors[strength - 1] : '#393939',
+              backgroundColor: i <= strength ? colors[strength - 1] : 'var(--color-layer-active)',
             }}
           />
         ))}
@@ -200,7 +201,7 @@ export default function Login() {
             onClick={() => navigate('/')}
             className="flex items-center gap-2 text-text-primary transition-opacity hover:opacity-80"
           >
-            <img src="/VulcanLogo.png" alt="" className="h-16 w-16" />
+            <ThemeLogo className="h-16 w-16" alt="" />
             <div>
               <span className="text-sm font-semibold tracking-tight">Project Vulcan</span>
               <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
@@ -216,7 +217,7 @@ export default function Login() {
           </h2>
           <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
             A secure, self-hosted AI platform. Chat with the latest models,
-            execute terminal commands safely, and bring your own NVIDIA NIM key.
+            execute terminal commands safely, and bring your own AI provider API key.
           </p>
 
           <div className="space-y-3 pt-2">
@@ -248,7 +249,7 @@ export default function Login() {
           </div>
 
           <div className="mb-6 flex items-center gap-2 lg:hidden">
-            <img src="/VulcanLogo.png" alt="" className="h-20 w-20" />
+            <ThemeLogo className="h-20 w-20" alt="" />
             <div>
               <h1 className="text-lg font-semibold text-text-primary">Project Vulcan</h1>
               <p className="text-xs text-text-helper">Personal AI Assistant</p>
@@ -352,7 +353,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 flex w-full items-center justify-center gap-2 bg-interactive py-3 text-sm font-normal text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+                className="mt-2 flex w-full items-center justify-center gap-2 bg-interactive py-3 text-sm font-normal text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

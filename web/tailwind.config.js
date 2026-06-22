@@ -29,6 +29,12 @@ export default {
         'support-warning': 'var(--color-support-warning)',
         'support-info': 'var(--color-support-info)',
         focus: 'var(--color-focus)',
+        'on-interactive': 'var(--color-on-interactive)',
+        'on-support-error': 'var(--color-on-support-error)',
+        'on-support-warning': 'var(--color-on-support-warning)',
+        'surface-elevated': 'var(--color-surface-elevated)',
+        white: 'var(--color-white)',
+        black: 'var(--color-black)',
       },
       fontFamily: {
         sans: ['"Inter"', 'sans-serif'],

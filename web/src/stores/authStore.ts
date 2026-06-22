@@ -4,10 +4,11 @@ interface User {
   id: string
   email: string
   role: string
-  has_nim_key: boolean
   has_provider: boolean
   provider_count: number
   memory_enabled: boolean
+  summarization_enabled: boolean
+  cross_chat_memory_enabled: boolean
   tools_enabled: boolean
   max_agent_steps: number
 }

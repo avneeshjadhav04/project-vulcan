@@ -8,7 +8,6 @@ pub struct Config {
     pub jwt_secret_path: Option<String>,
     pub jwt_fallback_secret: Vec<u8>,
     pub master_key: [u8; 32],
-    pub nim_base_url: String,
     pub bind_addr: String,
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
@@ -17,6 +16,7 @@ pub struct Config {
     pub google_client_secret: Option<String>,
     pub todoist_client_id: Option<String>,
     pub todoist_client_secret: Option<String>,
+    pub vosk_model_dir: String,
 }
 
 fn load_or_generate_master_key() -> Result<[u8; 32]> {
@@ -143,13 +143,15 @@ impl Config {
             println!("[CONFIG] CORS restricted to predefined development origins");
         }
 
+        let vosk_model_dir = env::var("VOSK_MODEL_DIR")
+            .unwrap_or_else(|_| "/models/vosk".to_string());
+        println!("[CONFIG] VOSK_MODEL_DIR={}", vosk_model_dir);
+
         Ok(Self {
             database_url,
             jwt_secret_path,
             jwt_fallback_secret,
             master_key,
-            nim_base_url: env::var("NIM_BASE_URL")
-                .unwrap_or_else(|_| "https://integrate.api.nvidia.com/v1".to_string()),
             bind_addr,
             cookie_secure,
             cors_origin,
@@ -159,6 +161,7 @@ impl Config {
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
             todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
             todoist_client_secret: env::var("TODOIST_CLIENT_SECRET").ok(),
+            vosk_model_dir,
         })
     }
 }

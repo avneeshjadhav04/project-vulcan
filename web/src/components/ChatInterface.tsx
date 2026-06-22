@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useChatStream } from '../hooks/useChatStream'
-import { useVoiceInput } from '../hooks/useVoiceInput'
+import { useVoiceStreaming } from '../hooks/useVoiceStreaming'
 import { useChatScroll } from '../hooks/useChatScroll'
 import type { SelectedModel } from './ProviderModelSelector'
 import type { UploadedFile } from './FileUpload'
@@ -20,6 +21,7 @@ import {
   Settings,
   ExternalLink,
   Paperclip,
+  X,
 } from 'lucide-react'
 
 interface MessageItem {
@@ -28,16 +30,27 @@ interface MessageItem {
   content: string
   created_at: string
   tokens_used?: number
+  tool_name?: string
+  parent_id?: string
+}
+
+interface VariantInfo {
+  message_id: string
+  parent_id: string
+  total: number
+  role: string
 }
 
 export default function ChatInterface({
   chatId,
   selectedModel,
   onModelChange,
+  sidebarOpen,
 }: {
   chatId?: string
   selectedModel: SelectedModel
   onModelChange?: (selection: SelectedModel) => void
+  sidebarOpen?: boolean
 }) {
   const [input, setInput] = useState('')
   const [effectiveChatId, setEffectiveChatId] = useState<string | undefined>(chatId)
@@ -47,42 +60,39 @@ export default function ChatInterface({
   const [validatingModel, setValidatingModel] = useState(false)
   const [messageMeta, setMessageMeta] = useState<Record<string, { provider: string; model: string; durationMs: number }>>({})
   const [isGlobalDragging, setIsGlobalDragging] = useState(false)
-  const pendingMetaRef = useRef<{ provider: string; model: string; durationMs: number } | null>(null)
+  const [providerOverlayDismissed, setProviderOverlayDismissed] = useState(false)
+  // Frontend-only navigation state. When the user clicks < > we store the
+  // requested variant view here so it does not persist to the DB. Refreshing
+  // clears this state and get_chat returns the latest generated path again.
+  const [navigatedData, setNavigatedData] = useState<{
+    messages: MessageItem[]
+    variants: VariantInfo[]
+  } | null>(null)
+  const pendingMetaRef = useRef<Record<string, { provider: string; model: string; durationMs: number } | undefined>>({})
+  const currentChatIdRef = useRef<string | undefined>(chatId)
+  const previousChatIdRef = useRef<string | undefined>(chatId)
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const [streamState, streamActions] = useChatStream()
-  const { streaming, streamedContent, sendError, toolExecution, creatingChat } = streamState
+  const [streamState, streamActions] = useChatStream(effectiveChatId)
+  const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
-  const inputRef = useRef(input)
-  useEffect(() => { inputRef.current = input }, [input])
-  const voiceInitialText = useRef('')
 
-  const voice = useVoiceInput({
-    onStart: () => {
-      voiceInitialText.current = inputRef.current
-    },
-    onInterim: (text) => {
-      const prefix = voiceInitialText.current
-      setInput(prefix ? `${prefix} ${text}`.trim() : text)
-    },
-    onTranscript: (text) => {
-      const prefix = voiceInitialText.current
-      const finalText = prefix ? `${prefix} ${text}`.trim() : text
-      setInput(finalText)
-      if (finalText.trim()) {
-        handleSend(finalText.trim())
-      }
-    },
-  })
+  const voice = useVoiceStreaming()
 
   useEffect(() => {
+    const previousChatId = previousChatIdRef.current
+    previousChatIdRef.current = chatId
+    if (previousChatId && previousChatId !== chatId) {
+      queryClient.removeQueries({ queryKey: ['chat', previousChatId] })
+    }
     setEffectiveChatId(chatId)
     setOptimisticTitle(undefined)
-  }, [chatId])
+    currentChatIdRef.current = chatId
+  }, [chatId, queryClient])
 
   // Sync selected model to chat's stored provider+model when chat loads
   const { data: chatData, refetch, isError } = useQuery({
@@ -90,8 +100,9 @@ export default function ChatInterface({
     queryFn: async () => {
       const res = await api.get(`/chats/${effectiveChatId}`)
       return res.data as {
-        chat: { title: string; model_id: string; provider_id: string | null }
+        chat: { title: string; model_id: string; provider_id: string | null; is_pinned: number; is_archived: number }
         messages: MessageItem[]
+        variants: VariantInfo[]
       }
     },
     enabled: !!effectiveChatId,
@@ -101,86 +112,131 @@ export default function ChatInterface({
     queryKey: ['me'],
     queryFn: async () => {
       const res = await api.get('/me')
-      return res.data as { has_nim_key: boolean; has_provider: boolean; tools_enabled: boolean }
+      return res.data as { has_provider: boolean; tools_enabled: boolean }
     },
   })
   const scroll = useChatScroll(effectiveChatId)
-  // Sync model from loaded chat
-  useEffect(() => {
-    if (chatData?.chat.model_id) {
-      onModelChange?.({
-        providerId: chatData.chat.provider_id || '',
-        modelId: chatData.chat.model_id,
-      })
-    }
-  }, [chatData?.chat.model_id, chatData?.chat.provider_id, onModelChange])
+  // Model selection is global and persisted in localStorage. We no longer sync
+  // the selector to each chat's stored model on load, so refreshing a chat keeps
+  // the user's last globally selected model (and its providerName) instead of
+  // briefly flickering to the chat-stored ids.
 
   // Reset state when switching chats
   useEffect(() => {
     setInput('')
     setAttachedFiles([])
-    setMessageMeta({})
-    pendingMetaRef.current = null
+    setModelValidation(null)
+    setValidatingModel(false)
+    setNavigatedData(null)
   }, [chatId])
 
   // Removed: We no longer load all past files into the input box.
   // attachedFiles only represents files about to be sent.
 
   // Validate model when chat loads
+  const validationRunRef = useRef(0)
   useEffect(() => {
     const currentModelId = chatData?.chat.model_id
     const currentProviderId = chatData?.chat.provider_id
     if (!currentModelId || !currentProviderId || !userData?.has_provider) {
       setModelValidation(null)
+      setValidatingModel(false)
       return
     }
 
-    let cancelled = false
+    const runId = ++validationRunRef.current
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
     setValidatingModel(true)
 
-    api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`)
+    api.get(`/models/validate?provider_id=${encodeURIComponent(currentProviderId)}&model_id=${encodeURIComponent(currentModelId)}`, {
+      signal: controller.signal,
+    })
       .then((res) => {
-        if (!cancelled) setModelValidation(res.data)
+        clearTimeout(timeoutId)
+        if (validationRunRef.current === runId) setModelValidation(res.data)
       })
       .catch(() => {
-        if (!cancelled) setModelValidation(null)
+        clearTimeout(timeoutId)
+        if (validationRunRef.current === runId) setModelValidation(null)
       })
       .finally(() => {
-        if (!cancelled) setValidatingModel(false)
+        clearTimeout(timeoutId)
+        if (validationRunRef.current === runId) setValidatingModel(false)
       })
 
-    return () => { cancelled = true }
+    return () => {
+      controller.abort()
+      clearTimeout(timeoutId)
+    }
   }, [chatData?.chat.model_id, chatData?.chat.provider_id, userData?.has_provider])
 
   // Assign pending meta to last assistant message
   useEffect(() => {
-    if (pendingMetaRef.current && chatData?.messages && chatData.messages.length > 0) {
+    if (effectiveChatId && pendingMetaRef.current[effectiveChatId] && chatData?.messages && chatData.messages.length > 0) {
       const lastMsg = chatData.messages[chatData.messages.length - 1]
       if (lastMsg.role === 'assistant') {
-        setMessageMeta((prev) => ({ ...prev, [lastMsg.id]: pendingMetaRef.current! }))
-        pendingMetaRef.current = null
+        setMessageMeta((prev) => ({ ...prev, [lastMsg.id]: pendingMetaRef.current[effectiveChatId]! }))
+        pendingMetaRef.current = { ...pendingMetaRef.current, [effectiveChatId]: undefined }
       }
     }
-  }, [chatData?.messages])
+  }, [chatData?.messages, effectiveChatId])
 
   // Smoothly clear streamed content when streaming finishes
   useEffect(() => {
     if (!streaming && streamedContent && chatData?.messages) {
       const timer = setTimeout(() => {
-        clearStreamedContent()
+        clearStreamedContent(effectiveChatId)
       }, 150)
       return () => clearTimeout(timer)
     }
-  }, [streaming, streamedContent, chatData?.messages, clearStreamedContent])
+  }, [streaming, streamedContent, chatData?.messages, clearStreamedContent, effectiveChatId])
 
-  const handleSend = useCallback(async (textOverride?: string, isRegenerate = false) => {
+  const handleSend = useCallback(async (textOverride?: string, isRegenerate = false, regenerateFromMsgId?: string, existingUserMsgId?: string) => {
     const text = textOverride || input.trim()
     if (!text || streaming) return
+
+    // New messages/regenerations always extend the latest branch, not whatever
+    // older variant the user may be browsing in-session.
+    setNavigatedData(null)
+
+    // Check if user has a provider before sending
+    if (userData && !userData.has_provider) {
+      setProviderOverlayDismissed(false)
+      showError('Add an AI provider in Settings to start chatting.')
+      return
+    }
 
     const currentFiles = [...attachedFiles]
     if (!textOverride) {
       setInput('')
-      setAttachedFiles([])
+    }
+    setAttachedFiles([])
+
+    // Optimistically insert the user message into the cache so it renders
+    // immediately, before the server refetch/stream delivers it.
+    const optimisticId = `temp-${Date.now()}`
+    if (effectiveChatId) {
+      flushSync(() => {
+        queryClient.setQueryData<{ chat: any; messages: MessageItem[] }>(
+          ['chat', effectiveChatId],
+          (prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              messages: [
+                ...prev.messages.filter((m) => !m.id.startsWith('temp-')),
+                {
+                  id: optimisticId,
+                  role: 'user',
+                  content: text,
+                  created_at: new Date().toISOString(),
+                },
+              ],
+            }
+          }
+        )
+      })
     }
 
     await startStream(text, {
@@ -189,64 +245,95 @@ export default function ChatInterface({
       setEffectiveChatId,
       setOptimisticTitle,
       attachedFiles: currentFiles,
-      onStreamDone: (meta) => {
-        pendingMetaRef.current = meta
+      onStreamDone: (meta, chatId) => {
+        pendingMetaRef.current = { ...pendingMetaRef.current, [chatId]: meta }
       },
-      onStreamError: (error) => {
-        console.error('Stream error:', error)
+      onStreamError: (error, chatId) => {
+        console.error('Stream error:', error, chatId)
       },
-      refetchChat: refetch,
       windowHistoryReplace: (id) => {
-        window.history.replaceState({}, '', `/chat/${id}`)
+        if (!currentChatIdRef.current || currentChatIdRef.current === id) {
+          navigate(`/chat/${id}`, { replace: true })
+        }
       },
       onChatCreated: () => {
         queryClient.invalidateQueries({ queryKey: ['chats'] })
       },
       isRegenerate,
+      regenerateFromMsgId,
+      existingUserMsgId,
     })
-  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, refetch, startStream, queryClient])
+  }, [input, streaming, effectiveChatId, selectedModel, attachedFiles, startStream, queryClient, chatId, userData, showError])
 
 
-  const handleRegenerate = useCallback(async () => {
+  const handleRegenerate = useCallback(async (assistantMsgId?: string) => {
+    // Non-destructive regenerate: the backend handles deactivating the old
+    // assistant message and inserting a new sibling. We just need to find the
+    // user message content to resend.
+    setNavigatedData(null)
     const lastUserMessage = chatData?.messages?.slice().reverse().find((m) => m.role === 'user')
 
     if (lastUserMessage) {
-      if (effectiveChatId) {
-        try {
-          await api.delete(`/chats/${effectiveChatId}/messages/${lastUserMessage.id}/after`)
-        } catch (e: any) {
-            showError(e?.message ?? 'Failed to delete messages after regenerate');
-          }
-      }
-      handleSend(lastUserMessage.content, true)
+      handleSend(lastUserMessage.content, true, assistantMsgId)
     }
-  }, [chatData?.messages, handleSend, effectiveChatId])
+  }, [chatData?.messages, handleSend])
 
   const handleEditMessage = useCallback(async (msgId: string, newContent: string) => {
+    if (!effectiveChatId) return
     try {
-      await api.patch(`/chats/${effectiveChatId}/messages/${msgId}`, { content: newContent })
-      await api.delete(`/chats/${effectiveChatId}/messages/${msgId}/after`)
+      // Destructive edit: update content in-place, hard-delete all descendants
+      // (old responses + tool messages), then stream a fresh assistant response.
+      setNavigatedData(null)
+      await api.post(`/chats/${effectiveChatId}/messages/${msgId}/edit-replace`, {
+        content: newContent,
+      })
       await refetch()
-      handleSend(newContent, true)
+      handleSend(newContent, false, undefined, msgId)
     } catch (err: any) {
       showError(err?.message ?? 'Failed to edit message')
     }
-  }, [effectiveChatId, refetch, handleSend])
+  }, [effectiveChatId, refetch, handleSend, showError])
+
+  const handleActivateVariant = useCallback(async (msgId: string) => {
+    if (!effectiveChatId) return
+    try {
+      // Navigation is frontend-only: load the selected variant view into memory
+      // without persisting is_active to the DB.
+      const res = await api.post(`/chats/${effectiveChatId}/messages/${msgId}/activate`)
+      setNavigatedData({
+        messages: res.data.messages || [],
+        variants: res.data.variants || [],
+      })
+    } catch (err: any) {
+      showError(err?.message ?? 'Failed to switch variant')
+    }
+  }, [effectiveChatId, showError])
+
+  const dragCounterRef = useRef(0)
+
+  const handleGlobalDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current++
+    if (dragCounterRef.current === 1) {
+      setIsGlobalDragging(true)
+    }
+  }, [])
 
   const handleGlobalDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsGlobalDragging(true)
+    e.preventDefault() // Required to allow dropping
   }, [])
 
   const handleGlobalDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    if (!e.relatedTarget || (e.relatedTarget as Element).nodeName === 'HTML') {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
       setIsGlobalDragging(false)
     }
   }, [])
 
   const handleGlobalDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+    dragCounterRef.current = 0
     setIsGlobalDragging(false)
     const files = e.dataTransfer.files
     if (files.length > 0) {
@@ -276,12 +363,13 @@ export default function ChatInterface({
     )
   }
 
-  const messages = chatData?.messages || []
+  const messages = effectiveChatId ? chatData?.messages || [] : []
 
   return (
     <div className="flex h-full w-full overflow-hidden">
       <div 
         className="relative flex flex-1 flex-col overflow-hidden bg-background"
+        onDragEnter={handleGlobalDragEnter}
         onDragOver={handleGlobalDragOver}
         onDragLeave={handleGlobalDragLeave}
         onDrop={handleGlobalDrop}
@@ -297,7 +385,7 @@ export default function ChatInterface({
             <motion.div 
               initial={{ scale: 0.9, y: 10 }}
               animate={{ scale: 1, y: 0 }}
-              className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-layer/90 px-12 py-10 shadow-2xl backdrop-blur-xl"
+              className="flex flex-col items-center justify-center rounded-2xl border border-border-subtle bg-layer/90 px-12 py-10 shadow-2xl backdrop-blur-xl"
             >
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-interactive/20">
                 <Paperclip className="h-8 w-8 text-interactive" />
@@ -313,24 +401,76 @@ export default function ChatInterface({
         title={chatData?.chat.title}
         optimisticTitle={optimisticTitle}
         chatId={effectiveChatId}
+        sidebarOpen={sidebarOpen}
+        isPinned={chatData?.chat.is_pinned === 1}
+        isArchived={chatData?.chat.is_archived === 1}
+        onTogglePin={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { is_pinned: chatData?.chat.is_pinned === 1 ? 0 : 1 })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to update pin state')
+          }
+        }}
+        onToggleArchive={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { is_archived: chatData?.chat.is_archived === 1 ? 0 : 1 })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to update archive state')
+          }
+        }}
+        onRename={async (newTitle) => {
+          if (!effectiveChatId || !newTitle.trim()) return
+          try {
+            await api.patch(`/chats/${effectiveChatId}`, { title: newTitle.trim() })
+            await refetch()
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to rename chat')
+          }
+        }}
+        onDelete={async () => {
+          if (!effectiveChatId) return
+          try {
+            await api.delete(`/chats/${effectiveChatId}`)
+            queryClient.invalidateQueries({ queryKey: ['chats'] })
+            navigate('/chat')
+          } catch (err: any) {
+            showError(err?.message ?? 'Failed to delete chat')
+          }
+        }}
       />
 
       {/* API Key Required Overlay */}
       <AnimatePresence>
-        {userData && !userData.has_provider && !userData.has_nim_key && (
+        {userData && !userData.has_provider && !providerOverlayDismissed && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/95"
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-xl"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="mx-4 max-w-sm border border-border-subtle bg-layer p-8 text-center"
+              className="relative mx-4 max-w-sm rounded-2xl border border-border-subtle bg-layer p-8 text-center shadow-2xl"
             >
-              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-border-subtle bg-background">
+              {/* Close button */}
+              <button
+                onClick={() => setProviderOverlayDismissed(true)}
+                className="absolute right-3 top-3 p-1.5 text-text-helper transition-colors hover:text-text-primary"
+                aria-label="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              
+              <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl border border-border-subtle bg-background">
                 <Key className="h-6 w-6 text-interactive" aria-hidden="true" />
               </div>
               <h2 className="mb-2 text-base font-semibold text-text-primary">AI Provider Required</h2>
@@ -395,18 +535,21 @@ export default function ChatInterface({
 
       <ChatMessages
         messages={messages}
+        variants={chatData?.variants || []}
         streaming={streaming}
         streamedContent={streamedContent}
-        toolExecution={toolExecution}
+        toolExecutions={toolExecutions}
         creatingChat={creatingChat}
         chatId={effectiveChatId}
+        navigatedData={navigatedData}
         messageMeta={messageMeta}
         showScrollBtn={scroll.showScrollBtn}
-        scrollContainerRef={scroll.scrollContainerRef}
-        messagesEndRef={scroll.messagesEndRef}
+        scrollContainerRef={scroll.containerRef}
+        setShowScrollBtn={scroll.setShowScrollBtn}
+        wasNearBottomRef={scroll.wasNearBottomRef}
         onScroll={scroll.handleScroll}
-        onScrollToBottom={scroll.scrollToBottom}
         onRegenerate={handleRegenerate}
+        onActivateVariant={handleActivateVariant}
         onEditMessage={handleEditMessage}
         onSuggestion={(text) => handleSend(text)}
       />
@@ -414,7 +557,7 @@ export default function ChatInterface({
       <ChatInput
         input={input}
         onInputChange={setInput}
-        onSend={() => handleSend()}
+        onSend={(text) => handleSend(text)}
         onStop={stopStream}
         streaming={streaming}
         effectiveChatId={effectiveChatId}
@@ -428,7 +571,7 @@ export default function ChatInterface({
           })
           const newId = createRes.data.id as string
           setEffectiveChatId(newId)
-          window.history.replaceState({}, '', `/chat/${newId}`)
+          navigate(`/chat/${newId}`, { replace: true })
           queryClient.invalidateQueries({ queryKey: ['chats'] })
           return newId
         }}
@@ -436,9 +579,14 @@ export default function ChatInterface({
         onModelChange={onModelChange || (() => {})}
         attachedFiles={attachedFiles}
         onFilesChange={setAttachedFiles}
-        voiceSupported={voice.voiceSupported}
-        isListening={voice.isListening}
-        onToggleVoice={voice.toggle}
+        voiceState={voice.state}
+        voiceRecordingTime={voice.recordingTime}
+        voiceTranscript={voice.transcript}
+        voicePartialText={voice.partialText}
+        onStartVoice={voice.startRecording}
+        onStopVoice={voice.stopRecording}
+        onCancelVoice={voice.cancelRecording}
+        onVoiceTranscript={voice.reset}
         toolsEnabled={userData?.tools_enabled}
         onToggleTools={async () => {
           try {

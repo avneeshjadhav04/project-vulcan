@@ -1,11 +1,10 @@
-import { useRef, useLayoutEffect } from 'react'
+import { useRef, useLayoutEffect, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowUp,
   StopCircle,
   Wrench,
   Mic,
-  MicOff,
   Loader2,
   RefreshCw,
 } from 'lucide-react'
@@ -15,7 +14,7 @@ import FileUpload, { type UploadedFile } from '../FileUpload'
 interface ChatInputProps {
   input: string
   onInputChange: (value: string) => void
-  onSend: () => void
+  onSend: (text?: string) => void
   onStop: () => void
   streaming: boolean
   effectiveChatId?: string
@@ -24,9 +23,14 @@ interface ChatInputProps {
   onModelChange: (sel: SelectedModel) => void
   attachedFiles: UploadedFile[]
   onFilesChange: (files: UploadedFile[]) => void
-  voiceSupported: boolean
-  isListening: boolean
-  onToggleVoice: () => void
+  voiceState: 'idle' | 'connecting' | 'recording' | 'error'
+  voiceRecordingTime: number
+  voiceTranscript: string
+  voicePartialText: string
+  onStartVoice: () => void
+  onStopVoice: () => void
+  onCancelVoice: () => void
+  onVoiceTranscript: (transcript: string) => void
   toolsEnabled?: boolean
   onToggleTools: () => void
   sendError: string
@@ -45,9 +49,14 @@ export default function ChatInput({
   onModelChange,
   attachedFiles,
   onFilesChange,
-  voiceSupported,
-  isListening,
-  onToggleVoice,
+  voiceState,
+  voiceRecordingTime,
+  voiceTranscript,
+  voicePartialText,
+  onStartVoice,
+  onStopVoice,
+  onCancelVoice,
+  onVoiceTranscript,
   toolsEnabled,
   onToggleTools,
   sendError,
@@ -63,8 +72,21 @@ export default function ChatInput({
     }
   }, [input])
 
+  // Enter key stops recording
+  useEffect(() => {
+    if (voiceState !== 'recording') return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        onStopVoice()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [voiceState, onStopVoice])
+
   return (
-    <div className="border-t border-white/5 bg-background/80 backdrop-blur-xl px-4 py-4">
+    <div className="px-4 py-4">
       <div className="mx-auto max-w-3xl">
         <AnimatePresence>
           {sendError && (
@@ -104,25 +126,87 @@ export default function ChatInput({
             }
           }}
           onDragOver={(e) => e.preventDefault()}
-          className="relative flex flex-col rounded-glass border border-white/10 bg-layer/50 shadow-lg backdrop-blur-md transition-all focus-within:border-interactive/50 focus-within:bg-layer/70 focus-within:shadow-interactive/10"
+          className="relative flex flex-col rounded-glass border border-border-subtle bg-layer shadow-lg transition-all focus-within:border-interactive/50 focus-within:bg-layer-hover focus-within:shadow-interactive/10"
         >
-          {/* Top area: textarea */}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                onSend()
-              }
-            }}
-            placeholder="Message AI..."
-            rows={2}
-            disabled={streaming}
-            aria-label="Message input"
-            className="max-h-[320px] min-h-[64px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
-          />
+          {/* Top area: textarea or voice recording */}
+          {voiceState === 'connecting' ? (
+            <div className="flex items-center gap-3 px-4 py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+              <div className="flex-1">
+                <div className="text-sm text-text-primary">Connecting...</div>
+                <div className="text-[10px] text-text-helper">
+                  Setting up voice transcription
+                </div>
+              </div>
+              <button
+                onClick={onCancelVoice}
+                className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+              >
+                Stop
+              </button>
+            </div>
+          ) : voiceState === 'recording' ? (
+            <div className="flex flex-col px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/20">
+                  <span className="flex h-3 w-3 rounded-full bg-support-error animate-pulse" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-text-primary font-medium">
+                    Recording... {(voiceRecordingTime / 1000).toFixed(1)}s
+                  </div>
+                  <div className="text-[10px] text-text-helper">
+                    Speak now. Click stop when done.
+                  </div>
+                </div>
+                <button
+                  onClick={onStopVoice}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-layer-hover text-text-primary hover:bg-layer-active transition-colors"
+                  aria-label="Stop recording"
+                >
+                  <StopCircle className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={onCancelVoice}
+                  className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+                >
+                  Stop
+                </button>
+              </div>
+              {voicePartialText && (
+                <div className="mt-2 text-sm text-text-primary/80 italic">
+                  {voicePartialText}
+                </div>
+              )}
+            </div>
+          ) : (
+            <textarea
+              ref={textareaRef}
+              value={voiceTranscript || input}
+              onChange={(e) => {
+                if (voiceTranscript) {
+                  onInputChange(e.target.value)
+                  onVoiceTranscript('')
+                } else {
+                  onInputChange(e.target.value)
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  const text = voiceTranscript || input.trim()
+                  onSend(text)
+                  onInputChange('')
+                  onVoiceTranscript('')
+                }
+              }}
+              placeholder="Message AI..."
+              rows={1}
+              disabled={streaming}
+              aria-label="Message input"
+              className="max-h-[320px] min-h-[48px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
+            />
+          )}
 
           {/* Bottom area: controls */}
           <div className="flex items-end justify-between gap-2 px-2 pb-2">
@@ -146,7 +230,8 @@ export default function ChatInput({
               <button
                 onClick={onToggleTools}
                 aria-label={toolsEnabled ? 'Disable tools' : 'Enable tools'}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
+                title={toolsEnabled ? 'Tools On — AI can run commands, create files, and search the web' : 'Tools Off — AI will not use any tools'}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
                   toolsEnabled
                     ? 'bg-support-success/20 text-support-success'
                     : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
@@ -155,24 +240,13 @@ export default function ChatInput({
                 <Wrench className="h-4 w-4" aria-hidden="true" />
               </button>
 
-              {voiceSupported && (
+              {voiceState === 'idle' && (
                 <button
-                  onClick={onToggleVoice}
-                  aria-label={isListening ? 'Stop listening' : 'Voice input'}
-                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-carbon transition-colors ${
-                    isListening
-                      ? 'bg-support-error/20 text-support-error'
-                      : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
-                  }`}
+                  onClick={onStartVoice}
+                  aria-label="Voice input"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors text-text-helper hover:bg-layer-hover hover:text-text-primary"
                 >
-                  {isListening ? (
-                    <span className="relative flex h-4 w-4 items-center justify-center">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-support-error/40" />
-                      <MicOff className="relative h-4 w-4" aria-hidden="true" />
-                    </span>
-                  ) : (
-                    <Mic className="h-4 w-4" aria-hidden="true" />
-                  )}
+                  <Mic className="h-4 w-4" aria-hidden="true" />
                 </button>
               )}
 
@@ -180,17 +254,22 @@ export default function ChatInput({
                 <button
                   onClick={onStop}
                   aria-label="Stop generating"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
                 >
                   <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
                   <StopCircle className="h-5 w-5" aria-hidden="true" />
                 </button>
               ) : (
                 <button
-                  onClick={onSend}
-                  disabled={!input.trim()}
+                  onClick={() => {
+                    const text = voiceTranscript || input.trim()
+                    onSend(text)
+                    onInputChange('')
+                    onVoiceTranscript('')
+                  }}
+                  disabled={!input.trim() && !voiceTranscript.trim()}
                   aria-label="Send message"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-carbon bg-vibrant-gradient text-white shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-vibrant-gradient text-on-interactive shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
                 >
                   <ArrowUp className="h-5 w-5" aria-hidden="true" />
                 </button>
@@ -199,18 +278,23 @@ export default function ChatInput({
           </div>
         </div>
 
-        <div className="mt-1.5 flex items-center justify-center gap-2">
-          {isListening ? (
-            <>
-              <span className="flex h-1.5 w-1.5 bg-support-error animate-pulse" />
-              <span className="text-[10px] text-support-error">Listening... speak now</span>
-            </>
-          ) : (
-            <span className="text-[10px] text-text-helper">
-              {toolsEnabled ? 'Tools On — AI can run commands, create files, and search the web.' : 'Tools Off — AI will not use any tools.'}
-            </span>
-          )}
-        </div>
+        {voiceState !== 'idle' && (
+          <div className="mt-1.5 flex items-center justify-center gap-2">
+            {voiceState === 'connecting' ? (
+              <span className="text-[10px] text-interactive">
+                Connecting to transcription service...
+              </span>
+            ) : voiceState === 'recording' ? (
+              <span className="text-[10px] text-support-error">
+                Recording... speak clearly
+              </span>
+            ) : (
+              <span className="text-[10px] text-support-error">
+                Voice input failed. Try again or type your message.
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

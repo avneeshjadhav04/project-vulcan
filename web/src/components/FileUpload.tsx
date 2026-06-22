@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import axios from 'axios'
 import { useErrorToast } from './ui/ErrorToast'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon } from 'lucide-react'
+import { Paperclip, X, FileText, Image, FileCode, FileSpreadsheet, File as FileIcon, FileType, FileType2, Table2 } from 'lucide-react'
 
 export interface UploadedFile {
   id: string
@@ -19,11 +19,50 @@ const formatSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const getFileIcon = (mimeType: string) => {
+const getFileIcon = (mimeType: string, filename: string) => {
   if (mimeType.startsWith('image/')) return Image
+  
+  // Documents
   if (mimeType.includes('pdf')) return FileText
+  if (mimeType.includes('word') || mimeType.includes('document')) return FileType
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return FileType2
+  
+  // Spreadsheets
   if (mimeType.includes('spreadsheet') || mimeType.includes('csv') || mimeType.includes('excel')) return FileSpreadsheet
-  if (mimeType.includes('code') || mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('text')) return FileCode
+  
+  // Code/Text
+  if (mimeType.includes('code') || mimeType.includes('javascript') || mimeType.includes('json') || mimeType.includes('text') || mimeType.includes('plain')) return FileCode
+  
+  // Check by extension for files with generic mime types
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  switch (ext) {
+    case 'pdf': return FileText
+    case 'docx':
+    case 'doc': return FileType
+    case 'xlsx':
+    case 'xls':
+    case 'csv': return Table2
+    case 'pptx':
+    case 'ppt': return FileType2
+    case 'txt':
+    case 'md':
+    case 'json':
+    case 'xml':
+    case 'html':
+    case 'css':
+    case 'js':
+    case 'ts':
+    case 'py':
+    case 'rs':
+    case 'go':
+    case 'java':
+    case 'cpp':
+    case 'c':
+    case 'sql':
+    case 'yaml':
+    case 'yml': return FileCode
+  }
+  
   return FileIcon
 }
 
@@ -159,7 +198,7 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
             className="mb-2 flex flex-wrap gap-1.5 overflow-hidden"
           >
             {files.map((file) => {
-              const Icon = getFileIcon(file.mime_type)
+              const Icon = getFileIcon(file.mime_type, file.filename)
               const isImage = file.mime_type.startsWith('image/')
               
               return (
@@ -171,27 +210,27 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
                   className="group relative flex items-center gap-1.5 overflow-hidden rounded-md border border-border-subtle bg-layer pr-1 shadow-sm"
                 >
                   {isImage && chatId ? (
-                    <div className="h-10 w-10 shrink-0 overflow-hidden bg-black/20">
-                      <img 
-                        src={`/api/chats/${chatId}/files/${file.id}`} 
+                    <div className="h-10 w-10 shrink-0 overflow-hidden bg-background">
+                      <img
+                        src={`/api/chats/${chatId}/files/${file.id}`}
                         alt={file.filename}
                         className="h-full w-full object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-black/10">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center bg-layer-active">
                       <Icon className="h-4 w-4 text-text-helper" />
                     </div>
                   )}
-                  
+
                   <div className="flex flex-col py-1 pl-1 pr-2">
                     <span className="max-w-[120px] truncate text-[11px] font-medium text-text-secondary">{file.filename}</span>
                     <span className="text-[9px] text-text-helper">{formatSize(file.size_bytes)}</span>
                   </div>
-                  
+
                   <button
                     onClick={() => removeFile(file.id)}
-                    className="absolute right-1 top-1 hidden rounded bg-black/40 p-0.5 text-white backdrop-blur-sm transition-colors hover:bg-support-error group-hover:block"
+                    className="absolute right-1 top-1 hidden rounded bg-text-primary/40 p-0.5 text-background backdrop-blur-sm transition-colors hover:bg-support-error group-hover:block"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -220,13 +259,13 @@ export default function FileUpload({ getChatId, chatId, files, onFilesChange }: 
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="absolute bottom-full left-0 mb-2 w-48 rounded-md border border-white/10 bg-layer/90 p-2.5 shadow-lg backdrop-blur-md"
+              className="absolute bottom-full left-0 mb-2 w-48 rounded-md border border-border-subtle bg-layer/90 p-2.5 shadow-lg backdrop-blur-md"
             >
               <div className="mb-1.5 flex justify-between text-[10px] font-medium text-text-primary">
                 <span>Uploading...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10 shadow-inner">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-border-subtle shadow-inner">
                 <div
                   className="h-full bg-vibrant-gradient transition-all duration-300 ease-out"
                   style={{ width: `${uploadProgress}%` }}
