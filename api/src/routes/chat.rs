@@ -1448,63 +1448,46 @@ async fn activate_message_variant(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    let parent_id = match msg.parent_id {
-        Some(ref pid) => pid.clone(),
-        None => return Err(StatusCode::BAD_REQUEST),
-    };
+    if msg.parent_id.is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
-    // Deactivate all siblings (including :msg_id) and their descendants.
-    // A sibling is any message with the same parent_id. Descendants are found
-    // recursively via parent_id chain.
-    let _ = sqlx::query(
+    // Navigation is now frontend-only; this endpoint just returns the selected
+    // message, all of its ancestors, and all of its descendants as a read-only view.
+    let selected_messages: Vec<Message> = sqlx::query_as(
         "WITH RECURSIVE
-         sibling_tree(id) AS (
-            SELECT id FROM messages WHERE chat_id = ?1 AND parent_id = ?2
+         ancestors(id) AS (
+            SELECT ?1
             UNION ALL
-            SELECT m.id FROM messages m JOIN sibling_tree s ON m.parent_id = s.id WHERE m.chat_id = ?1
-         )
-         UPDATE messages SET is_active = 0
-         WHERE id IN (SELECT id FROM sibling_tree) AND chat_id = ?1",
-    )
-    .bind(&chat_id)
-    .bind(&parent_id)
-    .execute(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Deactivate siblings error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    // Activate :msg_id and its descendants (follow parent_id chain down).
-    let _ = sqlx::query(
-        "WITH RECURSIVE
-         active_tree(id) AS (
-            SELECT id FROM messages WHERE id = ?1
+            SELECT m.parent_id FROM messages m JOIN ancestors a ON m.id = a.id
+            WHERE m.parent_id IS NOT NULL AND m.chat_id = ?2
+         ),
+         descendants(id) AS (
+            SELECT ?1
             UNION ALL
-            SELECT m.id FROM messages m JOIN active_tree a ON m.parent_id = a.id WHERE m.chat_id = ?2
+            SELECT m.id FROM messages m JOIN descendants d ON m.parent_id = d.id
+            WHERE m.chat_id = ?2
+         ),
+         selected_path(id) AS (
+            SELECT id FROM ancestors
+            UNION
+            SELECT id FROM descendants
          )
-         UPDATE messages SET is_active = 1
-         WHERE id IN (SELECT id FROM active_tree) AND chat_id = ?2",
+         SELECT * FROM messages
+         WHERE chat_id = ?2 AND id IN (SELECT id FROM selected_path)
+         ORDER BY created_at ASC",
     )
     .bind(&msg_id)
     .bind(&chat_id)
-    .execute(&state.db)
+    .fetch_all(&state.db)
     .await
     .map_err(|e| {
-        tracing::error!("Activate variant error: {}", e);
+        tracing::error!("Load variant error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Return the new active path so the frontend can refresh.
-    let active_messages: Vec<Message> = sqlx::query_as(
-        "SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC",
-    )
-    .bind(&chat_id)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Recompute variants
+    // Recompute variants for the selected path. Sibling counts are still based on
+    // the full chat so the navigator shows the real total.
     let sibling_rows: Vec<(String, String, i64)> = sqlx::query_as(
         "SELECT parent_id, role, COUNT(*) FROM messages
          WHERE chat_id = ?1 AND parent_id IS NOT NULL AND role IN ('user', 'assistant')
@@ -1521,7 +1504,7 @@ async fn activate_message_variant(
         sibling_counts.insert((pid, role), count);
     }
 
-    let variants: Vec<serde_json::Value> = active_messages
+    let variants: Vec<serde_json::Value> = selected_messages
         .iter()
         .filter(|m| m.role == "user" || (m.role == "assistant" && m.tool_name.is_none()))
         .filter_map(|m| {
@@ -1542,7 +1525,7 @@ async fn activate_message_variant(
         .collect();
 
     Ok(Json(json!({
-        "messages": active_messages,
+        "messages": selected_messages,
         "variants": variants,
     })))
 }
