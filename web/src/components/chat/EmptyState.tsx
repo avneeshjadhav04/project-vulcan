@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bot } from 'lucide-react'
 
 interface Suggestion {
   id: number
@@ -99,9 +98,7 @@ export default function EmptyState({ onSuggestion }: { onSuggestion: (text: stri
       transition={{ duration: 0.3 }}
       className="flex flex-1 flex-col items-center justify-center px-6"
     >
-      <div className="mb-6 flex h-14 w-14 items-center justify-center border border-border-subtle bg-layer">
-        <Bot className="h-7 w-7 text-interactive" aria-hidden="true" />
-      </div>
+      <div className="mb-6 h-14 w-14" aria-hidden="true" />
       <h2 className="mb-2 text-lg font-semibold text-text-primary">Just Ask.</h2>
       <p className="mb-6 max-w-md text-center text-xs text-text-helper">
         I can write code, analyze data, answer questions, help with creative projects, and much more.
