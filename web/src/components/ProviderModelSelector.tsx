@@ -176,7 +176,7 @@ export default function ProviderModelSelector({
                   <button
                     key={`${item.providerId}:${item.model.id}`}
                     onClick={() => {
-                      onSelect({ providerId: item.providerId, modelId: item.model.id })
+                      onSelect({ providerId: item.providerId, providerName: item.providerName, modelId: item.model.id })
                       setOpen(false)
                       setSearch('')
                     }}
