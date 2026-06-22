@@ -77,32 +77,40 @@ function ChatMessagesInner({
   )
 
   // Fetch sibling lists for messages that have variants (total > 1).
-  // siblingCache: parent_id -> string[] (sibling ids, static — order by created_at)
-  // activeIndex is computed at render time from the current msg.id, which is
-  // always the active message in visibleMessages. This avoids stale index bugs.
-  const [siblingCache, setSiblingCache] = useState<Record<string, string[]>>({})
+  // siblingCache: parent_id -> { ids: string[], total: number }
+  // total is stored so we can detect when regeneration adds a new sibling
+  // (total increases) and refetch the updated id list.
+  // activeIndex is computed at render time from the current msg.id.
+  const [siblingCache, setSiblingCache] = useState<Record<string, { ids: string[]; total: number }>>({})
+
+  // Clear cache when switching chats
+  useEffect(() => {
+    setSiblingCache({})
+  }, [chatId])
 
   useEffect(() => {
     if (!chatId || variants.length === 0) return
-    const parentIdsToFetch = variants
-      .map((v) => v.parent_id)
-      .filter((pid) => !siblingCache[pid])
-    if (parentIdsToFetch.length === 0) return
+    // Refetch when: parent_id not in cache, OR cached total differs from
+    // variant total (new sibling added by regeneration).
+    const toFetch = variants.filter((v) => {
+      const cached = siblingCache[v.parent_id]
+      return !cached || cached.total !== v.total
+    })
+    if (toFetch.length === 0) return
 
-    const fetchSiblings = async (pid: string, currentMsgId: string) => {
+    const fetchSiblings = async (pid: string, currentMsgId: string, total: number) => {
       try {
         const res = await api.get(`/chats/${chatId}/messages/${currentMsgId}/siblings`)
         const siblings: Array<{ id: string; is_active: boolean }> = res.data.siblings || []
         const ids = siblings.map((s) => s.id)
-        setSiblingCache((prev) => ({ ...prev, [pid]: ids }))
+        setSiblingCache((prev) => ({ ...prev, [pid]: { ids, total } }))
       } catch {
         // silently fail — navigator just won't show
       }
     }
 
-    for (const pid of parentIdsToFetch) {
-      const variant = variants.find((v) => v.parent_id === pid)
-      if (variant) fetchSiblings(pid, variant.message_id)
+    for (const v of toFetch) {
+      fetchSiblings(v.parent_id, v.message_id, v.total)
     }
   }, [chatId, variants, siblingCache])
 
@@ -272,7 +280,8 @@ function ChatMessagesInner({
               const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
                 ? variants.find((v) => v.message_id === msg.id)
                 : undefined
-              const siblingIds = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
+              const cached = variantInfo && msg.parent_id ? siblingCache[msg.parent_id] : undefined
+              const siblingIds = cached?.ids
               const computedVariantInfo = variantInfo && siblingIds
                 ? { total: variantInfo.total, activeIndex: Math.max(0, siblingIds.indexOf(msg.id)), siblingIds }
                 : variantInfo
