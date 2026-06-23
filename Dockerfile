@@ -1,4 +1,6 @@
-# Multi-stage build: Frontend -> API -> Runtime
+# syntax=docker/dockerfile:1
+
+# Multi-stage build: Frontend -> API -> proot -> Runtime
 
 # Stage 1: Build React frontend
 FROM node:22-alpine AS web-builder
@@ -39,9 +41,24 @@ COPY api/src ./src
 COPY db/migrations /app/db/migrations
 RUN cargo build --release
 
-# Stage 3: Runtime
+# Stage 3: Build proot v5.4.0 from source
+# Ubuntu 24.04's apt proot (5.1.0) segfaults on arm64 kernel 6.17+.
+# Building v5.4.0 statically produces a portable binary for both arches.
+FROM ubuntu:24.04 AS proot-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential pkg-config git ca-certificates \
+        libtalloc-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --recursive -b v5.4.0 https://github.com/proot-me/proot /proot-src
+WORKDIR /proot-src
+RUN LDFLAGS="-static" make -C src proot GIT=false
+
+# Stage 4: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 proot chromium libstdc++6 python3 python3-pip unzip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip && rm -rf /var/lib/apt/lists/*
+
+# Install proot v5.4.0 (built from source in proot-builder stage)
+COPY --from=proot-builder /proot-src/src/proot /usr/local/bin/proot
 
 WORKDIR /app
 
