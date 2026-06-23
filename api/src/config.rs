@@ -156,7 +156,7 @@ impl Config {
             cookie_secure,
             cors_origin,
             app_base_url: env::var("APP_BASE_URL")
-                .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+                .unwrap_or_else(|_| "http://localhost:8765".to_string()),
             google_client_id: env::var("GOOGLE_CLIENT_ID").ok(),
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
             todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
