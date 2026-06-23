@@ -36,7 +36,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: latest=true,suffix=-amd64,suffixLatest=true
+          flavor: suffix=-amd64
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -78,7 +78,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: latest=true,suffix=-arm64,suffixLatest=true
+          flavor: suffix=-arm64
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -136,10 +136,15 @@ jobs:
           while IFS= read -r full_tag; do
             [ -z "$full_tag" ] && continue
             tag_name="${full_tag#*:}"
-            amd64_tag="${IMAGE}:${tag_name}-amd64"
-            arm64_tag="${IMAGE}:${tag_name}-arm64"
-            echo "Merging ${amd64_tag} and ${arm64_tag} into ${full_tag}"
-            docker buildx imagetools create -t "$full_tag" "$amd64_tag" "$arm64_tag"
+            if [ "$tag_name" = "latest" ]; then
+              echo "Aliasing :main to :latest"
+              docker buildx imagetools create -t "$full_tag" "$IMAGE:main"
+            else
+              amd64_tag="${IMAGE}:${tag_name}-amd64"
+              arm64_tag="${IMAGE}:${tag_name}-arm64"
+              echo "Merging ${amd64_tag} and ${arm64_tag} into ${full_tag}"
+              docker buildx imagetools create -t "$full_tag" "$amd64_tag" "$arm64_tag"
+            fi
           done <<< "$TAGS"
           
           FIRST_TAG="${TAGS%%$'\n'*}"
