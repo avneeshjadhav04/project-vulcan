@@ -11,11 +11,12 @@ IMAGE="${REGISTRY}/${REPO}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/vulcan}"
 COMPOSE_URL="https://raw.githubusercontent.com/${REPO}/main/docker-compose.yml"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Colors (POSIX-compatible escape sequences)
+ESC=$(printf '\033')
+RED="${ESC}[0;31m"
+GREEN="${ESC}[0;32m"
+YELLOW="${ESC}[1;33m"
+NC="${ESC}[0m" # No Color
 
 print_banner() {
     echo ""
@@ -52,7 +53,11 @@ print_banner
 
 echo "${YELLOW}Checking dependencies...${NC}"
 check_dependency docker
-check_dependency "docker compose"
+if ! docker compose version >/dev/null 2>&1; then
+    echo "${RED}Error: docker compose is required but not installed.${NC}"
+    echo "Please install Docker and Docker Compose, then re-run this script."
+    exit 1
+fi
 echo "${GREEN}Dependencies OK.${NC}"
 
 # Detect architecture
