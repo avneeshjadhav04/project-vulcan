@@ -36,7 +36,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: suffix=-amd64
+          flavor: latest=true,suffix=-amd64
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -78,7 +78,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          flavor: suffix=-arm64
+          flavor: latest=true,suffix=-arm64
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -120,6 +120,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=true
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
