@@ -128,7 +128,7 @@ async fn run() -> anyhow::Result<()> {
         CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::list(vec![
                 "http://localhost:5173".parse()?,
-                "http://localhost:8080".parse()?,
+                "http://localhost:8765".parse()?,
             ]))
             .allow_methods([
                 axum::http::Method::GET,
