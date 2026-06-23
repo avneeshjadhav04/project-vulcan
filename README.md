@@ -51,7 +51,7 @@ This will:
 - Create `~/vulcan/` with persistent data and workspace directories
 - Generate a secure `MASTER_KEY` in `.env`
 - Pull the latest multi-arch image from GHCR
-- Start Vulcan on [http://localhost:8080](http://localhost:8080)
+- Start Vulcan on [http://localhost:8765](http://localhost:8765)
 - Add a `vulcan` CLI command for start/stop/update/logs/uninstall
 
 ### Option B: Manual Docker Compose
@@ -81,7 +81,7 @@ docker compose up -d
 Just want to try it for a few minutes without persistence?
 
 ```bash
-docker run -p 8080:8080 \
+docker run -p 8765:8080 \
   -e "MASTER_KEY=$(openssl rand -hex 32)" \
   -v vulcan_data:/data \
   ghcr.io/avneeshjadhav04/project-vulcan:latest
@@ -91,7 +91,7 @@ docker run -p 8080:8080 \
 
 ## Post-Install
 
-1. Open [http://localhost:8080](http://localhost:8080)
+1. Open [http://localhost:8765](http://localhost:8765)
 2. Sign up for a new account
 3. Go to **Settings** and add your AI provider API key(s)
 4. Start chatting
@@ -126,7 +126,7 @@ cd ~/vulcan && docker compose pull && docker compose up -d
 |----------|----------|---------|-------------|
 | `MASTER_KEY` | Yes | auto-generated | 32+ byte key for AES-256-GCM encryption |
 | `DATABASE_URL` | No | `sqlite:/data/vulcan.db` | SQLite database path |
-| `APP_BASE_URL` | No | `http://localhost:8080` | Base URL for OAuth callbacks |
+| `APP_BASE_URL` | No | `http://localhost:8765` | Base URL for OAuth callbacks |
 | `PORT` | No | `8080` | HTTP port |
 | `DISABLE_TOOLS` | No | - | Set to `1` to disable AI tool execution |
 

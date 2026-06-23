@@ -10,6 +10,34 @@ $IMAGE = "${REGISTRY}/${REPO}"
 $INSTALL_DIR = if ($env:VULCAN_DIR) { $env:VULCAN_DIR } else { "$HOME\vulcan" }
 $COMPOSE_URL = "https://raw.githubusercontent.com/${REPO}/main/docker-compose.yml"
 
+$DEFAULT_PORT = 8765
+$MAX_PORT = 8799
+
+function Test-PortInUse($Port) {
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Start()
+        $listener.Stop()
+        return $false
+    } catch {
+        return $true
+    }
+}
+
+function Find-FreePort {
+    if ($env:VULCAN_PORT) {
+        return [int]$env:VULCAN_PORT
+    }
+    $port = $DEFAULT_PORT
+    while ($port -le $MAX_PORT) {
+        if (-not (Test-PortInUse $port)) {
+            return $port
+        }
+        $port++
+    }
+    return 0
+}
+
 function Print-Banner {
     Write-Host ""
     Write-Host "  V U L C A N" -ForegroundColor Cyan
@@ -52,6 +80,28 @@ Write-Host "Downloading docker-compose.yml..." -ForegroundColor Yellow
 Invoke-WebRequest -Uri $COMPOSE_URL -OutFile "docker-compose.yml" -UseBasicParsing
 Write-Host "Downloaded docker-compose.yml" -ForegroundColor Green
 
+# Pick an available host port
+$VULCAN_PORT = Find-FreePort
+if ($VULCAN_PORT -eq 0) {
+    Write-Host ""
+    Write-Host "Error: Could not find an available port between $DEFAULT_PORT and $MAX_PORT." -ForegroundColor Red
+    Write-Host "Set VULCAN_PORT manually and re-run, e.g.:" -ForegroundColor Red
+    Write-Host '  $env:VULCAN_PORT = 9000; irm https://raw.githubusercontent.com/' + $REPO + '/main/scripts/install.ps1 | iex' -ForegroundColor Yellow
+    exit 1
+}
+
+# Update compose file to bind the chosen host port to the container's internal 8080
+$composeContent = Get-Content "docker-compose.yml" -Raw
+$composeContent = $composeContent -replace '\$\{VULCAN_PORT:-' + $DEFAULT_PORT + '\}:8080', "$VULCAN_PORT`:8080"
+$composeContent | Set-Content "docker-compose.yml" -NoNewline
+
+Write-Host ""
+if ($VULCAN_PORT -eq $DEFAULT_PORT) {
+    Write-Host "Using default port $VULCAN_PORT." -ForegroundColor Green
+} else {
+    Write-Host "Port $DEFAULT_PORT is in use; using port $VULCAN_PORT instead." -ForegroundColor Green
+}
+
 # Setup environment
 if (-not (Test-Path ".env")) {
     Write-Host ""
@@ -71,7 +121,10 @@ DATABASE_URL=sqlite:/data/vulcan.db
 RUST_LOG=info
 
 # Application base URL (for OAuth redirect callbacks)
-APP_BASE_URL=http://localhost:8080
+APP_BASE_URL=http://localhost:$VULCAN_PORT
+
+# External host port mapped by Docker Compose
+VULCAN_PORT=$VULCAN_PORT
 
 # Optional: Google OAuth2 credentials for Calendar + Gmail integration
 # GOOGLE_CLIENT_ID=
@@ -130,7 +183,7 @@ Set-Location $INSTALL_DIR
 switch ($Command) {
     "start" {
         docker compose up -d
-        Write-Host "Vulcan started at http://localhost:8080" -ForegroundColor Green
+        Write-Host "Vulcan started at http://localhost:__VULCAN_PORT__" -ForegroundColor Green
     }
     "stop" {
         docker compose down
@@ -180,6 +233,8 @@ switch ($Command) {
 '@
 
 New-Item -ItemType Directory -Force -Path $CLI_DIR | Out-Null
+# Inject the chosen port into the CLI wrapper
+$CLI_SCRIPT = $CLI_SCRIPT -replace '__VULCAN_PORT__', $VULCAN_PORT
 $CLI_SCRIPT | Out-File -Encoding utf8 $CLI_PATH
 
 # Also create a .cmd wrapper for convenience
@@ -194,7 +249,7 @@ $READY = $false
 
 while ($RETRY_COUNT -lt $MAX_RETRIES) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8080/api/health" -Method GET -TimeoutSec 2 -ErrorAction Stop
+        $response = Invoke-WebRequest -Uri "http://localhost:$VULCAN_PORT/api/health" -Method GET -TimeoutSec 2 -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
             $READY = $true
             break
@@ -211,7 +266,7 @@ Write-Host "================================================" -ForegroundColor G
 Write-Host "  Project Vulcan installed successfully!" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Access:     http://localhost:8080" -ForegroundColor White
+Write-Host "  Access:     http://localhost:$VULCAN_PORT" -ForegroundColor White
 Write-Host "  Data:       $INSTALL_DIR\data" -ForegroundColor White
 Write-Host "  Workspace:  $INSTALL_DIR\workspace" -ForegroundColor White
 Write-Host ""
@@ -223,5 +278,5 @@ Write-Host "    vulcan logs       - View logs" -ForegroundColor Gray
 Write-Host "    vulcan status     - Check status" -ForegroundColor Gray
 Write-Host "    vulcan uninstall  - Remove Vulcan" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  First time? Open http://localhost:8080 and sign up." -ForegroundColor Yellow
+Write-Host "  First time? Open http://localhost:$VULCAN_PORT and sign up." -ForegroundColor Yellow
 Write-Host ""

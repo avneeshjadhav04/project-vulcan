@@ -8,11 +8,12 @@ services:
       MASTER_KEY: ${MASTER_KEY}
       RUST_LOG: ${RUST_LOG:-info}
       BIND_ADDR: 0.0.0.0:8080
+      PORT: 8080
     volumes:
       - ./data:/data
       - ./workspace:/app/workspace
     ports:
-      - "8080:8080"
+      - "${VULCAN_PORT:-8765}:8080"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/health"]
       interval: 10s

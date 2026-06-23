@@ -18,6 +18,48 @@ GREEN="${ESC}[0;32m"
 YELLOW="${ESC}[1;33m"
 NC="${ESC}[0m" # No Color
 
+# Default external port and fallback range
+DEFAULT_PORT=8765
+MAX_PORT=8799
+
+# Check if a TCP port is already listening on 127.0.0.1
+is_port_in_use() {
+    port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -tln 2>/dev/null | grep -qE ":${port}[[:space:]]" && return 0
+    fi
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tln 2>/dev/null | grep -qE ":${port}[[:space:]]" && return 0
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -i ":$port" >/dev/null 2>&1 && return 0
+    fi
+    if [ -x /bin/bash ]; then
+        if /bin/bash -c "exec 3<> /dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Pick the first available port in the fallback range.
+# Honor VULCAN_PORT if explicitly set by the user.
+find_free_port() {
+    if [ -n "${VULCAN_PORT:-}" ]; then
+        echo "$VULCAN_PORT"
+        return
+    fi
+    port=$DEFAULT_PORT
+    while [ "$port" -le "$MAX_PORT" ]; do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return
+        fi
+        port=$((port + 1))
+    done
+    echo ""
+}
+
 print_banner() {
     echo ""
     echo "  ╔══════════════════════════════╗"
@@ -96,6 +138,27 @@ else
 fi
 echo "${GREEN}Downloaded docker-compose.yml${NC}"
 
+# Pick an available host port
+VULCAN_PORT=$(find_free_port)
+if [ -z "$VULCAN_PORT" ]; then
+    echo ""
+    echo "${RED}Error: Could not find an available port between ${DEFAULT_PORT} and ${MAX_PORT}.${NC}"
+    echo "Set VULCAN_PORT manually and re-run, e.g.:"
+    echo "  VULCAN_PORT=9000 curl -fsSL https://raw.githubusercontent.com/${REPO}/main/scripts/install.sh | bash"
+    exit 1
+fi
+
+# Update compose file to bind the chosen host port to the container's internal 8080
+sed -i.bak "s/\\\${VULCAN_PORT:-${DEFAULT_PORT}}:8080/${VULCAN_PORT}:8080/" docker-compose.yml
+rm -f docker-compose.yml.bak
+
+echo ""
+if [ "$VULCAN_PORT" = "$DEFAULT_PORT" ]; then
+    echo "${GREEN}Using default port ${VULCAN_PORT}.${NC}"
+else
+    echo "${GREEN}Port ${DEFAULT_PORT} is in use; using port ${VULCAN_PORT} instead.${NC}"
+fi
+
 # Setup environment
 if [ ! -f .env ]; then
     echo ""
@@ -115,7 +178,10 @@ DATABASE_URL=sqlite:/data/vulcan.db
 RUST_LOG=info
 
 # Application base URL (for OAuth redirect callbacks)
-APP_BASE_URL=http://localhost:8080
+APP_BASE_URL=http://localhost:${VULCAN_PORT}
+
+# External host port mapped by Docker Compose
+VULCAN_PORT=${VULCAN_PORT}
 
 # Optional: Google OAuth2 credentials for Calendar + Gmail integration
 # GOOGLE_CLIENT_ID=
@@ -172,7 +238,7 @@ cd "$INSTALL_DIR"
 case "${1:-}" in
     start)
         docker compose up -d
-        echo "Vulcan started at http://localhost:8080"
+        echo "Vulcan started at http://localhost:__VULCAN_PORT__"
         ;;
     stop)
         docker compose down
@@ -222,6 +288,9 @@ case "${1:-}" in
         ;;
 esac
 EOF
+# Inject the chosen port into the CLI wrapper
+sed -i.bak "s/__VULCAN_PORT__/${VULCAN_PORT}/g" "$CLI_WRAPPER"
+rm -f "$CLI_WRAPPER.bak"
 chmod +x "$CLI_WRAPPER"
 
 # Add to PATH if needed
@@ -246,7 +315,7 @@ echo "${YELLOW}Waiting for Vulcan to be ready...${NC}"
 MAX_RETRIES=30
 RETRY_COUNT=0
 while [ "$RETRY_COUNT" -lt "$MAX_RETRIES" ]; do
-    if wget --spider -q http://localhost:8080/api/health 2>/dev/null; then
+    if wget --spider -q "http://localhost:${VULCAN_PORT}/api/health" 2>/dev/null; then
         echo "${GREEN}Vulcan is running!${NC}"
         break
     fi
@@ -264,7 +333,7 @@ echo "================================================"
 echo "  ${GREEN}Project Vulcan installed successfully!${NC}"
 echo "================================================"
 echo ""
-echo "  Access:     http://localhost:8080"
+echo "  Access:     http://localhost:${VULCAN_PORT}"
 echo "  Data:       $INSTALL_DIR/data"
 echo "  Workspace:  $INSTALL_DIR/workspace"
 echo ""
@@ -276,5 +345,5 @@ echo "    vulcan logs       - View logs"
 echo "    vulcan status     - Check status"
 echo "    vulcan uninstall  - Remove Vulcan"
 echo ""
-echo "  First time? Open http://localhost:8080 and sign up."
+echo "  First time? Open http://localhost:${VULCAN_PORT} and sign up."
 echo ""
