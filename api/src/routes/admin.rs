@@ -40,7 +40,7 @@ pub struct UpdateUserRequest {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/users", get(list_users).post(create_user))
-        .route("/admin/users/:id", patch(update_user).delete(delete_user))
+        .route("/admin/users/{id}", patch(update_user).delete(delete_user))
 }
 
 fn parse_role(role: Option<String>) -> Result<String, (StatusCode, Json<serde_json::Value>)> {

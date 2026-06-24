@@ -884,31 +884,31 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
         .route(
-            "/chats/:id",
+            "/chats/{id}",
             get(get_chat).patch(rename_chat).delete(delete_chat),
         )
-        .route("/chats/:id/message", post(send_message))
+        .route("/chats/{id}/message", post(send_message))
         .route(
-            "/chats/:id/messages/:msg_id/edit-replace",
+            "/chats/{id}/messages/{msg_id}/edit-replace",
             post(edit_message_replace),
         )
         .route(
-            "/chats/:id/messages/:msg_id/after",
+            "/chats/{id}/messages/{msg_id}/after",
             delete(delete_messages_after),
         )
         .route(
-            "/chats/:id/messages/:msg_id/siblings",
+            "/chats/{id}/messages/{msg_id}/siblings",
             get(get_message_siblings),
         )
         .route(
-            "/chats/:id/messages/:msg_id/activate",
+            "/chats/{id}/messages/{msg_id}/activate",
             post(activate_message_variant),
         )
         .route(
-            "/chats/:id/messages/:msg_id/react",
+            "/chats/{id}/messages/{msg_id}/react",
             post(add_reaction).delete(remove_reaction),
         )
-        .route("/chats/:id/export", get(export_chat))
+        .route("/chats/{id}/export", get(export_chat))
         .route("/search", get(search_chats))
         .route("/usage", get(get_usage))
         .route("/me", get(get_me))

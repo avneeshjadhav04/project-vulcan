@@ -11,13 +11,13 @@ use crate::{middleware::AppState, models::Claims};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/chats/:chat_id/files", post(upload_file).get(list_files))
+        .route("/chats/{chat_id}/files", post(upload_file).get(list_files))
         .route(
-            "/chats/:chat_id/files/:file_id",
+            "/chats/{chat_id}/files/{file_id}",
             delete(delete_file).get(download_file),
         )
         .route(
-            "/chats/:chat_id/workspace",
+            "/chats/{chat_id}/workspace",
             get(list_workspace_files),
         )
         .route(
