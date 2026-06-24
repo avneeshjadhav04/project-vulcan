@@ -21,7 +21,7 @@ pub fn router() -> Router<AppState> {
             get(list_workspace_files),
         )
         .route(
-            "/chats/:chat_id/workspace/*filename",
+            "/chats/{chat_id}/workspace/*filename",
             get(download_workspace_file),
         )
         .route("/workspace", get(list_user_workspace))
