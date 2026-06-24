@@ -22,6 +22,23 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const data = error?.response?.data
+    if (
+      error?.response?.status === 403 &&
+      typeof data === 'object' &&
+      data?.error === 'Account disabled'
+    ) {
+      // The server rejected the request because the account was disabled.
+      // Clear any optimistic client-side state and show the disabled message.
+      window.location.href = '/login?disabled=1'
+    }
+    return Promise.reject(error)
+  }
+)
+
 // NOTE: We do NOT globally redirect on 401 here.
 // 401 handling is done in route guards and explicit auth checks.
 // This prevents unauthenticated users from being redirected away from the landing page.
