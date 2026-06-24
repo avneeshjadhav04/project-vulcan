@@ -4,6 +4,7 @@ interface User {
   id: string
   email: string
   role: string
+  is_active: boolean
   has_provider: boolean
   provider_count: number
   memory_enabled: boolean
@@ -36,12 +37,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { api } = await import('../lib/api')
       const res = await api.get('/me')
+      if (res.data?.is_active === false) {
+        set({ user: null, isAuthenticated: false, isLoading: false })
+        window.location.href = '/login?disabled=1'
+        return
+      }
       set({
         user: res.data,
         isAuthenticated: true,
         isLoading: false,
       })
-    } catch {
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        set({ user: null, isAuthenticated: false, isLoading: false })
+        window.location.href = '/login?disabled=1'
+        return
+      }
       set({ user: null, isAuthenticated: false, isLoading: false })
     }
   },

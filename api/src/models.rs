@@ -9,6 +9,7 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub role: String,
+    pub is_active: i32,
     pub memory_enabled: i32,
     pub summarization_enabled: i32,
     pub cross_chat_memory_enabled: i32,

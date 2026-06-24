@@ -939,9 +939,12 @@ async fn get_me(
     let has_provider = provider_count > 0;
 
     Ok(Json(json!({
+        "id": user.id,
         "email": user.email,
         "role": user.role,
+        "is_active": user.is_active == 1,
         "has_provider": has_provider,
+        "provider_count": provider_count,
         "tools_enabled": user.tools_enabled == 1,
         "memory_enabled": user.memory_enabled == 1,
         "summarization_enabled": user.summarization_enabled == 1,

@@ -1,11 +1,11 @@
 use axum::{
-    extract::{Request, State},
+    extract::{Extension, Request, State},
     http::StatusCode,
     middleware::Next,
     response::Response,
 };
 
-use crate::{config::Config, sandbox_engine::SandboxState};
+use crate::{config::Config, models::Claims, sandbox_engine::SandboxState};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -47,6 +47,17 @@ pub async fn auth_middleware(
     };
 
     request.extensions_mut().insert(claims);
+    Ok(next.run(request).await)
+}
+
+pub async fn require_admin_middleware(
+    Extension(claims): Extension<Claims>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    if claims.role != "admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
     Ok(next.run(request).await)
 }
 

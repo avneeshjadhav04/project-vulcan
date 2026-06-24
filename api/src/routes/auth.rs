@@ -44,10 +44,25 @@ fn build_cookie(
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/auth/setup-status", get(setup_status))
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
         .route("/auth/csrf", get(csrf_token))
+}
+
+async fn setup_status(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Setup status query error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({ "needs_setup": count == 0 })))
 }
 
 async fn signup(
@@ -71,16 +86,34 @@ async fn signup(
 
     let hash = hash_password(&req.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let result = sqlx::query("INSERT INTO users (email, password_hash) VALUES (?1, ?2)")
-        .bind(&email)
-        .bind(&hash)
-        .execute(&state.db)
-        .await;
+    // Only allow signup when no users exist. The first account becomes the master admin.
+    let existing_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if existing_count > 0 {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Signup is disabled. Contact your administrator." })),
+        ));
+    }
+
+    let result = sqlx::query(
+        "INSERT INTO users (email, password_hash, role, is_active) VALUES (?1, ?2, 'admin', 1)",
+    )
+    .bind(&email)
+    .bind(&hash)
+    .execute(&state.db)
+    .await;
 
     match result {
         Ok(_) => Ok((
             StatusCode::CREATED,
-            Json(serde_json::json!({ "message": "Account created successfully" })),
+            Json(serde_json::json!({
+                "message": "Account created successfully",
+                "role": "admin",
+            })),
         )),
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => Ok((
             StatusCode::CONFLICT,
@@ -130,6 +163,14 @@ async fn login(
         return Ok((
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "error": "Invalid email or password" })),
+        )
+            .into_response());
+    }
+
+    if user.is_active == 0 {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "Account disabled" })),
         )
             .into_response());
     }
