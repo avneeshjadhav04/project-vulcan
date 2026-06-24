@@ -43,7 +43,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
         r#"{"type":"stdout","data":""}"#,
     ];
     for msg in &init_msgs {
-        let _ = sender.send(WsMessage::Text((*msg).to_string())).await;
+        let _ = sender.send(WsMessage::text(*msg)).await;
     }
 
     while let Some(msg_result) = receiver.next().await {
@@ -78,7 +78,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                     Ok(rx) => rx,
                     Err(e) => {
                         let err = serde_json::json!({"type": "stderr", "data": e}).to_string();
-                        let _ = sender.send(WsMessage::Text(err)).await;
+                        let _ = sender.send(WsMessage::text(err)).await;
                         continue;
                     }
                 };
@@ -92,7 +92,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                             final_status = Some(status.to_string());
                         }
                     }
-                    if sender.send(WsMessage::Text(msg)).await.is_err() {
+                    if sender.send(WsMessage::text(msg)).await.is_err() {
                         break;
                     }
                 }
