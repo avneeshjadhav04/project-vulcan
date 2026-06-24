@@ -31,8 +31,11 @@ api.interceptors.response.use(
       typeof data === 'object' &&
       data?.error === 'Account disabled'
     ) {
-      // The server rejected the request because the account was disabled.
-      // Clear any optimistic client-side state and show the disabled message.
+      // The server rejected the request because the account was disabled and
+      // already sent Set-Cookie headers to clear the auth cookies. Clear them
+      // client-side too as a safety net, then show the disabled message.
+      document.cookie = 'token=; Max-Age=0; Path=/; SameSite=Lax'
+      document.cookie = 'csrf_token=; Max-Age=0; Path=/; SameSite=Lax'
       window.location.href = '/login?disabled=1'
     }
     return Promise.reject(error)
