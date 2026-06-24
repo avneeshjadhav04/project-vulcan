@@ -82,10 +82,18 @@ interface UsageData {
   daily: UsageDay[]
 }
 
+interface AdminUser {
+  id: string
+  email: string
+  role: string
+  is_active: boolean
+  created_at: string
+}
+
 type SettingsTab = 'profile' | 'providers' | 'tools' | 'memory' | 'integrations' | 'usage' | 'signout'
 
 const TAB_ITEMS: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
+  { id: 'profile', label: 'Account', icon: <User className="h-4 w-4" /> },
   { id: 'providers', label: 'AI Providers', icon: <Server className="h-4 w-4" /> },
   { id: 'tools', label: 'AI Tools', icon: <Wrench className="h-4 w-4" /> },
   { id: 'memory', label: 'Memory', icon: <MemoryStick className="h-4 w-4" /> },
@@ -147,6 +155,18 @@ export default function Settings() {
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
 
+  // Admin user management
+  const [showUserModal, setShowUserModal] = useState(false)
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserConfirmPassword, setNewUserConfirmPassword] = useState('')
+  const [newUserRole, setNewUserRole] = useState<'user' | 'admin'>('user')
+  const [userActionLoading, setUserActionLoading] = useState<string | null>(null)
+
+  const isAdmin = user?.role === 'admin'
+
   useEffect(() => {
     if (saved) {
       const timer = setTimeout(() => setSaved(false), 3000)
@@ -158,13 +178,16 @@ export default function Settings() {
     loadProviders()
     loadIntegrations()
     loadScratchpad()
+    if (isAdmin) {
+      loadUsers()
+    }
     const params = new URLSearchParams(window.location.search)
     const justConnected = params.get('status')
     if (justConnected === 'connected') {
       setSaved(true)
       window.history.replaceState({}, '', '/settings')
     }
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => {
     if (user?.max_agent_steps) {
@@ -330,6 +353,100 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to validate provider')
     } finally {
       setValidating(false)
+    }
+  }
+
+  const loadUsers = async () => {
+    setUsersLoading(true)
+    try {
+      const res = await api.get('/admin/users')
+      setUsers(res.data || [])
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load users')
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  const handleCreateUser = async () => {
+    if (!newUserEmail.trim() || !newUserPassword) {
+      setError('Email and password are required')
+      return
+    }
+    if (newUserPassword.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    if (newUserPassword !== newUserConfirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+    setError('')
+    setUserActionLoading('create')
+    try {
+      await api.post('/admin/users', {
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+        role: newUserRole,
+      })
+      setSaved(true)
+      setShowUserModal(false)
+      setNewUserEmail('')
+      setNewUserPassword('')
+      setNewUserConfirmPassword('')
+      setNewUserRole('user')
+      await loadUsers()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to create user')
+    } finally {
+      setUserActionLoading(null)
+    }
+  }
+
+  const handleToggleUserActive = async (u: AdminUser) => {
+    setUserActionLoading(`active-${u.id}`)
+    try {
+      await api.patch(`/admin/users/${u.id}`, { is_active: !u.is_active })
+      await loadUsers()
+      if (u.id === user?.id && u.is_active) {
+        await logout()
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update user')
+    } finally {
+      setUserActionLoading(null)
+    }
+  }
+
+  const handleToggleUserRole = async (u: AdminUser) => {
+    const newRole = u.role === 'admin' ? 'user' : 'admin'
+    setUserActionLoading(`role-${u.id}`)
+    try {
+      await api.patch(`/admin/users/${u.id}`, { role: newRole })
+      await loadUsers()
+      await fetchMe()
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update role')
+    } finally {
+      setUserActionLoading(null)
+    }
+  }
+
+  const handleDeleteUser = async (u: AdminUser) => {
+    if (!confirm(`Delete ${u.email}? This cannot be undone.`)) return
+    setUserActionLoading(`delete-${u.id}`)
+    try {
+      await api.delete(`/admin/users/${u.id}`)
+      await loadUsers()
+      if (u.id === user?.id) {
+        await logout()
+      } else {
+        setSaved(true)
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to delete user')
+    } finally {
+      setUserActionLoading(null)
     }
   }
 
@@ -535,6 +652,119 @@ export default function Settings() {
                   </div>
                 </div>
 
+                {/* Admin: Account Management */}
+                {isAdmin && (
+                  <div className="border border-border-subtle bg-layer p-5">
+                    <div className="mb-4 flex items-start justify-between">
+                      <div>
+                        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                          <Shield className="h-4 w-4" />
+                          Account Management
+                        </h2>
+                        <p className="mt-1 text-xs text-text-helper">
+                          Create, enable, disable, and delete user accounts.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowUserModal(true)
+                          setError('')
+                        }}
+                        className="flex shrink-0 items-center gap-1.5 bg-interactive px-3 py-1.5 text-xs text-on-interactive transition-colors hover:bg-interactive-hover"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Create Account
+                      </button>
+                    </div>
+
+                    {usersLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                      </div>
+                    ) : users.length === 0 ? (
+                      <div className="border border-border-subtle bg-background px-4 py-6 text-center">
+                        <User className="mx-auto mb-2 h-6 w-6 text-text-helper" />
+                        <p className="text-xs text-text-helper">No users found</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {users.map((u) => (
+                          <div
+                            key={u.id}
+                            className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-text-primary truncate">{u.email}</p>
+                                <span
+                                  className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                                    u.role === 'admin'
+                                      ? 'bg-interactive/10 text-interactive'
+                                      : 'bg-text-helper/10 text-text-helper'
+                                  }`}
+                                >
+                                  {u.role}
+                                </span>
+                                <span
+                                  className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                                    u.is_active
+                                      ? 'bg-support-success/10 text-support-success'
+                                      : 'bg-support-error/10 text-support-error'
+                                  }`}
+                                >
+                                  {u.is_active ? 'Active' : 'Disabled'}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-text-helper">
+                                Created {new Date(u.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                onClick={() => handleToggleUserActive(u)}
+                                disabled={userActionLoading === `active-${u.id}`}
+                                className="px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                              >
+                                {userActionLoading === `active-${u.id}` ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : u.is_active ? (
+                                  'Disable'
+                                ) : (
+                                  'Enable'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleToggleUserRole(u)}
+                                disabled={userActionLoading === `role-${u.id}`}
+                                className="px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                              >
+                                {userActionLoading === `role-${u.id}` ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : u.role === 'admin' ? (
+                                  'Make User'
+                                ) : (
+                                  'Make Admin'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u)}
+                                disabled={userActionLoading === `delete-${u.id}`}
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10 disabled:opacity-40"
+                              >
+                                {userActionLoading === `delete-${u.id}` ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -1254,6 +1484,108 @@ export default function Settings() {
                       <Save className="h-4 w-4" />
                     )}
                     Save Provider
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Create User Modal */}
+      <AnimatePresence>
+        {showUserModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4"
+            onClick={() => setShowUserModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md border border-border-subtle bg-layer p-5 shadow-xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text-primary">Create Account</h3>
+                <button onClick={() => setShowUserModal(false)} className="text-text-helper hover:text-text-primary">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {error && (
+                <div className="mb-3 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={newUserEmail}
+                    onChange={(e) => setNewUserEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newUserPassword}
+                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newUserConfirmPassword}
+                    onChange={(e) => setNewUserConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                    Role
+                  </label>
+                  <select
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value as 'user' | 'admin')}
+                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none focus:border-focus focus:ring-1 focus:ring-focus"
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleCreateUser}
+                    disabled={userActionLoading === 'create'}
+                    className="flex w-full items-center justify-center gap-2 bg-interactive px-4 py-2 text-xs text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
+                  >
+                    {userActionLoading === 'create' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    Create Account
                   </button>
                 </div>
               </div>

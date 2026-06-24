@@ -25,7 +25,7 @@ pub mod routes;
 pub mod sandbox_engine;
 pub mod tools;
 
-use middleware::{auth_middleware, csrf_middleware, AppState};
+use middleware::{auth_middleware, csrf_middleware, require_admin_middleware, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -172,6 +172,11 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::admin::router()
+                .layer(from_fn_with_state(state.clone(), auth_middleware))
+                .layer(from_fn(require_admin_middleware)),
         )
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))

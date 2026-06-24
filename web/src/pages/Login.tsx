@@ -140,10 +140,14 @@ export default function Login() {
   const navigate = useNavigate()
   const fetchMe = useAuthStore((s) => s.fetchMe)
 
-  let redirectTo = searchParams.get('redirect') || '/chat'
-  if (!redirectTo.startsWith('/') || redirectTo.startsWith('//')) {
-    redirectTo = '/chat'
-  }
+  const redirectTo = (() => {
+    const raw = searchParams.get('redirect') || '/chat'
+    if (!raw.startsWith('/') || raw.startsWith('//')) return '/chat'
+    return raw
+  })()
+
+  const [needsSetup, setNeedsSetup] = useState(false)
+  const [checkingSetup, setCheckingSetup] = useState(true)
 
   useEffect(() => {
     setError('')
@@ -155,6 +159,21 @@ export default function Login() {
     import('../lib/api').then(({ fetchCsrfToken }) => {
       fetchCsrfToken()
     })
+
+    // Determine whether this is a fresh deployment requiring initial setup.
+    api
+      .get('/auth/setup-status')
+      .then((res) => {
+        setNeedsSetup(res.data?.needs_setup ?? false)
+        if (!res.data?.needs_setup) {
+          setIsSignup(false)
+        }
+      })
+      .catch(() => {
+        setNeedsSetup(false)
+        setIsSignup(false)
+      })
+      .finally(() => setCheckingSetup(false))
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -267,11 +286,11 @@ export default function Login() {
                   transition={{ duration: 0.15 }}
                 >
                   <h2 className="text-lg font-semibold text-text-primary">
-                    {isSignup ? 'Create account' : 'Welcome back'}
+                    {isSignup ? 'Create master account' : 'Welcome back'}
                   </h2>
                   <p className="mt-1 text-xs text-text-helper">
                     {isSignup
-                      ? 'Get started with your AI assistant'
+                      ? 'This will be the administrator account for this Vulcan instance'
                       : 'Sign in to continue to Project Vulcan'}
                   </p>
                 </motion.div>
@@ -366,22 +385,24 @@ export default function Login() {
               </button>
             </form>
 
-            <div className="mt-5 text-center">
-              <p className="text-xs text-text-helper">
-                {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignup(!isSignup)
-                    setError('')
-                    setConfirmPassword('')
-                  }}
-                  className="font-normal text-interactive transition-colors hover:text-link-hover"
-                >
-                  {isSignup ? 'Sign in' : 'Create one'}
-                </button>
-              </p>
-            </div>
+            {!checkingSetup && needsSetup && (
+              <div className="mt-5 text-center">
+                <p className="text-xs text-text-helper">
+                  {isSignup ? 'Already have an account?' : "Don't have an account?"}{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSignup(!isSignup)
+                      setError('')
+                      setConfirmPassword('')
+                    }}
+                    className="font-normal text-interactive transition-colors hover:text-link-hover"
+                  >
+                    {isSignup ? 'Sign in' : 'Create one'}
+                  </button>
+                </p>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
