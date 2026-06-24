@@ -157,8 +157,13 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
-            routes::templates::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
             routes::integrations::router()

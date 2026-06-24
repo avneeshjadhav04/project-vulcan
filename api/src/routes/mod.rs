@@ -6,7 +6,6 @@ pub mod files;
 pub mod integrations;
 pub mod models;
 pub mod providers;
-pub mod templates;
 pub mod terminal;
 pub mod settings;
 pub mod transcribe;

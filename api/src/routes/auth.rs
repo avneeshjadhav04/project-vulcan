@@ -54,13 +54,15 @@ pub fn router() -> Router<AppState> {
 async fn setup_status(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Setup status query error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE is_active = 1"
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| {
+        tracing::error!("Setup status query error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(serde_json::json!({ "needs_setup": count == 0 })))
 }
@@ -86,11 +88,13 @@ async fn signup(
 
     let hash = hash_password(&req.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Only allow signup when no users exist. The first account becomes the master admin.
-    let existing_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Only allow signup when no active users exist. The first account becomes the master admin.
+    let existing_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE is_active = 1"
+    )
+    .fetch_one(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     if existing_count > 0 {
         return Ok((
