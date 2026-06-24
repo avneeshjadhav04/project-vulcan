@@ -18,10 +18,10 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/integrations", get(list_integrations))
-        .route("/integrations/:provider/config", put(save_integration_config))
-        .route("/integrations/:provider/auth-url", get(auth_url))
-        .route("/integrations/:provider/callback", get(oauth_callback))
-        .route("/integrations/:provider", delete(disconnect))
+        .route("/integrations/{provider}/config", put(save_integration_config))
+        .route("/integrations/{provider}/auth-url", get(auth_url))
+        .route("/integrations/{provider}/callback", get(oauth_callback))
+        .route("/integrations/{provider}", delete(disconnect))
 }
 
 #[derive(Deserialize)]

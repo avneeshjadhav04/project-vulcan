@@ -17,7 +17,7 @@ pub fn router() -> Router<AppState> {
             get(list_automations).post(create_automation),
         )
         .route(
-            "/automations/:id",
+            "/automations/{id}",
             patch(update_automation).delete(delete_automation),
         )
 }

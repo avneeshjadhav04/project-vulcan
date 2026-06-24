@@ -14,7 +14,7 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/settings/tool-permissions", get(get_tool_permissions))
-        .route("/settings/tool-permissions/:tool", put(update_tool_permission))
+        .route("/settings/tool-permissions/{tool}", put(update_tool_permission))
 }
 
 async fn get_tool_permissions(
