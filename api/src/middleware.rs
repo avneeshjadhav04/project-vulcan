@@ -5,7 +5,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::{config::Config, models::Claims, sandbox_engine::SandboxState};
+use crate::{
+    auth::build_cookie,
+    config::Config,
+    models::Claims,
+    sandbox_engine::SandboxState,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -59,8 +64,19 @@ pub async fn auth_middleware(
     match is_active {
         Some((1,)) => {}
         Some((0,)) => {
+            // Clear auth cookies in the response so the client stops retrying
+            // with a disabled session and breaks any redirect loop.
+            let secure = state.config.cookie_secure;
+            let clear_token = build_cookie("token", "", -1, true, secure)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?;
+            let clear_csrf = build_cookie("csrf_token", "", -1, false, secure)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())?;
+            let mut headers = axum::http::HeaderMap::new();
+            headers.append(axum::http::header::SET_COOKIE, clear_token);
+            headers.append(axum::http::header::SET_COOKIE, clear_csrf);
             return Err((
                 StatusCode::FORBIDDEN,
+                headers,
                 axum::Json(serde_json::json!({ "error": "Account disabled" })),
             )
                 .into_response());

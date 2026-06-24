@@ -52,6 +52,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (err: any) {
       // Any error here just means we are not authenticated. Let the router or
       // the current page decide whether to redirect, not the session probe.
+      if (err?.response?.data?.error === 'Account disabled') {
+        // The server rejected the session because the account was disabled.
+        // The API interceptor redirects to the disabled-account login message;
+        // clear local state here to avoid flashing authenticated UI.
+        document.cookie = 'token=; Max-Age=0; Path=/; SameSite=Lax'
+        document.cookie = 'csrf_token=; Max-Age=0; Path=/; SameSite=Lax'
+      }
       set({ user: null, isAuthenticated: false, isLoading: false })
     }
   },
