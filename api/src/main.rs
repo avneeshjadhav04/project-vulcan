@@ -184,10 +184,11 @@ async fn run() -> anyhow::Result<()> {
     // Serve static files if dist/ exists (production mode)
     let app = if std::path::Path::new("./dist").exists() {
         println!("[INIT] Serving static frontend from ./dist");
-        Router::new().nest("/api", api_routes).nest_service(
-            "/",
-            ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
-        )
+        Router::new()
+            .nest("/api", api_routes)
+            .fallback_service(
+                ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
+            )
     } else {
         println!("[INIT] Running in API-only mode (no dist/ found)");
         api_routes
