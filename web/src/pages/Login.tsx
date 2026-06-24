@@ -131,7 +131,6 @@ function FormInput({
 
 export default function Login() {
   const [searchParams] = useSearchParams()
-  const [isSignup, setIsSignup] = useState(searchParams.get('signup') === '1')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -148,10 +147,18 @@ export default function Login() {
 
   const [needsSetup, setNeedsSetup] = useState(false)
   const [checkingSetup, setCheckingSetup] = useState(true)
+  const [isSignup, setIsSignup] = useState(false)
 
   useEffect(() => {
     setError('')
   }, [isSignup])
+
+  useEffect(() => {
+    // Show a disabled-account message if the URL asks for it.
+    if (searchParams.get('disabled') === '1') {
+      setError('Your account has been disabled. Contact an administrator.')
+    }
+  }, [searchParams])
 
   useEffect(() => {
     // Fetch a pre-session CSRF token so login/signup submissions succeed
@@ -161,13 +168,13 @@ export default function Login() {
     })
 
     // Determine whether this is a fresh deployment requiring initial setup.
+    // This is the source of truth for whether signup should be shown.
     api
       .get('/auth/setup-status')
       .then((res) => {
-        setNeedsSetup(res.data?.needs_setup ?? false)
-        if (!res.data?.needs_setup) {
-          setIsSignup(false)
-        }
+        const needs = res.data?.needs_setup ?? false
+        setNeedsSetup(needs)
+        setIsSignup(needs)
       })
       .catch(() => {
         setNeedsSetup(false)
@@ -278,22 +285,37 @@ export default function Login() {
           <div className="border border-border-subtle bg-layer p-6 sm:p-8">
             <div className="mb-5">
               <AnimatePresence mode="wait">
-                <motion.div
-                  key={isSignup ? 'signup' : 'login'}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <h2 className="text-lg font-semibold text-text-primary">
-                    {isSignup ? 'Create master account' : 'Welcome back'}
-                  </h2>
-                  <p className="mt-1 text-xs text-text-helper">
-                    {isSignup
-                      ? 'This will be the administrator account for this Vulcan instance'
-                      : 'Sign in to continue to Project Vulcan'}
-                  </p>
-                </motion.div>
+                {checkingSetup ? (
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <div className="flex items-center gap-2 text-text-secondary">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Checking instance status…</span>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={isSignup ? 'signup' : 'login'}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <h2 className="text-lg font-semibold text-text-primary">
+                      {isSignup ? 'Create master account' : 'Welcome back'}
+                    </h2>
+                    <p className="mt-1 text-xs text-text-helper">
+                      {isSignup
+                        ? 'This will be the administrator account for this Vulcan instance'
+                        : 'Sign in to continue to Project Vulcan'}
+                    </p>
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
 
@@ -371,7 +393,7 @@ export default function Login() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || checkingSetup}
                 className="mt-2 flex w-full items-center justify-center gap-2 bg-interactive py-3 text-sm font-normal text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
               >
                 {loading ? (

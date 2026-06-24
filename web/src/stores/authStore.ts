@@ -37,9 +37,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { api } = await import('../lib/api')
       const res = await api.get('/me')
+      // Treat disabled accounts as logged-out. Individual pages or the login
+      // screen can show a disabled-account message via the ?disabled=1 query
+      // parameter when they see is_active === false in the user data.
       if (res.data?.is_active === false) {
         set({ user: null, isAuthenticated: false, isLoading: false })
-        window.location.href = '/login?disabled=1'
         return
       }
       set({
@@ -48,11 +50,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
       })
     } catch (err: any) {
-      if (err?.response?.status === 403) {
-        set({ user: null, isAuthenticated: false, isLoading: false })
-        window.location.href = '/login?disabled=1'
-        return
-      }
+      // Any error here just means we are not authenticated. Let the router or
+      // the current page decide whether to redirect, not the session probe.
       set({ user: null, isAuthenticated: false, isLoading: false })
     }
   },
