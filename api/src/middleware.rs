@@ -2,7 +2,7 @@ use axum::{
     extract::{Extension, Request, State},
     http::StatusCode,
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 
 use crate::{config::Config, models::Claims, sandbox_engine::SandboxState};
@@ -21,7 +21,7 @@ pub async fn auth_middleware(
     State(state): State<AppState>,
     mut request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     let cookie_header = request
         .headers()
         .get(axum::http::header::COOKIE)
@@ -41,10 +41,38 @@ pub async fn auth_middleware(
     let claims = match token {
         Some(t) => crate::auth::verify_token(&t, &state).map_err(|e| {
             tracing::warn!("Token verification failed: {}", e);
-            StatusCode::UNAUTHORIZED
+            StatusCode::UNAUTHORIZED.into_response()
         })?,
-        None => return Err(StatusCode::UNAUTHORIZED),
+        None => return Err(StatusCode::UNAUTHORIZED.into_response()),
     };
+
+    // Reject disabled accounts immediately rather than letting the token expire.
+    let is_active: Option<(i32,)> = sqlx::query_as("SELECT is_active FROM users WHERE id = ?1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Auth middleware user status lookup failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        })?;
+
+    match is_active {
+        Some((1,)) => {}
+        Some((0,)) => {
+            return Err((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "error": "Account disabled" })),
+            )
+                .into_response());
+        }
+        _ => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                axum::Json(serde_json::json!({ "error": "User not found" })),
+            )
+                .into_response());
+        }
+    }
 
     request.extensions_mut().insert(claims);
     Ok(next.run(request).await)
