@@ -146,13 +146,14 @@ async fn update_user(
         set_clauses.join(", ")
     );
 
-    let mut query = sqlx::query_as::<_, UserListItem>(&sql).bind(&user_id);
+    let mut query = sqlx::query_as::<_, UserListItem>(&sql);
     if let Some(role) = role_value {
         query = query.bind(role);
     }
     if let Some(is_active) = is_active_value {
         query = query.bind(is_active);
     }
+    query = query.bind(&user_id);
 
     match query.fetch_one(&state.db).await {
         Ok(user) => Ok(Json(user)),
