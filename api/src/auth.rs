@@ -128,6 +128,33 @@ pub fn generate_csrf_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+pub fn build_cookie(
+    name: &str,
+    value: &str,
+    max_age: i64,
+    http_only: bool,
+    secure: bool,
+) -> Result<axum::http::HeaderValue, axum::http::StatusCode> {
+    let mut parts = vec![
+        format!("{}={}", name, value),
+        "SameSite=Lax".to_string(),
+        "Path=/".to_string(),
+    ];
+    if http_only {
+        parts.push("HttpOnly".to_string());
+    }
+    if secure {
+        parts.push("Secure".to_string());
+    }
+    if max_age >= 0 {
+        parts.push(format!("Max-Age={}", max_age));
+    } else {
+        parts.push("Max-Age=0".to_string());
+    }
+    axum::http::HeaderValue::from_str(&parts.join("; "))
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 pub fn encrypt_key(plaintext: &str, master_key: &[u8; 32]) -> Result<String> {
     let cipher = Aes256Gcm::new_from_slice(master_key)?;
     let nonce_bytes = rand::random::<[u8; 12]>();

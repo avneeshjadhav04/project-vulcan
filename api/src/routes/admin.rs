@@ -1,14 +1,17 @@
 use axum::{
     extract::{Extension, Path, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Response},
     routing::{get, patch},
     Router,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{hash_password, normalize_email, validate_email, validate_password},
+    auth::{
+        build_cookie, create_token, generate_csrf_token, hash_password, normalize_email,
+        validate_email, validate_password,
+    },
     middleware::AppState,
     models::Claims,
 };
@@ -113,15 +116,15 @@ async fn create_user(
 
 async fn update_user(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
+    Extension(claims): Extension<Claims>,
     Path(user_id): Path<String>,
     Json(req): Json<UpdateUserRequest>,
-) -> Result<Json<UserListItem>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let mut set_clauses = Vec::new();
     let mut role_value: Option<String> = None;
     let mut is_active_value: Option<i32> = None;
 
-    if let Some(role) = req.role {
+    if let Some(ref role) = req.role {
         if !VALID_ROLES.contains(&role.as_str()) {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -129,7 +132,7 @@ async fn update_user(
             ));
         }
         set_clauses.push("role = ?");
-        role_value = Some(role);
+        role_value = Some(role.clone());
     }
     if let Some(is_active) = req.is_active {
         set_clauses.push("is_active = ?");
@@ -155,14 +158,36 @@ async fn update_user(
     }
     query = query.bind(&user_id);
 
-    match query.fetch_one(&state.db).await {
-        Ok(user) => Ok(Json(user)),
-        Err(sqlx::Error::RowNotFound) => Err((StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "User not found" })))),
+    let user = match query.fetch_one(&state.db).await {
+        Ok(user) => user,
+        Err(sqlx::Error::RowNotFound) => return Err((StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "User not found" })))),
         Err(e) => {
             tracing::error!("Admin update user error: {}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))))
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))));
         }
+    };
+
+    // If the current user updated their own role, reissue the auth cookie so the
+    // JWT claim stays in sync with the database and admin routes remain accessible.
+    if claims.sub == user_id && req.role.is_some() {
+        let token = create_token(&user.id, &user.email, &user.role, &state).map_err(|e| {
+            tracing::error!("Token reissue error after role change: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" })))
+        })?;
+        let csrf = generate_csrf_token();
+        let secure = state.config.cookie_secure;
+        let auth_cookie = build_cookie("token", &token, 86400, true, secure)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))))?;
+        let csrf_cookie = build_cookie("csrf_token", &csrf, 86400, false, secure)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal server error" }))))?;
+
+        let mut headers = axum::http::HeaderMap::new();
+        headers.append(axum::http::header::SET_COOKIE, auth_cookie);
+        headers.append(axum::http::header::SET_COOKIE, csrf_cookie);
+        return Ok((headers, Json(user)).into_response());
     }
+
+    Ok(Json(user).into_response())
 }
 
 async fn delete_user(

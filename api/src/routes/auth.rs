@@ -8,39 +8,12 @@ use axum::{
 
 use crate::{
     auth::{
-        create_token, generate_csrf_token, hash_password, normalize_email, validate_email,
-        validate_password, verify_password,
+        build_cookie, create_token, generate_csrf_token, hash_password, normalize_email,
+        validate_email, validate_password, verify_password,
     },
     middleware::AppState,
     models::{LoginRequest, SignupRequest, User},
 };
-
-fn build_cookie(
-    name: &str,
-    value: &str,
-    max_age: i64,
-    http_only: bool,
-    secure: bool,
-) -> Result<axum::http::HeaderValue, StatusCode> {
-    let mut parts = vec![
-        format!("{}={}", name, value),
-        "SameSite=Lax".to_string(),
-        "Path=/".to_string(),
-    ];
-    if http_only {
-        parts.push("HttpOnly".to_string());
-    }
-    if secure {
-        parts.push("Secure".to_string());
-    }
-    if max_age >= 0 {
-        parts.push(format!("Max-Age={}", max_age));
-    } else {
-        parts.push("Max-Age=0".to_string());
-    }
-    axum::http::HeaderValue::from_str(&parts.join("; "))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
-}
 
 pub fn router() -> Router<AppState> {
     Router::new()
