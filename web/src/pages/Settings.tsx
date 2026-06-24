@@ -6,6 +6,8 @@ import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import ToolPermissionsPanel from '../components/ToolPermissionsPanel'
 import ThemeLogo from '../components/ThemeLogo'
+import { PasswordInput } from '../components/PasswordInput'
+import { PasswordStrength } from '../components/PasswordStrength'
 import {
   ArrowLeft,
   Key,
@@ -1537,28 +1539,29 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
-                    Password
-                  </label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
+                    onChange={(v) => setNewUserPassword(v)}
+                    label="Password"
                     placeholder="••••••••"
-                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                    minLength={6}
                   />
+                  <PasswordStrength password={newUserPassword} />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">
-                    Confirm Password
-                  </label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     value={newUserConfirmPassword}
-                    onChange={(e) => setNewUserConfirmPassword(e.target.value)}
+                    onChange={(v) => setNewUserConfirmPassword(v)}
+                    label="Confirm Password"
                     placeholder="••••••••"
-                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder focus:border-focus focus:ring-1 focus:ring-focus"
+                    minLength={6}
                   />
+                  {newUserConfirmPassword && newUserPassword === newUserConfirmPassword && (
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-support-success">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Passwords match
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-text-helper">

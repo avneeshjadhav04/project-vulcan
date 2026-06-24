@@ -4,13 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 import ThemeLogo from '../components/ThemeLogo'
+import { PasswordStrength } from '../components/PasswordStrength'
+import { PasswordInput } from '../components/PasswordInput'
 import type { AxiosError } from 'axios'
 import type { LucideIcon } from 'lucide-react'
 import {
   Mail,
-  Lock,
-  Eye,
-  EyeOff,
   ArrowRight,
   AlertCircle,
   Loader2,
@@ -37,44 +36,6 @@ function FeatureItem({ icon: Icon, text, delay }: { icon: LucideIcon; text: stri
   )
 }
 
-/* Password Strength */
-function PasswordStrength({ password }: { password: string }) {
-  const getStrength = (pwd: string): number => {
-    let score = 0
-    if (pwd.length >= 6) score++
-    if (pwd.length >= 10) score++
-    if (/[A-Z]/.test(pwd)) score++
-    if (/[0-9]/.test(pwd)) score++
-    if (/[^A-Za-z0-9]/.test(pwd)) score++
-    return score
-  }
-
-  const strength = getStrength(password)
-  const labels = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong']
-  const colors = ['#fa4d56', '#f1c21b', '#78a9ff', '#42be65', '#42be65']
-
-  if (!password) return null
-
-  return (
-    <div className="mt-2 space-y-1">
-      <div className="flex gap-px">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div
-            key={i}
-            className="h-0.5 flex-1 transition-all duration-200"
-            style={{
-              backgroundColor: i <= strength ? colors[strength - 1] : 'var(--color-layer-active)',
-            }}
-          />
-        ))}
-      </div>
-      <p className="text-[10px] text-text-helper">
-        Strength: <span style={{ color: colors[strength - 1] }}>{labels[strength - 1]}</span>
-      </p>
-    </div>
-  )
-}
-
 /* Input Field */
 function FormInput({
   icon: Icon,
@@ -85,7 +46,6 @@ function FormInput({
   label,
   required,
   minLength,
-  showToggle,
 }: {
   icon: any
   type: string
@@ -95,19 +55,14 @@ function FormInput({
   label: string
   required?: boolean
   minLength?: number
-  showToggle?: boolean
 }) {
-  const [show, setShow] = useState(false)
-
-  const inputType = showToggle ? (show ? 'text' : 'password') : type
-
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-normal text-text-helper">{label}</label>
       <div className="relative flex items-center border border-border-subtle bg-layer transition-colors focus-within:border-focus focus-within:ring-1 focus-within:ring-focus">
         <Icon className="absolute left-3 h-4 w-4 text-text-disabled" />
         <input
-          type={inputType}
+          type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="w-full bg-transparent py-3 pl-10 pr-10 text-sm text-text-primary outline-none placeholder:text-text-placeholder"
@@ -115,15 +70,6 @@ function FormInput({
           required={required}
           minLength={minLength}
         />
-        {showToggle && (
-          <button
-            type="button"
-            onClick={() => setShow(!show)}
-            className="absolute right-3 p-1 text-text-disabled transition-colors hover:text-text-primary"
-          >
-            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
-        )}
       </div>
     </div>
   )
@@ -346,50 +292,44 @@ export default function Login() {
                 required
               />
 
-              <div>
-                <FormInput
-                  icon={Lock}
-                  type="password"
-                  value={password}
-                  onChange={setPassword}
-                  placeholder="••••••••"
-                  label="Password"
-                  required
-                  minLength={6}
-                  showToggle
-                />
-                {isSignup && <PasswordStrength password={password} />}
-              </div>
+                <div>
+                  <PasswordInput
+                    value={password}
+                    onChange={setPassword}
+                    placeholder="••••••••"
+                    label="Password"
+                    required
+                    minLength={6}
+                  />
+                  {isSignup && <PasswordStrength password={password} />}
+                </div>
 
-              <AnimatePresence>
-                {isSignup && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <FormInput
-                      icon={Lock}
-                      type="password"
-                      value={confirmPassword}
-                      onChange={setConfirmPassword}
-                      placeholder="••••••••"
-                      label="Confirm Password"
-                      required={isSignup}
-                      minLength={6}
-                      showToggle
-                    />
-                    {confirmPassword && password === confirmPassword && (
-                      <div className="mt-1.5 flex items-center gap-1 text-[10px] text-support-success">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Passwords match
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                <AnimatePresence>
+                  {isSignup && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <PasswordInput
+                        value={confirmPassword}
+                        onChange={setConfirmPassword}
+                        placeholder="••••••••"
+                        label="Confirm Password"
+                        required={isSignup}
+                        minLength={6}
+                      />
+                      {confirmPassword && password === confirmPassword && (
+                        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-support-success">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Passwords match
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
               <button
                 type="submit"
