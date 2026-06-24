@@ -136,9 +136,10 @@ export default function ChatInterface({
   // Validate model when chat loads
   const validationRunRef = useRef(0)
   useEffect(() => {
-    const currentModelId = chatData?.chat.model_id
-    const currentProviderId = chatData?.chat.provider_id
-    if (!currentModelId || !currentProviderId || !userData?.has_provider) {
+    const chat = chatData?.chat
+    const currentModelId = chat?.model_id
+    const currentProviderId = chat?.provider_id
+    if (!chat || !currentModelId || !currentProviderId || !userData?.has_provider) {
       setModelValidation(null)
       setValidatingModel(false)
       return
@@ -169,7 +170,7 @@ export default function ChatInterface({
       controller.abort()
       clearTimeout(timeoutId)
     }
-  }, [chatData?.chat.model_id, chatData?.chat.provider_id, userData?.has_provider])
+  }, [chatData?.chat?.model_id, chatData?.chat?.provider_id, userData?.has_provider])
 
   // Assign pending meta to last assistant message
   useEffect(() => {
@@ -398,16 +399,16 @@ export default function ChatInterface({
       </AnimatePresence>
 
       <ChatHeader
-        title={chatData?.chat.title}
+        title={chatData?.chat?.title}
         optimisticTitle={optimisticTitle}
         chatId={effectiveChatId}
         sidebarOpen={sidebarOpen}
-        isPinned={chatData?.chat.is_pinned === 1}
-        isArchived={chatData?.chat.is_archived === 1}
+        isPinned={chatData?.chat?.is_pinned === 1}
+        isArchived={chatData?.chat?.is_archived === 1}
         onTogglePin={async () => {
           if (!effectiveChatId) return
           try {
-            await api.patch(`/chats/${effectiveChatId}`, { is_pinned: chatData?.chat.is_pinned === 1 ? 0 : 1 })
+            await api.patch(`/chats/${effectiveChatId}`, { is_pinned: chatData?.chat?.is_pinned === 1 ? 0 : 1 })
             await refetch()
             queryClient.invalidateQueries({ queryKey: ['chats'] })
           } catch (err: any) {
@@ -417,7 +418,7 @@ export default function ChatInterface({
         onToggleArchive={async () => {
           if (!effectiveChatId) return
           try {
-            await api.patch(`/chats/${effectiveChatId}`, { is_archived: chatData?.chat.is_archived === 1 ? 0 : 1 })
+            await api.patch(`/chats/${effectiveChatId}`, { is_archived: chatData?.chat?.is_archived === 1 ? 0 : 1 })
             await refetch()
             queryClient.invalidateQueries({ queryKey: ['chats'] })
           } catch (err: any) {
