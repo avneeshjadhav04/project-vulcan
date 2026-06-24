@@ -172,7 +172,7 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::admin::router()
-                .layer(from_fn(require_admin_middleware))
+                .layer(from_fn_with_state(state.clone(), require_admin_middleware))
                 .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
