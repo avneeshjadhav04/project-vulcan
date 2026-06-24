@@ -51,14 +51,24 @@ pub async fn auth_middleware(
 }
 
 pub async fn require_admin_middleware(
+    State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if claims.role != "admin" {
-        return Err(StatusCode::FORBIDDEN);
+    let role: Option<(String,)> = sqlx::query_as("SELECT role FROM users WHERE id = ?1")
+        .bind(&claims.sub)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| {
+            tracing::error!("Admin middleware role lookup failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    match role {
+        Some((role,)) if role == "admin" => Ok(next.run(request).await),
+        _ => Err(StatusCode::FORBIDDEN),
     }
-    Ok(next.run(request).await)
 }
 
 pub async fn csrf_middleware(request: Request, next: Next) -> Result<Response, StatusCode> {
