@@ -236,7 +236,7 @@ pub async fn get_or_create_shell_session(
         .map_err(|e| e.to_string())?;
 
     // Open PTY master/slave pair.
-    let OpenptyResult { master: master_fd, slave: slave_fd } = openpty(
+    let OpenptyResult { master: _master_fd, slave: slave_fd } = openpty(
         &Winsize {
             ws_row: 24,
             ws_col: 80,
@@ -257,26 +257,19 @@ pub async fn get_or_create_shell_session(
     let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
     let command_running = Arc::new(AtomicBool::new(false));
 
-    // Fork a child process that will become the proot bash session.
-    let child_pid = unsafe {
-        match fork().map_err(|e| format!("Failed to fork: {}", e))? {
-            ForkResult::Child => {
-                // In child: create new session, attach PTY slave, and exec proot bash.
-                if let Err(e) = setup_shell_child(slave_fd, &host_path_str) {
-                    eprintln!("Failed to setup shell child: {}", e);
-                    libc::_exit(1);
-                }
-                libc::_exit(1);
-            }
-            ForkResult::Parent { child } => child,
-        }
+    // Spawn the shell from a dedicated std::thread, never from a Tokio worker.
+    // Forking inside the async runtime is unsafe because the child inherits
+    // other runtime threads and their locks.
+    let spawn_result = tokio::task::spawn_blocking(move || {
+        spawn_pty_shell(slave_fd, &host_path_str)
+    })
+    .await
+    .map_err(|e| format!("PTY spawn task panicked: {}", e))?;
+
+    let (child_pid, master_fd) = match spawn_result {
+        Ok(res) => res,
+        Err(e) => return Err(e),
     };
-
-    // Parent process: close slave fd (not needed here).
-    let _ = close(slave_fd);
-
-    // Put child in its own process group so signals go to the group.
-    let _ = setpgid(child_pid, child_pid);
 
     let handle = ShellSessionHandle {
         user_id: user_id.clone(),
@@ -310,6 +303,59 @@ pub async fn get_or_create_shell_session(
     Ok(handle)
 }
 
+/// Spawn the shell in a dedicated thread-safe helper. This function must never be
+/// called from a Tokio worker thread; it performs fork().
+fn spawn_pty_shell(
+    slave_fd: OwnedFd,
+    host_workspace: &str,
+) -> Result<(Pid, OwnedFd), String> {
+    // Duplicate the slave fd before forking so the child can own its own
+    // descriptor and close it safely while the parent retains the original.
+    let child_slave = nix::unistd::dup(&slave_fd)
+        .map_err(|e| format!("Failed to duplicate PTY slave fd: {}", e))?;
+
+    let child_pid = unsafe {
+        match fork().map_err(|e| format!("Failed to fork: {}", e))? {
+            ForkResult::Child => {
+                // In child: create new session, attach PTY slave, and exec proot bash.
+                close_all_fds_except(child_slave.as_raw_fd());
+                if let Err(e) = setup_shell_child(child_slave, host_workspace) {
+                    eprintln!("Failed to setup shell child: {}", e);
+                    libc::_exit(1);
+                }
+                libc::_exit(1);
+            }
+            ForkResult::Parent { child } => child,
+        }
+    };
+
+    // Parent process: close slave fd (not needed here).
+    let _ = close(slave_fd);
+
+    // Put child in its own process group so signals go to the group.
+    let _ = setpgid(child_pid, child_pid);
+
+    Ok((child_pid, child_slave))
+}
+
+/// Close every file descriptor except the one we are about to use as stdio.
+/// We also keep stderr open for early error messages, then close it after
+/// redirecting stderr to the PTY slave.
+fn close_all_fds_except(keep_fd: RawFd) {
+    let self_fd = std::fs::read_dir("/proc/self/fd").ok();
+    if let Some(entries) = self_fd {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                if let Ok(fd) = name.parse::<RawFd>() {
+                    if fd != keep_fd && fd > 2 {
+                        let _ = close(fd);
+                    }
+                }
+            }
+        }
+    }
+}
+
 unsafe fn setup_shell_child(slave_fd: OwnedFd, host_workspace: &str) -> Result<(), String> {
     // Create new session and detach from controlling terminal.
     setsid().map_err(|e| format!("setsid failed: {}", e))?;
@@ -320,19 +366,19 @@ unsafe fn setup_shell_child(slave_fd: OwnedFd, host_workspace: &str) -> Result<(
     }
 
     // Redirect stdin, stdout, stderr to the PTY slave.
-    unsafe {
-        if libc::dup2(slave_fd.as_raw_fd(), libc::STDIN_FILENO) < 0 {
-            return Err(format!("dup2 stdin failed: {}", Errno::last()));
-        }
-        if libc::dup2(slave_fd.as_raw_fd(), libc::STDOUT_FILENO) < 0 {
-            return Err(format!("dup2 stdout failed: {}", Errno::last()));
-        }
-        if libc::dup2(slave_fd.as_raw_fd(), libc::STDERR_FILENO) < 0 {
-            return Err(format!("dup2 stderr failed: {}", Errno::last()));
-        }
+    if libc::dup2(slave_fd.as_raw_fd(), libc::STDIN_FILENO) < 0 {
+        return Err(format!("dup2 stdin failed: {}", Errno::last()));
+    }
+    if libc::dup2(slave_fd.as_raw_fd(), libc::STDOUT_FILENO) < 0 {
+        return Err(format!("dup2 stdout failed: {}", Errno::last()));
+    }
+    if libc::dup2(slave_fd.as_raw_fd(), libc::STDERR_FILENO) < 0 {
+        return Err(format!("dup2 stderr failed: {}", Errno::last()));
     }
 
-    let _ = close(slave_fd);
+    // Now that stdio is redirected, close any remaining fds including the
+    // original slave fd and the /proc/self/fd directory itself.
+    close_all_fds_except(-1);
 
     // Build argv for execv: proot -0 -R ROOTFS -b host:guest -w guest /bin/bash --login -i
     let proot_c = std::ffi::CString::new("proot").unwrap();
