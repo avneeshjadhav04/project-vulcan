@@ -236,7 +236,7 @@ pub async fn get_or_create_shell_session(
         .map_err(|e| e.to_string())?;
 
     // Open PTY master/slave pair.
-    let OpenptyResult { master: _master_fd, slave: slave_fd } = openpty(
+    let OpenptyResult { master: master_fd, slave: slave_fd } = openpty(
         &Winsize {
             ws_row: 24,
             ws_col: 80,
@@ -265,7 +265,7 @@ pub async fn get_or_create_shell_session(
     // the runtime because the child inherits Tokio-internal FDs and state.
     let (spawn_tx, spawn_rx) = tokio::sync::oneshot::channel::<Result<(Pid, OwnedFd), String>>();
     std::thread::spawn(move || {
-        let res = spawn_pty_shell(slave_fd, &host_path_str);
+        let res = spawn_pty_shell(slave_fd, master_fd, &host_path_str);
         let _ = spawn_tx.send(res);
     });
 
@@ -318,21 +318,20 @@ pub async fn get_or_create_shell_session(
 /// called from a Tokio worker thread; it performs fork().
 fn spawn_pty_shell(
     slave_fd: OwnedFd,
+    master_fd: OwnedFd,
     host_workspace: &str,
 ) -> Result<(Pid, OwnedFd), String> {
-    // Duplicate the slave fd before forking so the child can own its own
-    // descriptor and close it safely while the parent retains the original.
-    let child_slave = nix::unistd::dup(&slave_fd)
-        .map_err(|e| format!("Failed to duplicate PTY slave fd: {}", e))?;
-
     let child_pid = unsafe {
         match fork().map_err(|e| format!("Failed to fork: {}", e))? {
             ForkResult::Child => {
                 // In child: create new session, attach PTY slave, and exec proot bash.
                 // Do not use tracing here; the child must not touch the parent's
                 // tracing subscriber or runtime state.
-                close_all_fds_except(child_slave.as_raw_fd());
-                if let Err(e) = setup_shell_child(child_slave, host_workspace) {
+                //
+                // Close the master fd first: the child only needs the slave.
+                let _ = close(master_fd.as_raw_fd());
+                close_all_fds_except(slave_fd.as_raw_fd());
+                if let Err(e) = setup_shell_child(slave_fd, host_workspace) {
                     eprintln!("Failed to setup shell child: {}", e);
                     libc::_exit(1);
                 }
@@ -348,7 +347,7 @@ fn spawn_pty_shell(
     // Put child in its own process group so signals go to the group.
     let _ = setpgid(child_pid, child_pid);
 
-    Ok((child_pid, child_slave))
+    Ok((child_pid, master_fd))
 }
 
 /// Close every file descriptor except the one we are about to use as stdio.
