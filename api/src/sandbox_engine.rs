@@ -372,12 +372,22 @@ fn close_all_fds_except(keep_fd: RawFd) {
 }
 
 unsafe fn setup_shell_child(slave_fd: OwnedFd, host_workspace: &str) -> Result<(), String> {
-    // Create new session and detach from controlling terminal.
-    setsid().map_err(|e| format!("setsid failed: {}", e))?;
+    // Move into a new process group. This is less restrictive than setsid() and
+    // works in containers that block creating a new session.
+    if let Err(e) = setpgid(Pid::from_raw(0), Pid::from_raw(0)) {
+        return Err(format!("setpgid failed: {}", e));
+    }
 
-    // Make the PTY slave the controlling terminal for this session.
-    if libc::ioctl(slave_fd.as_raw_fd(), libc::TIOCSCTTY, 0) != 0 {
-        return Err(format!("TIOCSCTTY failed: {}", Errno::last()));
+    // Try to create a new session. Some containers block this; if it fails we
+    // continue without a controlling terminal. Bash will still run interactively
+    // because stdin/stdout are attached to a PTY slave.
+    let has_session = setsid().is_ok();
+
+    // Make the PTY slave the controlling terminal only if we successfully created
+    // a new session.
+    if has_session && libc::ioctl(slave_fd.as_raw_fd(), libc::TIOCSCTTY, 0) != 0 {
+        // Non-fatal: many restricted containers deny this ioctl.
+        let _ = Errno::last();
     }
 
     // Redirect stdin, stdout, stderr to the PTY slave.
