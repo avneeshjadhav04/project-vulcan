@@ -245,7 +245,10 @@ pub async fn get_or_create_shell_session(
         },
         None,
     )
-    .map_err(|e| format!("Failed to open PTY: {}", e))?;
+    .map_err(|e| {
+        tracing::error!(user_id = %user_id, tab_id = %tab_id, error = %e, "Failed to open PTY");
+        format!("Failed to open PTY: {}", e)
+    })?;
 
     let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
     let host_workspace = std::path::Path::new(&workspace_dir).join(&user_id);
@@ -257,19 +260,27 @@ pub async fn get_or_create_shell_session(
     let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
     let command_running = Arc::new(AtomicBool::new(false));
 
-    // Spawn the shell from a dedicated std::thread, never from a Tokio worker.
-    // Forking inside the async runtime is unsafe because the child inherits
-    // other runtime threads and their locks.
-    let spawn_result = tokio::task::spawn_blocking(move || {
-        spawn_pty_shell(slave_fd, &host_path_str)
-    })
-    .await
-    .map_err(|e| format!("PTY spawn task panicked: {}", e))?;
+    // Spawn the shell from a fully detached std::thread, never from Tokio.
+    // Forking from any Tokio-managed thread (including spawn_blocking) corrupts
+    // the runtime because the child inherits Tokio-internal FDs and state.
+    let (spawn_tx, spawn_rx) = tokio::sync::oneshot::channel::<Result<(Pid, OwnedFd), String>>();
+    std::thread::spawn(move || {
+        let res = spawn_pty_shell(slave_fd, &host_path_str);
+        let _ = spawn_tx.send(res);
+    });
 
-    let (child_pid, master_fd) = match spawn_result {
-        Ok(res) => res,
-        Err(e) => return Err(e),
+    let (child_pid, master_fd) = match spawn_rx.await {
+        Ok(Ok(res)) => res,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err("PTY spawn thread was dropped".to_string()),
     };
+
+    tracing::info!(
+        user_id = %user_id,
+        tab_id = %tab_id,
+        shell_pid = child_pid.as_raw(),
+        "Spawned PTY shell session"
+    );
 
     let handle = ShellSessionHandle {
         user_id: user_id.clone(),
@@ -318,6 +329,8 @@ fn spawn_pty_shell(
         match fork().map_err(|e| format!("Failed to fork: {}", e))? {
             ForkResult::Child => {
                 // In child: create new session, attach PTY slave, and exec proot bash.
+                // Do not use tracing here; the child must not touch the parent's
+                // tracing subscriber or runtime state.
                 close_all_fds_except(child_slave.as_raw_fd());
                 if let Err(e) = setup_shell_child(child_slave, host_workspace) {
                     eprintln!("Failed to setup shell child: {}", e);
@@ -339,20 +352,23 @@ fn spawn_pty_shell(
 }
 
 /// Close every file descriptor except the one we are about to use as stdio.
-/// We also keep stderr open for early error messages, then close it after
-/// redirecting stderr to the PTY slave.
+/// Collects the FD numbers first so we never close the /proc/self/fd
+/// directory fd while we are still iterating it.
 fn close_all_fds_except(keep_fd: RawFd) {
-    let self_fd = std::fs::read_dir("/proc/self/fd").ok();
-    if let Some(entries) = self_fd {
-        for entry in entries.flatten() {
+    let mut fds_to_close = Vec::new();
+    if let Ok(dir) = std::fs::read_dir("/proc/self/fd") {
+        for entry in dir.flatten() {
             if let Ok(name) = entry.file_name().into_string() {
                 if let Ok(fd) = name.parse::<RawFd>() {
                     if fd != keep_fd && fd > 2 {
-                        let _ = close(fd);
+                        fds_to_close.push(fd);
                     }
                 }
             }
         }
+    }
+    for fd in fds_to_close {
+        let _ = close(fd);
     }
 }
 
