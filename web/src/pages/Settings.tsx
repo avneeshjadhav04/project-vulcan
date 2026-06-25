@@ -166,8 +166,15 @@ export default function Settings() {
   const [newUserConfirmPassword, setNewUserConfirmPassword] = useState('')
   const [newUserRole, setNewUserRole] = useState<'user' | 'admin'>('user')
   const [userActionLoading, setUserActionLoading] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<{ userId: string; action: 'role' | 'active' | 'delete' } | null>(null)
 
   const isAdmin = user?.role === 'admin'
+
+  useEffect(() => {
+    if (!confirming) return
+    const id = setTimeout(() => setConfirming(null), 3000)
+    return () => clearTimeout(id)
+  }, [confirming])
 
   useEffect(() => {
     if (saved) {
@@ -405,7 +412,7 @@ export default function Settings() {
     }
   }
 
-  const handleToggleUserActive = async (u: AdminUser) => {
+  const executeToggleUserActive = async (u: AdminUser) => {
     setUserActionLoading(`active-${u.id}`)
     try {
       await api.patch(`/admin/users/${u.id}`, { is_active: !u.is_active })
@@ -417,10 +424,11 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to update user')
     } finally {
       setUserActionLoading(null)
+      setConfirming(null)
     }
   }
 
-  const handleToggleUserRole = async (u: AdminUser) => {
+  const executeToggleUserRole = async (u: AdminUser) => {
     const newRole = u.role === 'admin' ? 'user' : 'admin'
     setUserActionLoading(`role-${u.id}`)
     try {
@@ -431,11 +439,11 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to update role')
     } finally {
       setUserActionLoading(null)
+      setConfirming(null)
     }
   }
 
-  const handleDeleteUser = async (u: AdminUser) => {
-    if (!confirm(`Delete ${u.email}? This cannot be undone.`)) return
+  const executeDeleteUser = async (u: AdminUser) => {
     setUserActionLoading(`delete-${u.id}`)
     try {
       await api.delete(`/admin/users/${u.id}`)
@@ -449,6 +457,35 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to delete user')
     } finally {
       setUserActionLoading(null)
+      setConfirming(null)
+    }
+  }
+
+  const requestConfirm = (userId: string, action: 'role' | 'active' | 'delete') => {
+    setConfirming({ userId, action })
+  }
+
+  const handleToggleUserActive = (u: AdminUser) => {
+    if (confirming?.userId === u.id && confirming?.action === 'active') {
+      executeToggleUserActive(u)
+    } else {
+      requestConfirm(u.id, 'active')
+    }
+  }
+
+  const handleToggleUserRole = (u: AdminUser) => {
+    if (confirming?.userId === u.id && confirming?.action === 'role') {
+      executeToggleUserRole(u)
+    } else {
+      requestConfirm(u.id, 'role')
+    }
+  }
+
+  const handleDeleteUser = (u: AdminUser) => {
+    if (confirming?.userId === u.id && confirming?.action === 'delete') {
+      executeDeleteUser(u)
+    } else {
+      requestConfirm(u.id, 'delete')
     }
   }
 
@@ -723,25 +760,18 @@ export default function Settings() {
                             </div>
                             <div className="flex shrink-0 items-center gap-1">
                               <button
-                                onClick={() => handleToggleUserActive(u)}
-                                disabled={userActionLoading === `active-${u.id}`}
-                                className="px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
-                              >
-                                {userActionLoading === `active-${u.id}` ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : u.is_active ? (
-                                  'Disable'
-                                ) : (
-                                  'Enable'
-                                )}
-                              </button>
-                              <button
                                 onClick={() => handleToggleUserRole(u)}
                                 disabled={userActionLoading === `role-${u.id}`}
-                                className="px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-40"
+                                className={`px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                                  confirming?.userId === u.id && confirming?.action === 'role'
+                                    ? 'bg-interactive/10 text-interactive hover:bg-interactive/20'
+                                    : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
+                                }`}
                               >
                                 {userActionLoading === `role-${u.id}` ? (
                                   <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : confirming?.userId === u.id && confirming?.action === 'role' ? (
+                                  'Confirm?'
                                 ) : u.role === 'admin' ? (
                                   'Make User'
                                 ) : (
@@ -749,16 +779,43 @@ export default function Settings() {
                                 )}
                               </button>
                               <button
+                                onClick={() => handleToggleUserActive(u)}
+                                disabled={userActionLoading === `active-${u.id}`}
+                                className={`px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                                  confirming?.userId === u.id && confirming?.action === 'active'
+                                    ? 'bg-interactive/10 text-interactive hover:bg-interactive/20'
+                                    : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
+                                }`}
+                              >
+                                {userActionLoading === `active-${u.id}` ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : confirming?.userId === u.id && confirming?.action === 'active' ? (
+                                  'Confirm?'
+                                ) : u.is_active ? (
+                                  'Disable'
+                                ) : (
+                                  'Enable'
+                                )}
+                              </button>
+                              <button
                                 onClick={() => handleDeleteUser(u)}
                                 disabled={userActionLoading === `delete-${u.id}`}
-                                className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10 disabled:opacity-40"
+                                className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                                  confirming?.userId === u.id && confirming?.action === 'delete'
+                                    ? 'bg-support-error/10 text-support-error hover:bg-support-error/20'
+                                    : 'text-support-error hover:bg-support-error/10'
+                                }`}
                               >
                                 {userActionLoading === `delete-${u.id}` ? (
                                   <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : confirming?.userId === u.id && confirming?.action === 'delete' ? (
+                                  'Confirm?'
                                 ) : (
-                                  <Trash2 className="h-3 w-3" />
+                                  <>
+                                    <Trash2 className="h-3 w-3" />
+                                    Delete
+                                  </>
                                 )}
-                                Delete
                               </button>
                             </div>
                           </div>
