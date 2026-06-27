@@ -1,6 +1,6 @@
 # Project Vulcan
 
-A personal, secure AI assistant platform built with Rust, React, and multi-provider LLM support.
+A personal, secure AI assistant platform built with Rust, React, and multi-provider LLM support!
 
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Tech Stack](https://img.shields.io/badge/Rust-1.90+-orange?logo=rust)
