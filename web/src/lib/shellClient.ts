@@ -31,6 +31,7 @@ export class ShellClient {
   private connected = false
   private resizeObserver: ResizeObserver | null = null
   private cleanupWindowResize: (() => void) | null = null
+  private cursorBlinkInterval: number | null = null
 
   constructor(options: ShellClientOptions) {
     this.tabId = options.tabId
@@ -67,6 +68,7 @@ export class ShellClient {
 
     this.term = term
     this.fitAddon = fitAddon
+    this.startCursorBlinkOverride(term)
 
     this.resizeObserver = new ResizeObserver(() => {
       try {
@@ -124,6 +126,30 @@ export class ShellClient {
     }
     window.addEventListener('resize', handleWindowResize)
     this.cleanupWindowResize = () => window.removeEventListener('resize', handleWindowResize)
+  }
+
+  private startCursorBlinkOverride(term: XTerm) {
+    // xterm.js 5.x on canvas renderer may not respect cursorBlink under some
+    // reduced-motion / focus conditions. Manually toggle the cursor element's
+    // visibility via a CSS class so the focused block cursor always blinks.
+    const root = term.element
+    if (!root) return
+
+    const toggle = () => {
+      const cursor = root.querySelector('.xterm-cursor-block') as HTMLElement | null
+      if (!cursor) return
+      const visible = cursor.style.opacity !== '0'
+      cursor.style.opacity = visible ? '0' : '1'
+    }
+
+    this.cursorBlinkInterval = window.setInterval(toggle, 530)
+  }
+
+  private stopCursorBlinkOverride() {
+    if (this.cursorBlinkInterval !== null) {
+      window.clearInterval(this.cursorBlinkInterval)
+      this.cursorBlinkInterval = null
+    }
   }
 
   private sendResize() {
@@ -227,6 +253,7 @@ export class ShellClient {
       this.ws = null
     }
     if (this.term) {
+      this.stopCursorBlinkOverride()
       this.term.dispose()
       this.term = null
       this.fitAddon = null
