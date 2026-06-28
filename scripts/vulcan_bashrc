@@ -1,5 +1,8 @@
 # Vulcan interactive shell configuration
 
+# Always start in the sandbox workspace.
+cd /workspace
+
 # Report cwd to the frontend via an OSC sequence.
 PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
 
