@@ -112,6 +112,26 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         file unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
 
+# Override the rootfs's default prompt with the Vulcan prompt.
+# Appending at the end of these files ensures our PS1/PROMPT_COMMAND
+# override whatever Ubuntu's stock rc files set earlier.
+RUN <<'EOF'
+cat >> /app/ubuntu-rootfs/etc/bash.bashrc <<'BASHRC'
+
+# Vulcan terminal prompt override
+export PS1='$(pwd) → '
+export PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
+BASHRC
+
+mkdir -p /app/ubuntu-rootfs/root
+cat >> /app/ubuntu-rootfs/root/.bashrc <<'BASHRC'
+
+# Vulcan terminal prompt override
+export PS1='$(pwd) → '
+export PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
+BASHRC
+EOF
+
 # Download Vosk model (40MB small English model)
 RUN mkdir -p /models/vosk \
     && wget -q -O /tmp/vosk-model.zip \
