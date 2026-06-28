@@ -3,11 +3,10 @@
 # Always start in the sandbox workspace.
 cd /workspace
 
-# Report cwd to the frontend via an OSC sequence.
-PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
-
-# Build the Vulcan prompt: user → cwd (branch) $
-vulcan_prompt() {
+# Build the Vulcan prompt on every command. The colored escape sequences must
+# live directly in PS1 (not in a printf) so bash hides them and computes line
+# widths correctly. The same hook also emits the OSC cwd event for the frontend.
+__vulcan_set_prompt() {
     local BLUE='\[\033[38;2;15;98;254m\]'        # IBM blue #0f62fe
     local LIGHT_BLUE='\[\033[38;2;120;180;255m\]' # light blue
     local RED='\[\033[38;5;196m\]'              # red
@@ -15,18 +14,14 @@ vulcan_prompt() {
     local dir=$(pwd)
     local branch=""
     if branch=$(git symbolic-ref --short HEAD 2>/dev/null) || branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
-        printf "%s%s%s → %s%s%s (%s%s%s) $ " \
-            "$BLUE" "$USER" "$RESET" \
-            "$LIGHT_BLUE" "$dir" "$RESET" \
-            "$RED" "$branch" "$RESET"
+        PS1="${BLUE}${USER}${RESET} → ${LIGHT_BLUE}${dir}${RESET} (${RED}${branch}${RESET}) $ "
     else
-        printf "%s%s%s → %s%s%s $ " \
-            "$BLUE" "$USER" "$RESET" \
-            "$LIGHT_BLUE" "$dir" "$RESET"
+        PS1="${BLUE}${USER}${RESET} → ${LIGHT_BLUE}${dir}${RESET} $ "
     fi
+    printf "\033]51;CWD;%s\007" "$dir"
 }
 
-PS1='$(vulcan_prompt)'
+PROMPT_COMMAND='__vulcan_set_prompt'
 
 # Basic readline / history defaults for the sandbox.
 HISTSIZE=1000
