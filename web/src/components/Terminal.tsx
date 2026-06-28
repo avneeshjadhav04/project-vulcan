@@ -8,7 +8,6 @@ import {
   Trash2,
   WifiOff,
   Wifi,
-  Shield,
   ChevronUp,
   ChevronDown,
   ArrowUpToLine,
@@ -345,14 +344,6 @@ export default function Terminal({
             </button>
           )}
         </div>
-      </div>
-
-      {/* Info banner */}
-      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer/50 px-4 py-1">
-        <Shield className="h-2.5 w-2.5 text-text-helper" />
-        <span className="text-[10px] text-text-helper">
-          Commands run in an isolated Ubuntu environment via proot.
-        </span>
       </div>
 
       {/* Tabs */}
