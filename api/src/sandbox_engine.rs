@@ -309,7 +309,7 @@ pub async fn get_or_create_shell_session(
         "-w",
         WORKSPACE_GUEST_PATH,
         "/bin/bash",
-        "--login",
+        "--norc",
         "-i",
     ]);
     cmd.stdin(stdin_stdio)
