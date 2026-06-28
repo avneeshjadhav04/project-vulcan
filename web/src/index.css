@@ -196,19 +196,21 @@
 }
 
 /* ─── xterm cursor tweaks ─── */
-/* Force a clearly visible vertical bar cursor. xterm's default rendering can
-   collapse or hide the bar depending on CSS resets and theme colors. */
-.xterm .xterm-cursor-bar {
-  border-left: 2px solid currentColor !important;
-  background-color: transparent !important;
+/* Use a standard terminal block cursor for the focused cursor.
+   xterm.js handles the unfocused hollow outline automatically. */
+.xterm .xterm-cursor-block {
+  background-color: currentColor !important;
+  color: var(--color-background) !important;
+  border: none !important;
 }
 
-/* Hide the cursor on inactive terminals so only the focused tab shows it. */
+/* Hide the hidden textarea used by xterm for input capture so it doesn't
+   create a visible text caret outside the terminal canvas. */
 .xterm-helper-textarea {
   opacity: 0;
 }
 
-/* Ensure the terminal canvas captures clicks for focus. */
+/* Show the text caret when hovering over the terminal canvas. */
 .xterm-screen {
   cursor: text;
 }
