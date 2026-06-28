@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
@@ -185,6 +185,7 @@ pub struct ShellSessionHandle {
     pub resize_tx: mpsc::UnboundedSender<Winsize>,
     pub cwd: Arc<Mutex<String>>,
     pub command_running: Arc<AtomicBool>,
+    pub shutdown: Arc<AtomicBool>,
 }
 
 impl ShellSessionHandle {
@@ -200,6 +201,10 @@ impl ShellSessionHandle {
 
     pub fn resize(&self, winsize: Winsize) {
         let _ = self.resize_tx.send(winsize);
+    }
+
+    pub fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
     }
 }
 
@@ -259,6 +264,7 @@ pub async fn get_or_create_shell_session(
     let (resize_tx, resize_rx) = mpsc::unbounded_channel::<Winsize>();
     let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
     let command_running = Arc::new(AtomicBool::new(false));
+    let shutdown = Arc::new(AtomicBool::new(false));
 
     // Spawn the shell from a fully detached std::thread, never from Tokio.
     // Forking from any Tokio-managed thread (including spawn_blocking) corrupts
@@ -290,6 +296,7 @@ pub async fn get_or_create_shell_session(
         resize_tx,
         cwd: cwd.clone(),
         command_running: command_running.clone(),
+        shutdown: shutdown.clone(),
     };
 
     {
@@ -305,6 +312,7 @@ pub async fn get_or_create_shell_session(
         output_tx,
         cwd,
         command_running,
+        shutdown,
         state.sessions,
         user_id,
         tab_id,
@@ -346,6 +354,12 @@ fn spawn_pty_shell(
 
     // Put child in its own process group so signals go to the group.
     let _ = setpgid(child_pid, child_pid);
+
+    // Lower the child process priority so proot's ptrace-heavy work does not
+    // starve the API Tokio runtime on single-CPU machines.
+    unsafe {
+        let _ = libc::setpriority(libc::PRIO_PROCESS, child_pid.as_raw() as libc::id_t, 10);
+    }
 
     Ok((child_pid, master_fd))
 }
@@ -442,6 +456,7 @@ unsafe fn setup_shell_child(slave_fd: OwnedFd, host_workspace: &str) -> Result<(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_pty_session(
     child_pid: Pid,
     master_fd: OwnedFd,
@@ -450,6 +465,7 @@ async fn run_pty_session(
     output_tx: mpsc::UnboundedSender<ShellOutput>,
     cwd: Arc<Mutex<String>>,
     _command_running: Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
     sessions: Arc<Mutex<HashMap<(String, String), ShellSessionHandle>>>,
     user_id: String,
     tab_id: String,
@@ -477,6 +493,7 @@ async fn run_pty_session(
     let (reader_tx, mut reader_rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
     // Spawn blocking reader thread for PTY master output.
+    let reader_shutdown = shutdown.clone();
     let reader_thread = std::thread::spawn(move || {
         let fd = match reader_fd {
             Some(fd) => fd,
@@ -484,12 +501,34 @@ async fn run_pty_session(
         };
         let mut buf = [0u8; 4096];
         loop {
+            if reader_shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+            // Block until data is available instead of busy-polling. This keeps CPU
+            // usage at zero when the terminal is idle, which is essential on 1-CPU
+            // machines where the Tokio runtime shares the single core with us.
+            let mut pfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let poll_res = unsafe { libc::poll(&mut pfd, 1, 200) };
+            if poll_res < 0 {
+                let err = Errno::last();
+                if err == Errno::EINTR {
+                    continue;
+                }
+                break;
+            }
+            if poll_res == 0 || (pfd.revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP)) == 0 {
+                // Timeout or no readable data; loop and recheck shutdown flag.
+                continue;
+            }
             let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
             if n <= 0 {
                 if n < 0 {
                     let err = Errno::last();
                     if err == Errno::EAGAIN || err == Errno::EINTR {
-                        std::thread::sleep(std::time::Duration::from_millis(1));
                         continue;
                     }
                 }
