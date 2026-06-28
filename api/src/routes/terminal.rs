@@ -176,9 +176,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
 
     forward_task.abort();
 
-    // Connection closed: terminate the session for this tab.
+    // Connection closed: signal the PTY session to stop, then remove it.
     {
         let mut sessions = sandbox.sessions.lock().await;
+        if let Some(session) = sessions.get(&(user_id.clone(), tab_id.clone())) {
+            session.shutdown();
+        }
         sessions.remove(&(user_id.clone(), tab_id.clone()));
     }
     let _ = sqlx::query(
