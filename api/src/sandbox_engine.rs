@@ -312,31 +312,16 @@ pub async fn get_or_create_shell_session(
         "-",
         "vulcan",
         "-c",
-        "exec /bin/bash --norc -i",
+        "exec /bin/bash --rcfile /home/vulcan/.vulcan_bashrc -i",
     ]);
     cmd.stdin(stdin_stdio)
         .stdout(stdout_stdio)
         .stderr(stderr_stdio)
-        // Set shell environment via Command::env so bash starts with the right
-        // config immediately — no visible echo of setup commands.
-        .env("TERM", "xterm-256color")
-        .env(
-            "PROMPT_COMMAND",
-            r#"printf "\033]51;CWD;%s\007" "$(pwd)""#,
-        )
-        .env("PS1", r#"$(vulcan_prompt)"#)
-        .env(
-            "BASH_FUNC_vulcan_prompt%%",
-            r#"() {
-  local dir=$(pwd)
-  local branch=""
-  if branch=$(git symbolic-ref --short HEAD 2>/dev/null) || branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
-    printf "%s → %s (%s) $ " "$USER" "$dir" "$branch"
-  else
-    printf "%s → %s $ " "$USER" "$dir"
-  fi
-}"#,
-        );
+        // TERM is set here because /bin/su - preserves only a minimal set of
+        // environment variables and does not forward parent variables. The
+        // prompt, PROMPT_COMMAND, and shell function live in
+        // /home/vulcan/.vulcan_bashrc which bash loads via --rcfile.
+        .env("TERM", "xterm-256color");
     unsafe {
         cmd.pre_exec(move || {
             // This closure runs in the child process after fork, before exec.
