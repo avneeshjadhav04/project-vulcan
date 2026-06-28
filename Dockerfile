@@ -131,31 +131,9 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
 # bash with --rcfile pointing at this file, so it runs instead of any default
 # Ubuntu bashrc. This sets the prompt, OSC cwd reporting, and basic readline
 # behavior without fighting login-shell environment resets from /bin/su.
+COPY scripts/vulcan_bashrc /tmp/vulcan_bashrc
 RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bash -c '\
-    printf "%s\n" \
-        "# Vulcan interactive shell configuration" \
-        "" \
-        "# Report cwd to the frontend via an OSC sequence." \
-        "PROMPT_COMMAND=\"printf \\\"\\\\033]51;CWD;%s\\\\007\\\" \\\"\\$(pwd)\\\"\"" \
-        "" \
-        "# Build the Vulcan prompt: user → cwd (branch) $" \
-        "vulcan_prompt() {" \
-        "    local dir=\\$(pwd)" \
-        "    local branch=\\\"\\\"" \
-        "    if branch=\\$(git symbolic-ref --short HEAD 2>/dev/null) || branch=\\$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then" \
-        "        printf \"%s → %s (%s) $ \" \\\"$USER\\\" \\\"$dir\\\" \\\"$branch\\\"" \
-        "    else" \
-        "        printf \"%s → %s $ \" \\\"$USER\\\" \\\"$dir\\\"" \
-        "    fi" \
-        "}" \
-        "" \
-        "PS1=\\\"\\$(vulcan_prompt)\\\"" \
-        "" \
-        "# Basic readline / history defaults for the sandbox." \
-        "HISTSIZE=1000" \
-        "HISTFILE=\\\"\\$HOME/.bash_history\\\"" \
-        "set -o history" \
-    > /home/vulcan/.vulcan_bashrc && \
+    cp /tmp/vulcan_bashrc /home/vulcan/.vulcan_bashrc && \
     chown vulcan:vulcan /home/vulcan/.vulcan_bashrc && \
     chmod 644 /home/vulcan/.vulcan_bashrc'
 
