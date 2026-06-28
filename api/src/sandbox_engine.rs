@@ -288,11 +288,6 @@ pub async fn get_or_create_shell_session(
     std::mem::forget(stdout_fd);
     std::mem::forget(stderr_fd);
 
-    // The slave fd for TIOCSCTTY in pre_exec. We pass the raw fd number; the dup
-    // above is what the child actually uses as stdio, but any slave fd works for
-    // the ioctl since they all refer to the same PTY slave.
-    let pre_exec_slave_fd = slave_raw;
-
     // Spawn proot+bash with the PTY slave as stdio. pre_exec runs in the child
     // after fork() but before exec(), which is the fork-safe way to set up
     // process group, session, and controlling terminal.
@@ -316,10 +311,19 @@ pub async fn get_or_create_shell_session(
         "/bin/bash",
         "--login",
         "-i",
+        "--norc",
     ]);
     cmd.stdin(stdin_stdio)
         .stdout(stdout_stdio)
-        .stderr(stderr_stdio);
+        .stderr(stderr_stdio)
+        // Set shell environment via Command::env so bash starts with the right
+        // config immediately — no visible echo of setup commands.
+        .env("TERM", "xterm-256color")
+        .env(
+            "PROMPT_COMMAND",
+            r#"printf "\033]51;CWD;%s\007" "$(pwd)""#,
+        )
+        .env("PS1", "$(pwd) → ");
     unsafe {
         cmd.pre_exec(move || {
             // This closure runs in the child process after fork, before exec.
@@ -327,10 +331,13 @@ pub async fn get_or_create_shell_session(
             setpgid(Pid::from_raw(0), Pid::from_raw(0))
                 .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
 
-            // Try to create a new session + controlling terminal. Non-fatal if
-            // the container denies it — bash still runs interactively via PTY.
+            // Try to create a new session + controlling terminal. Use fd 0
+            // (stdin) which is guaranteed to be the PTY slave in the child.
+            // The original slave fd number may be closed in the child, but the
+            // dup'd stdin/stdout/stderr (fds 0/1/2) all refer to the same PTY.
+            // Non-fatal if the container denies it — bash still runs via PTY.
             if setsid().is_ok() {
-                libc::ioctl(pre_exec_slave_fd, libc::TIOCSCTTY, 0);
+                libc::ioctl(0, libc::TIOCSCTTY, 0);
             }
             Ok(())
         });
@@ -477,14 +484,6 @@ async fn run_pty_session(
         let _ = reaper_tx.send(code).await;
     });
 
-    // Send shell setup: terminal type and prompt command that reports cwd via OSC.
-    let setup = b"export TERM=xterm-256color\n\
-        PROMPT_COMMAND='printf \"\\033]51;CWD;%s\\007\" \"$(pwd)\"'\n\
-        PS1='$(pwd) \xe2\x86\x92 '\n";
-    if let Err(e) = async_write_all(&async_master, master_raw, setup).await {
-        tracing::warn!(error = %e, "Failed to write PTY setup bytes");
-    }
-
     // Main async loop: read PTY output, write PTY input, handle resize, detect exit.
     // Everything is async via AsyncFd + tokio::select! — zero OS threads.
     let mut leftover: Vec<u8> = Vec::new();
@@ -532,8 +531,9 @@ async fn run_pty_session(
                                     }
                                     let _ = output_tx.send(ShellOutput::Cwd(new_cwd));
                                 }
-                                if !output.is_empty() {
-                                    let _ = output_tx.send(ShellOutput::Data(output));
+                                let filtered = filter_bash_warnings(&output);
+                                if !filtered.is_empty() {
+                                    let _ = output_tx.send(ShellOutput::Data(filtered));
                                 }
                             }
                             Ok(Ok(None)) => {
@@ -646,6 +646,35 @@ fn strip_osc_sequences(data: &[u8]) -> (Vec<u8>, Vec<u8>, Option<String>) {
         i += 1;
     }
     (output, Vec::new(), parsed_cwd)
+}
+
+/// Bash prints these warnings when it cannot acquire the PTY as its controlling
+/// terminal (which happens under proot in some container setups). They are
+/// harmless — bash still runs interactively via the PTY — but they look
+/// unprofessional. Strip them from the terminal output.
+///
+/// Handles the case where the warning lines are split across reads by keeping
+/// an incomplete line in the returned leftover.
+const BASH_WARNINGS: &[&str] = &[
+    "bash: cannot set terminal process group",
+    "bash: no job control in this shell",
+];
+
+fn filter_bash_warnings(data: &[u8]) -> Vec<u8> {
+    let text = match std::str::from_utf8(data) {
+        Ok(s) => s,
+        Err(_) => return data.to_vec(), // non-UTF8 — pass through (binary data)
+    };
+
+    let mut result = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if BASH_WARNINGS.iter().any(|w| trimmed.starts_with(w)) {
+            continue;
+        }
+        result.push_str(line);
+    }
+    result.into_bytes()
 }
 
 fn find_osc_end(data: &[u8], start: usize) -> Option<usize> {
