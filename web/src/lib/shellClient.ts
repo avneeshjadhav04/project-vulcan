@@ -148,13 +148,6 @@ export class ShellClient {
   private handleInput(data: string) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    // Ctrl+C is sent as raw input and the PTY will turn it into SIGINT for the
-    // foreground process group.
-    if (data === '\x03') {
-      this.ws.send(JSON.stringify({ type: 'kill' }))
-      return
-    }
-
     // Ctrl+L clears the screen locally; also send it to bash which handles it.
     if (data === '\x0c') {
       this.term?.clear()

@@ -194,12 +194,6 @@ impl ShellSessionHandle {
         let _ = self.input_tx.send(data);
     }
 
-    pub fn kill_foreground(&self) {
-        // Send SIGINT to the process group of the shell. This is exactly what
-        // a real terminal does when Ctrl+C is pressed.
-        let _ = kill(Pid::from_raw(-self.shell_pid), Signal::SIGINT);
-    }
-
     pub fn resize(&self, winsize: Winsize) {
         let _ = self.resize_tx.send(winsize);
     }

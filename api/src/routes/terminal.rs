@@ -153,9 +153,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
                             ws_ypixel: 0,
                         });
                     }
-                    Some("kill") => {
-                        session.kill_foreground();
-                    }
                     Some("pid") => {
                         let payload = serde_json::json!({"type": "pid", "pid": shell_pid}).to_string();
                         let _ = out_tx.send(crate::sandbox_engine::ShellOutput::Data(
