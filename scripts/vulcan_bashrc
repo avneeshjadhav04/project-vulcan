@@ -23,3 +23,6 @@ PS1='$(vulcan_prompt)'
 HISTSIZE=1000
 HISTFILE="$HOME/.bash_history"
 set -o history
+
+# Colorize ls output by file type (directories, executables, symlinks, etc.).
+alias ls='ls --color=auto'
