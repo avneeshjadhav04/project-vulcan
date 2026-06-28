@@ -93,6 +93,7 @@ fn build_proot_command(cmd: &[&str], workspace_id: &str) -> Result<Command, Stri
         "/etc/resolv.conf:/etc/resolv.conf", // Enable DNS resolution
         "-w",
         WORKSPACE_GUEST_PATH,
+        "--",
     ]);
     command.args(cmd);
     Ok(command)
@@ -308,6 +309,7 @@ pub async fn get_or_create_shell_session(
         "/etc/resolv.conf:/etc/resolv.conf",
         "-w",
         WORKSPACE_GUEST_PATH,
+        "--",
         "/bin/bash",
         "--login",
         "-i",
