@@ -33,12 +33,16 @@ RUN if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
     fi
 
 # Ensure linker can find libvosk during compilation
-ENV LIBRARY_PATH=/usr/local/lib:$LIBRARY_PATH
+ENV LIBRARY_PATH=/usr/local/lib
 
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
 COPY db/migrations /app/db/migrations
+# Retry crate downloads up to 5 times and allow 120s per request so transient
+# crates.io edge timeouts (Varnish cache 503s) don't fail the build.
+ENV CARGO_NET_RETRY=5
+ENV CARGO_HTTP_TIMEOUT=120
 RUN cargo build --release
 
 # Stage 3: Build proot v5.4.0 from source
