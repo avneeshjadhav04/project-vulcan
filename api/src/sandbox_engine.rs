@@ -1,18 +1,20 @@
 use std::collections::HashMap;
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
+use tokio::io::unix::AsyncFd;
 use tokio::process::Command;
 use tokio::sync::{mpsc, Mutex, Semaphore};
 
 use nix::errno::Errno;
-use nix::fcntl::{fcntl, FdFlag, OFlag};
+use nix::fcntl::{fcntl, FdFlag, FcntlArg, OFlag};
 use nix::ioctl_write_ptr_bad;
 use nix::libc::{self, TIOCSWINSZ};
 use nix::pty::{openpty, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
-use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
-use nix::unistd::{close, execv, fork, ForkResult, Pid, setpgid, setsid};
+use nix::unistd::{close, dup, setpgid, setsid, Pid};
 
 const ROOTFS_PATH: &str = "/app/ubuntu-rootfs";
 const WORKSPACE_GUEST_PATH: &str = "/workspace";
@@ -185,7 +187,6 @@ pub struct ShellSessionHandle {
     pub resize_tx: mpsc::UnboundedSender<Winsize>,
     pub cwd: Arc<Mutex<String>>,
     pub command_running: Arc<AtomicBool>,
-    pub shutdown: Arc<AtomicBool>,
 }
 
 impl ShellSessionHandle {
@@ -201,10 +202,6 @@ impl ShellSessionHandle {
 
     pub fn resize(&self, winsize: Winsize) {
         let _ = self.resize_tx.send(winsize);
-    }
-
-    pub fn shutdown(&self) {
-        self.shutdown.store(true, Ordering::Relaxed);
     }
 }
 
@@ -240,6 +237,10 @@ pub async fn get_or_create_shell_session(
         .await
         .map_err(|e| e.to_string())?;
 
+    if !has_proot_env() {
+        return Err("Sandbox environment (proot + Ubuntu rootfs) is not available.".to_string());
+    }
+
     // Open PTY master/slave pair.
     let OpenptyResult { master: master_fd, slave: slave_fd } = openpty(
         &Winsize {
@@ -255,48 +256,123 @@ pub async fn get_or_create_shell_session(
         format!("Failed to open PTY: {}", e)
     })?;
 
+    let slave_raw = slave_fd.as_raw_fd();
+
+    // Make the master fd non-blocking so AsyncFd can use it with epoll.
+    // Set FD_CLOEXEC so the child doesn't inherit the master fd.
+    if let Err(e) = prepare_master_fd(&master_fd) {
+        let _ = close(slave_raw);
+        return Err(format!("PTY master setup: {}", e));
+    }
+
     let workspace_dir = std::env::var("WORKSPACE_DIR").unwrap_or_else(|_| "./workspace".to_string());
     let host_workspace = std::path::Path::new(&workspace_dir).join(&user_id);
     let _ = std::fs::create_dir_all(&host_workspace);
     let host_path_str = host_workspace.to_string_lossy().to_string();
 
-    let (input_tx, input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    let (resize_tx, resize_rx) = mpsc::unbounded_channel::<Winsize>();
-    let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
-    let command_running = Arc::new(AtomicBool::new(false));
-    let shutdown = Arc::new(AtomicBool::new(false));
+    // Dup the slave fd three times for stdin/stdout/stderr. We convert each dup
+    // into a Stdio so tokio::process owns and closes them after spawn.
+    let stdin_fd = dup(&slave_fd).map_err(|e| format!("dup slave for stdin: {}", e))?;
+    let stdout_fd = dup(&slave_fd).map_err(|e| format!("dup slave for stdout: {}", e))?;
+    let stderr_fd = dup(&slave_fd).map_err(|e| format!("dup slave for stderr: {}", e))?;
 
-    // Spawn the shell from a fully detached std::thread, never from Tokio.
-    // Forking from any Tokio-managed thread (including spawn_blocking) corrupts
-    // the runtime because the child inherits Tokio-internal FDs and state.
-    let (spawn_tx, spawn_rx) = tokio::sync::oneshot::channel::<Result<(Pid, OwnedFd), String>>();
-    std::thread::spawn(move || {
-        let res = spawn_pty_shell(slave_fd, master_fd, &host_path_str);
-        let _ = spawn_tx.send(res);
-    });
+    // The parent no longer needs the slave fd — the child has its own dups.
+    let _ = close(slave_fd);
 
-    let (child_pid, master_fd) = match spawn_rx.await {
-        Ok(Ok(res)) => res,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err("PTY spawn thread was dropped".to_string()),
-    };
+    let stdin_stdio = unsafe { Stdio::from_raw_fd(stdin_fd.as_raw_fd()) };
+    let stdout_stdio = unsafe { Stdio::from_raw_fd(stdout_fd.as_raw_fd()) };
+    let stderr_stdio = unsafe { Stdio::from_raw_fd(stderr_fd.as_raw_fd()) };
+
+    // Prevent OwnedFd drop from closing these fds — Stdio owns them now.
+    std::mem::forget(stdin_fd);
+    std::mem::forget(stdout_fd);
+    std::mem::forget(stderr_fd);
+
+    // The slave fd for TIOCSCTTY in pre_exec. We pass the raw fd number; the dup
+    // above is what the child actually uses as stdio, but any slave fd works for
+    // the ioctl since they all refer to the same PTY slave.
+    let pre_exec_slave_fd = slave_raw;
+
+    // Spawn proot+bash with the PTY slave as stdio. pre_exec runs in the child
+    // after fork() but before exec(), which is the fork-safe way to set up
+    // process group, session, and controlling terminal.
+    let mut cmd = Command::new("proot");
+    cmd.args([
+        "-0",
+        "-R",
+        ROOTFS_PATH,
+        "-b",
+        &format!("{}:{}", host_path_str, WORKSPACE_GUEST_PATH),
+        "-b",
+        "/dev:/dev",
+        "-b",
+        "/proc:/proc",
+        "-b",
+        "/tmp:/tmp",
+        "-b",
+        "/etc/resolv.conf:/etc/resolv.conf",
+        "-w",
+        WORKSPACE_GUEST_PATH,
+        "/bin/bash",
+        "--login",
+        "-i",
+    ]);
+    cmd.stdin(stdin_stdio)
+        .stdout(stdout_stdio)
+        .stderr(stderr_stdio);
+    unsafe {
+        cmd.pre_exec(move || {
+            // This closure runs in the child process after fork, before exec.
+            // It must be async-signal-safe: no allocation, no tracing, no locks.
+            setpgid(Pid::from_raw(0), Pid::from_raw(0))
+                .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+
+            // Try to create a new session + controlling terminal. Non-fatal if
+            // the container denies it — bash still runs interactively via PTY.
+            if setsid().is_ok() {
+                libc::ioctl(pre_exec_slave_fd, libc::TIOCSCTTY, 0);
+            }
+            Ok(())
+        });
+    }
+
+    let child = cmd.spawn().map_err(|e| {
+        let _ = close(master_fd.as_raw_fd());
+        format!("Failed to spawn proot bash: {}", e)
+    })?;
+
+    let child_pid = child.id().expect("child has pid") as i32;
+
+    // Lower the child process priority so proot's ptrace overhead does not
+    // starve the Tokio runtime on single-CPU machines.
+    unsafe {
+        let _ = libc::setpriority(
+            libc::PRIO_PROCESS,
+            child_pid as libc::id_t,
+            10,
+        );
+    }
 
     tracing::info!(
         user_id = %user_id,
         tab_id = %tab_id,
-        shell_pid = child_pid.as_raw(),
-        "Spawned PTY shell session"
+        shell_pid = child_pid,
+        "Spawned PTY shell session (Command::spawn + AsyncFd)"
     );
+
+    let (input_tx, input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (resize_tx, resize_rx) = mpsc::unbounded_channel::<Winsize>();
+    let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
+    let command_running = Arc::new(AtomicBool::new(false));
 
     let handle = ShellSessionHandle {
         user_id: user_id.clone(),
         tab_id: tab_id.clone(),
-        shell_pid: child_pid.as_raw(),
+        shell_pid: child_pid,
         input_tx,
         resize_tx,
         cwd: cwd.clone(),
         command_running: command_running.clone(),
-        shutdown: shutdown.clone(),
     };
 
     {
@@ -305,6 +381,7 @@ pub async fn get_or_create_shell_session(
     }
 
     tokio::spawn(run_pty_session(
+        child,
         child_pid,
         master_fd,
         input_rx,
@@ -312,7 +389,6 @@ pub async fn get_or_create_shell_session(
         output_tx,
         cwd,
         command_running,
-        shutdown,
         state.sessions,
         user_id,
         tab_id,
@@ -322,345 +398,10 @@ pub async fn get_or_create_shell_session(
     Ok(handle)
 }
 
-/// Spawn the shell in a dedicated thread-safe helper. This function must never be
-/// called from a Tokio worker thread; it performs fork().
-fn spawn_pty_shell(
-    slave_fd: OwnedFd,
-    master_fd: OwnedFd,
-    host_workspace: &str,
-) -> Result<(Pid, OwnedFd), String> {
-    let child_pid = unsafe {
-        match fork().map_err(|e| format!("Failed to fork: {}", e))? {
-            ForkResult::Child => {
-                // In child: create new session, attach PTY slave, and exec proot bash.
-                // Do not use tracing here; the child must not touch the parent's
-                // tracing subscriber or runtime state.
-                //
-                // Close the master fd first: the child only needs the slave.
-                let _ = close(master_fd.as_raw_fd());
-                close_all_fds_except(slave_fd.as_raw_fd());
-                if let Err(e) = setup_shell_child(slave_fd, host_workspace) {
-                    eprintln!("Failed to setup shell child: {}", e);
-                    libc::_exit(1);
-                }
-                libc::_exit(1);
-            }
-            ForkResult::Parent { child } => child,
-        }
-    };
-
-    // Parent process: close slave fd (not needed here).
-    let _ = close(slave_fd);
-
-    // Put child in its own process group so signals go to the group.
-    let _ = setpgid(child_pid, child_pid);
-
-    // Lower the child process priority so proot's ptrace-heavy work does not
-    // starve the API Tokio runtime on single-CPU machines.
-    unsafe {
-        let _ = libc::setpriority(libc::PRIO_PROCESS, child_pid.as_raw() as libc::id_t, 10);
-    }
-
-    Ok((child_pid, master_fd))
-}
-
-/// Close every file descriptor except the one we are about to use as stdio.
-/// Collects the FD numbers first so we never close the /proc/self/fd
-/// directory fd while we are still iterating it.
-fn close_all_fds_except(keep_fd: RawFd) {
-    let mut fds_to_close = Vec::new();
-    if let Ok(dir) = std::fs::read_dir("/proc/self/fd") {
-        for entry in dir.flatten() {
-            if let Ok(name) = entry.file_name().into_string() {
-                if let Ok(fd) = name.parse::<RawFd>() {
-                    if fd != keep_fd && fd > 2 {
-                        fds_to_close.push(fd);
-                    }
-                }
-            }
-        }
-    }
-    for fd in fds_to_close {
-        let _ = close(fd);
-    }
-}
-
-unsafe fn setup_shell_child(slave_fd: OwnedFd, host_workspace: &str) -> Result<(), String> {
-    // Move into a new process group. This is less restrictive than setsid() and
-    // works in containers that block creating a new session.
-    if let Err(e) = setpgid(Pid::from_raw(0), Pid::from_raw(0)) {
-        return Err(format!("setpgid failed: {}", e));
-    }
-
-    // Try to create a new session. Some containers block this; if it fails we
-    // continue without a controlling terminal. Bash will still run interactively
-    // because stdin/stdout are attached to a PTY slave.
-    let has_session = setsid().is_ok();
-
-    // Make the PTY slave the controlling terminal only if we successfully created
-    // a new session.
-    if has_session && libc::ioctl(slave_fd.as_raw_fd(), libc::TIOCSCTTY, 0) != 0 {
-        // Non-fatal: many restricted containers deny this ioctl.
-        let _ = Errno::last();
-    }
-
-    // Redirect stdin, stdout, stderr to the PTY slave.
-    if libc::dup2(slave_fd.as_raw_fd(), libc::STDIN_FILENO) < 0 {
-        return Err(format!("dup2 stdin failed: {}", Errno::last()));
-    }
-    if libc::dup2(slave_fd.as_raw_fd(), libc::STDOUT_FILENO) < 0 {
-        return Err(format!("dup2 stdout failed: {}", Errno::last()));
-    }
-    if libc::dup2(slave_fd.as_raw_fd(), libc::STDERR_FILENO) < 0 {
-        return Err(format!("dup2 stderr failed: {}", Errno::last()));
-    }
-
-    // Now that stdio is redirected, close any remaining fds including the
-    // original slave fd and the /proc/self/fd directory itself.
-    close_all_fds_except(-1);
-
-    // Build argv for execv: proot -0 -R ROOTFS -b host:guest -w guest /bin/bash --login -i
-    let proot_c = std::ffi::CString::new("proot").unwrap();
-    let arg0 = std::ffi::CString::new("proot").unwrap();
-    let zero_arg = std::ffi::CString::new("-0").unwrap();
-    let r_arg = std::ffi::CString::new("-R").unwrap();
-    let rootfs_val = std::ffi::CString::new(ROOTFS_PATH).unwrap();
-    let b_arg = std::ffi::CString::new("-b").unwrap();
-    let bind_val = std::ffi::CString::new(format!("{}:{}", host_workspace, WORKSPACE_GUEST_PATH)).unwrap();
-    let w_arg = std::ffi::CString::new("-w").unwrap();
-    let w_val = std::ffi::CString::new(WORKSPACE_GUEST_PATH).unwrap();
-    let bash_c = std::ffi::CString::new("/bin/bash").unwrap();
-    let bash_arg0 = std::ffi::CString::new("bash").unwrap();
-    let login_arg = std::ffi::CString::new("--login").unwrap();
-    let i_arg = std::ffi::CString::new("-i").unwrap();
-
-    execv(
-        &proot_c,
-        &[
-            &arg0,
-            &zero_arg,
-            &r_arg,
-            &rootfs_val,
-            &b_arg,
-            &bind_val,
-            &w_arg,
-            &w_val,
-            &bash_c,
-            &bash_arg0,
-            &login_arg,
-            &i_arg,
-        ],
-    )
-    .map_err(|e| format!("execv failed: {}", e))?;
-
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_pty_session(
-    child_pid: Pid,
-    master_fd: OwnedFd,
-    mut input_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    mut resize_rx: mpsc::UnboundedReceiver<Winsize>,
-    output_tx: mpsc::UnboundedSender<ShellOutput>,
-    cwd: Arc<Mutex<String>>,
-    _command_running: Arc<AtomicBool>,
-    shutdown: Arc<AtomicBool>,
-    sessions: Arc<Mutex<HashMap<(String, String), ShellSessionHandle>>>,
-    user_id: String,
-    tab_id: String,
-    _permit: tokio::sync::OwnedSemaphorePermit,
-) {
-    let master_raw = master_fd.as_raw_fd();
-    if let Err(e) = prepare_master_fd(&master_fd) {
-        let _ = output_tx.send(ShellOutput::Data(format!("\r\nPTY setup error: {}\r\n", e).into_bytes()));
-        cleanup_session(&sessions, &user_id, &tab_id).await;
-        return;
-    }
-
-    // Duplicate master fd for reader/writer/resize threads so each owns a descriptor.
-    let reader_fd = dup_master(&master_fd);
-    let writer_fd = dup_master(&master_fd);
-    let resize_fd = dup_master(&master_fd);
-
-    // Send shell setup: terminal type and prompt command that reports cwd via OSC.
-    let setup = b"export TERM=xterm-256color\n\
-        PROMPT_COMMAND='printf \"\\033]51;CWD;%s\\007\" \"$(pwd)\"'\n\
-        PS1='$(pwd) \xe2\x86\x92 '\n";
-    let _ = libc_write(master_raw, setup);
-
-    // Channel from blocking reader thread to async code.
-    let (reader_tx, mut reader_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-
-    // Spawn blocking reader thread for PTY master output.
-    let reader_shutdown = shutdown.clone();
-    let reader_thread = std::thread::spawn(move || {
-        let fd = match reader_fd {
-            Some(fd) => fd,
-            None => return,
-        };
-        let mut buf = [0u8; 4096];
-        loop {
-            if reader_shutdown.load(Ordering::Relaxed) {
-                break;
-            }
-            // Block until data is available instead of busy-polling. This keeps CPU
-            // usage at zero when the terminal is idle, which is essential on 1-CPU
-            // machines where the Tokio runtime shares the single core with us.
-            let mut pfd = libc::pollfd {
-                fd,
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            let poll_res = unsafe { libc::poll(&mut pfd, 1, 200) };
-            if poll_res < 0 {
-                let err = Errno::last();
-                if err == Errno::EINTR {
-                    continue;
-                }
-                break;
-            }
-            if poll_res == 0 || (pfd.revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP)) == 0 {
-                // Timeout or no readable data; loop and recheck shutdown flag.
-                continue;
-            }
-            let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
-            if n <= 0 {
-                if n < 0 {
-                    let err = Errno::last();
-                    if err == Errno::EAGAIN || err == Errno::EINTR {
-                        continue;
-                    }
-                }
-                break;
-            }
-            if reader_tx.send(buf[..n as usize].to_vec()).is_err() {
-                break;
-            }
-        }
-        let _ = close(fd);
-    });
-
-    // Spawn blocking writer thread for PTY master input.
-    let (writer_tx, mut writer_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    let writer_thread = std::thread::spawn(move || {
-        let fd = match writer_fd {
-            Some(fd) => fd,
-            None => return,
-        };
-        while let Some(data) = writer_rx.blocking_recv() {
-            let mut written = 0usize;
-            while written < data.len() {
-                let n = unsafe { libc::write(fd, data[written..].as_ptr() as *const libc::c_void, data.len() - written) };
-                if n < 0 {
-                    let err = Errno::last();
-                    if err == Errno::EAGAIN || err == Errno::EINTR {
-                        std::thread::sleep(std::time::Duration::from_millis(1));
-                        continue;
-                    }
-                    break;
-                }
-                if n == 0 {
-                    break;
-                }
-                written += n as usize;
-            }
-        }
-        let _ = close(fd);
-    });
-
-    // Bridge async input channel to blocking writer thread.
-    let input_bridge = tokio::spawn(async move {
-        while let Some(data) = input_rx.recv().await {
-            if writer_tx.send(data).is_err() {
-                break;
-            }
-        }
-    });
-
-    // Bridge async resize channel to blocking ioctl.
-    let resize_bridge = tokio::spawn(async move {
-        let fd = match resize_fd {
-            Some(fd) => fd,
-            None => return,
-        };
-        while let Some(ws) = resize_rx.recv().await {
-            unsafe {
-                let _ = set_winsize(fd, &ws);
-            }
-        }
-        let _ = close(fd);
-    });
-
-    // Reaper task: wait for child exit.
-    let output_tx_for_reaper = output_tx.clone();
-    let mut reaper = tokio::spawn(async move {
-        loop {
-            match waitpid(child_pid, Some(WaitPidFlag::WNOHANG)) {
-                Ok(WaitStatus::Exited(_, code)) => {
-                    let _ = output_tx_for_reaper.send(ShellOutput::Status {
-                        running: false,
-                        code: Some(code),
-                    });
-                    break;
-                }
-                Ok(WaitStatus::Signaled(_, sig, _)) => {
-                    let _ = output_tx_for_reaper.send(ShellOutput::Status {
-                        running: false,
-                        code: Some(128 + sig as i32),
-                    });
-                    break;
-                }
-                Ok(_) => {}
-                Err(_) => break,
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-    });
-
-    // Main async loop: consume reader output, strip OSC cwd sequences, forward rest.
-    let mut leftover: Vec<u8> = Vec::new();
-    loop {
-        tokio::select! {
-            biased;
-            _ = &mut reaper => {
-                break;
-            }
-            chunk = reader_rx.recv() => {
-                match chunk {
-                    Some(data) => {
-                        leftover.extend_from_slice(&data);
-                        let (output, new_leftover, parsed_cwd) = strip_osc_sequences(&leftover);
-                        leftover = new_leftover;
-                        if let Some(new_cwd) = parsed_cwd {
-                            {
-                                let mut c = cwd.lock().await;
-                                *c = new_cwd.clone();
-                            }
-                            let _ = output_tx.send(ShellOutput::Cwd(new_cwd));
-                        }
-                        if !output.is_empty() {
-                            let _ = output_tx.send(ShellOutput::Data(output));
-                        }
-                    }
-                    None => break,
-                }
-            }
-        }
-    }
-
-    // Cleanup
-    input_bridge.abort();
-    resize_bridge.abort();
-    let _ = reader_thread.join();
-    let _ = writer_thread.join();
-    let _ = kill(child_pid, Signal::SIGTERM);
-    cleanup_session(&sessions, &user_id, &tab_id).await;
-}
-
+/// Set the master fd to non-blocking (for epoll/AsyncFd) and clear FD_CLOEXEC
+/// (so it survives across the tokio internals — though the child doesn't need it,
+/// AsyncFd manages the fd lifecycle).
 fn prepare_master_fd(fd: &OwnedFd) -> Result<(), String> {
-    use nix::fcntl::FcntlArg;
-
     let flags = fcntl(fd, FcntlArg::F_GETFD).map_err(|e| format!("fcntl F_GETFD: {}", e))?;
     let new_flags = FdFlag::from_bits_truncate(flags) & !FdFlag::FD_CLOEXEC;
     fcntl(fd, FcntlArg::F_SETFD(new_flags)).map_err(|e| format!("fcntl F_SETFD: {}", e))?;
@@ -673,30 +414,209 @@ fn prepare_master_fd(fd: &OwnedFd) -> Result<(), String> {
     Ok(())
 }
 
-fn dup_master(fd: &OwnedFd) -> Option<RawFd> {
-    nix::unistd::dup(fd).ok().map(|owned| {
-        let raw = owned.as_raw_fd();
-        std::mem::forget(owned); // thread will close it manually
-        raw
-    })
+#[allow(clippy::too_many_arguments)]
+async fn run_pty_session(
+    child: tokio::process::Child,
+    child_pid: i32,
+    master_fd: OwnedFd,
+    mut input_rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    mut resize_rx: mpsc::UnboundedReceiver<Winsize>,
+    output_tx: mpsc::UnboundedSender<ShellOutput>,
+    cwd: Arc<Mutex<String>>,
+    _command_running: Arc<AtomicBool>,
+    sessions: Arc<Mutex<HashMap<(String, String), ShellSessionHandle>>>,
+    user_id: String,
+    tab_id: String,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    let master_raw = master_fd.as_raw_fd();
+
+    // Register the PTY master fd with Tokio's epoll via AsyncFd. This lets us
+    // do async read/write on the fd without spawning any OS threads.
+    let async_master = match AsyncFd::new(master_fd) {
+        Ok(fd) => fd,
+        Err(e) => {
+            let _ = output_tx.send(ShellOutput::Data(
+                format!("\r\nPTY AsyncFd error: {}\r\n", e).into_bytes(),
+            ));
+            cleanup_session(&sessions, &user_id, &tab_id).await;
+            return;
+        }
+    };
+
+    // Spawn the reaper: async wait for child exit. This replaces the old
+    // waitpid polling loop (100ms sleep) with a single async .wait().await.
+    // The reaper owns the Child and sends the exit code through a channel.
+    let (reaper_tx, mut reaper_rx) = mpsc::channel::<Option<i32>>(1);
+    let mut child = child;
+    let output_tx_for_reaper = output_tx.clone();
+    tokio::spawn(async move {
+        let status = child.wait().await;
+        let code = match status {
+            Ok(s) => {
+                if let Some(c) = s.code() {
+                    Some(c)
+                } else {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        s.signal().map(|sig| 128 + sig)
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        None
+                    }
+                }
+            }
+            Err(_) => Some(-1),
+        };
+        let _ = output_tx_for_reaper.send(ShellOutput::Status {
+            running: false,
+            code,
+        });
+        let _ = reaper_tx.send(code).await;
+    });
+
+    // Send shell setup: terminal type and prompt command that reports cwd via OSC.
+    let setup = b"export TERM=xterm-256color\n\
+        PROMPT_COMMAND='printf \"\\033]51;CWD;%s\\007\" \"$(pwd)\"'\n\
+        PS1='$(pwd) \xe2\x86\x92 '\n";
+    if let Err(e) = async_write_all(&async_master, master_raw, setup).await {
+        tracing::warn!(error = %e, "Failed to write PTY setup bytes");
+    }
+
+    // Main async loop: read PTY output, write PTY input, handle resize, detect exit.
+    // Everything is async via AsyncFd + tokio::select! — zero OS threads.
+    let mut leftover: Vec<u8> = Vec::new();
+    let mut read_buf = [0u8; 4096];
+
+    loop {
+        tokio::select! {
+            biased;
+
+            // Child exited
+            Some(_code) = reaper_rx.recv() => {
+                break;
+            }
+
+            // PTY master is readable — read terminal output
+            guard = async_master.readable() => {
+                match guard {
+                    Ok(mut guard) => {
+                        match guard.try_io(|inner| {
+                            let fd = inner.get_ref().as_raw_fd();
+                            let n = unsafe {
+                                libc::read(fd, read_buf.as_mut_ptr() as *mut libc::c_void, read_buf.len())
+                            };
+                            if n > 0 {
+                                Ok(Some(read_buf[..n as usize].to_vec()))
+                            } else if n == 0 {
+                                Ok(None) // EOF
+                            } else {
+                                let err = Errno::last();
+                                if err == Errno::EAGAIN || err == Errno::EINTR {
+                                    Err(std::io::Error::from(std::io::ErrorKind::WouldBlock))
+                                } else {
+                                    Err(std::io::Error::from_raw_os_error(err as i32))
+                                }
+                            }
+                        }) {
+                            Ok(Ok(Some(data))) => {
+                                leftover.extend_from_slice(&data);
+                                let (output, new_leftover, parsed_cwd) = strip_osc_sequences(&leftover);
+                                leftover = new_leftover;
+                                if let Some(new_cwd) = parsed_cwd {
+                                    {
+                                        let mut c = cwd.lock().await;
+                                        *c = new_cwd.clone();
+                                    }
+                                    let _ = output_tx.send(ShellOutput::Cwd(new_cwd));
+                                }
+                                if !output.is_empty() {
+                                    let _ = output_tx.send(ShellOutput::Data(output));
+                                }
+                            }
+                            Ok(Ok(None)) => {
+                                // EOF — shell closed the PTY
+                                break;
+                            }
+                            Ok(Err(_)) => {
+                                // Read error
+                                break;
+                            }
+                            Err(_) => {
+                                // try_io would block — guard.clear_ready() already called
+                                continue;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Input from WebSocket — write to PTY master
+            Some(data) = input_rx.recv() => {
+                if let Err(e) = async_write_all(&async_master, master_raw, &data).await {
+                    let _ = output_tx.send(ShellOutput::Data(
+                        format!("\r\nPTY write error: {}\r\n", e).into_bytes(),
+                    ));
+                    break;
+                }
+            }
+
+            // Terminal resize
+            Some(ws) = resize_rx.recv() => {
+                unsafe {
+                    let _ = set_winsize(master_raw, &ws);
+                }
+            }
+        }
+    }
+
+    // Cleanup: kill child if still alive, remove session from map.
+    let _ = kill(Pid::from_raw(child_pid), Signal::SIGTERM);
+    cleanup_session(&sessions, &user_id, &tab_id).await;
 }
 
-fn libc_write(fd: RawFd, data: &[u8]) -> Result<(), String> {
+/// Write all data to the PTY master fd asynchronously via AsyncFd.
+/// Returns Ok when all bytes are written, or Err on a real write error.
+async fn async_write_all(
+    async_fd: &AsyncFd<OwnedFd>,
+    fd: RawFd,
+    data: &[u8],
+) -> Result<(), String> {
     let mut written = 0usize;
     while written < data.len() {
-        let n = unsafe { libc::write(fd, data[written..].as_ptr() as *const libc::c_void, data.len() - written) };
-        if n < 0 {
-            let err = Errno::last();
-            if err == Errno::EAGAIN || err == Errno::EINTR {
-                std::thread::sleep(std::time::Duration::from_millis(1));
+        let mut guard = async_fd.writable().await.map_err(|e| format!("AsyncFd writable: {}", e))?;
+
+        match guard.try_io(|_inner| {
+            let n = unsafe {
+                libc::write(fd, data[written..].as_ptr() as *const libc::c_void, data.len() - written)
+            };
+            if n >= 0 {
+                Ok(n as usize)
+            } else {
+                let err = Errno::last();
+                if err == Errno::EAGAIN || err == Errno::EINTR {
+                    Err(std::io::Error::from(std::io::ErrorKind::WouldBlock))
+                } else {
+                    Err(std::io::Error::from_raw_os_error(err as i32))
+                }
+            }
+        }) {
+            Ok(Ok(0)) => {
                 continue;
             }
-            return Err(format!("PTY write failed: {}", err));
+            Ok(Ok(n)) => {
+                written += n;
+            }
+            Ok(Err(e)) => {
+                return Err(format!("PTY write error: {}", e));
+            }
+            Err(_) => {
+                continue;
+            }
         }
-        if n == 0 {
-            return Err("PTY write returned 0".to_string());
-        }
-        written += n as usize;
     }
     Ok(())
 }
