@@ -53,7 +53,7 @@ export class ShellClient {
       fontSize: 13,
       lineHeight: 1.5,
       cursorBlink: true,
-      cursorStyle: 'bar',
+      cursorStyle: 'block',
       scrollback: 5000,
       convertEol: false,
     })
