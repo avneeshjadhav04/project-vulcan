@@ -206,11 +206,19 @@
 /* ─── xterm cursor tweaks ─── */
 /* Use a standard terminal block cursor for the focused cursor.
    xterm.js handles the unfocused hollow outline automatically. The cursor is
-   IBM blue (#0f62fe) to match the primary interactive color / send button. */
+   IBM blue (#0f62fe) to match the primary interactive color / send button.
+   The DOM renderer is used so the cursor is a real element we can style and
+   animate reliably. */
 .xterm .xterm-cursor-block {
   background-color: #0f62fe !important;
   color: #161616 !important;
   border: none !important;
+  animation: vulcan-cursor-blink 1s step-end infinite !important;
+}
+
+@keyframes vulcan-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* Hide the hidden textarea used by xterm for input capture so it doesn't
