@@ -8,12 +8,21 @@ PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
 
 # Build the Vulcan prompt: user → cwd (branch) $
 vulcan_prompt() {
+    local BLUE='\[\033[38;2;15;98;254m\]'        # IBM blue #0f62fe
+    local LIGHT_BLUE='\[\033[38;2;120;180;255m\]' # light blue
+    local RED='\[\033[38;5;196m\]'              # red
+    local RESET='\[\033[0m\]'                     # reset
     local dir=$(pwd)
     local branch=""
     if branch=$(git symbolic-ref --short HEAD 2>/dev/null) || branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
-        printf "%s → %s (%s) $ " "$USER" "$dir" "$branch"
+        printf "%s%s%s → %s%s%s (%s%s%s) $ " \
+            "$BLUE" "$USER" "$RESET" \
+            "$LIGHT_BLUE" "$dir" "$RESET" \
+            "$RED" "$branch" "$RESET"
     else
-        printf "%s → %s $ " "$USER" "$dir"
+        printf "%s%s%s → %s%s%s $ " \
+            "$BLUE" "$USER" "$RESET" \
+            "$LIGHT_BLUE" "$dir" "$RESET"
     fi
 }
 
