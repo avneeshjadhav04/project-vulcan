@@ -108,6 +108,7 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         nodejs npm \
         git curl wget ca-certificates \
         build-essential gcc g++ make \
+        sudo \
         libffi-dev libssl-dev python3-dev zlib1g-dev \
         file unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
@@ -117,6 +118,14 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
 # prompt and OSC cwd reporting are driven entirely by PS1/PROMPT_COMMAND
 # environment variables set by the Rust code. This avoids fighting Ubuntu's
 # default rc files and any BuildKit/heredoc compatibility issues.
+
+# Create a real 'vulcan' user in the rootfs. The sandbox shell will run as this
+# user instead of root so the prompt prefix reflects the actual identity, and it
+# still has passwordless sudo for operations that need elevated privileges.
+RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bash -c '\
+    useradd -m -s /bin/bash -G sudo vulcan && \
+    echo "vulcan ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vulcan && \
+    chmod 0440 /etc/sudoers.d/vulcan'
 
 # Download Vosk model (40MB small English model)
 RUN mkdir -p /models/vosk \

@@ -308,9 +308,11 @@ pub async fn get_or_create_shell_session(
         "/etc/resolv.conf:/etc/resolv.conf",
         "-w",
         WORKSPACE_GUEST_PATH,
-        "/bin/bash",
-        "--norc",
-        "-i",
+        "/bin/su",
+        "-",
+        "vulcan",
+        "-c",
+        "exec /bin/bash --norc -i",
     ]);
     cmd.stdin(stdin_stdio)
         .stdout(stdout_stdio)
@@ -322,7 +324,19 @@ pub async fn get_or_create_shell_session(
             "PROMPT_COMMAND",
             r#"printf "\033]51;CWD;%s\007" "$(pwd)""#,
         )
-        .env("PS1", "$(pwd) → ");
+        .env("PS1", r#"$(vulcan_prompt)"#)
+        .env(
+            "BASH_FUNC_vulcan_prompt%%",
+            r#"() {
+  local dir=$(pwd)
+  local branch=""
+  if branch=$(git symbolic-ref --short HEAD 2>/dev/null) || branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
+    printf "%s → %s (%s) $ " "$USER" "$dir" "$branch"
+  else
+    printf "%s → %s $ " "$USER" "$dir"
+  fi
+}"#,
+        );
     unsafe {
         cmd.pre_exec(move || {
             // This closure runs in the child process after fork, before exec.
