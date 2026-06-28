@@ -403,6 +403,7 @@ export default function Terminal({
           <div
             key={tab.id}
             ref={(el) => (containerRefs.current[tab.id] = el)}
+            onClick={() => tab.shell?.focus()}
             className={`absolute inset-0 ${tab.id === activeTabId ? 'z-10' : 'z-0 opacity-0 pointer-events-none'}`}
             style={{ minHeight: 0 }}
           />

@@ -194,3 +194,21 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ─── xterm cursor tweaks ─── */
+/* Force a clearly visible vertical bar cursor. xterm's default rendering can
+   collapse or hide the bar depending on CSS resets and theme colors. */
+.xterm .xterm-cursor-bar {
+  border-left: 2px solid currentColor !important;
+  background-color: transparent !important;
+}
+
+/* Hide the cursor on inactive terminals so only the focused tab shows it. */
+.xterm-helper-textarea {
+  opacity: 0;
+}
+
+/* Ensure the terminal canvas captures clicks for focus. */
+.xterm-screen {
+  cursor: text;
+}
