@@ -193,6 +193,14 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Terminal cursor blink is functional, not decorative motion. Keep it
+     blinking so users can see the insertion point in the sandbox shell. */
+  .xterm .xterm-cursor-block,
+  .xterm .xterm-cursor {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* ─── xterm cursor tweaks ─── */
