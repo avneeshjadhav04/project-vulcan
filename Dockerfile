@@ -113,24 +113,13 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
 
 # Override the rootfs's default prompt with the Vulcan prompt.
-# Appending at the end of these files ensures our PS1/PROMPT_COMMAND
-# override whatever Ubuntu's stock rc files set earlier.
-RUN <<'EOF'
-cat >> /app/ubuntu-rootfs/etc/bash.bashrc <<'BASHRC'
-
-# Vulcan terminal prompt override
-export PS1='$(pwd) → '
-export PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
-BASHRC
-
-mkdir -p /app/ubuntu-rootfs/root
-cat >> /app/ubuntu-rootfs/root/.bashrc <<'BASHRC'
-
-# Vulcan terminal prompt override
-export PS1='$(pwd) → '
-export PROMPT_COMMAND='printf "\033]51;CWD;%s\007" "$(pwd)"'
-BASHRC
-EOF
+# We create a .bash_profile that takes precedence over ~/.profile for login
+# shells. It sources the default ~/.bashrc first, then applies our PS1 and
+# PROMPT_COMMAND so they always win. This avoids relying on BuildKit heredocs
+# and works even if ubuntu-base's rc files set their own prompt.
+RUN mkdir -p /app/ubuntu-rootfs/root \
+    && printf '\n# Vulcan terminal prompt override\n[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"\nexport PS1='\''$(pwd) → '\''\nexport PROMPT_COMMAND='\''printf "\\033]51;CWD;%%s\\007" "$(pwd)"'\''\n' \
+       > /app/ubuntu-rootfs/root/.bash_profile
 
 # Download Vosk model (40MB small English model)
 RUN mkdir -p /models/vosk \
