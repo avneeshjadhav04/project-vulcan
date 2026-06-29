@@ -220,6 +220,7 @@ export default function Terminal({
     (tabId: string, e?: React.MouseEvent) => {
       e?.stopPropagation()
       const tab = tabs.find((t) => t.id === tabId)
+      tab?.shell?.sendClose()
       tab?.shell?.disconnect()
 
       setTabs((prev) => {

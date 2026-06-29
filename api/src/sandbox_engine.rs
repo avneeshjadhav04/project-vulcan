@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 #[cfg(unix)]
 use tokio::io::unix::AsyncFd;
 use tokio::process::Command;
@@ -14,6 +15,7 @@ use nix::ioctl_write_ptr_bad;
 use nix::libc::{self, TIOCSWINSZ};
 use nix::pty::{openpty, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
+use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{close, dup, setpgid, setsid, Pid};
 
 const ROOTFS_PATH: &str = "/app/ubuntu-rootfs";
@@ -23,6 +25,10 @@ const WORKSPACE_GUEST_PATH: &str = "/workspace";
 /// Format: ESC ] 51 ; CWD ; <path> BEL
 const CWD_OSC_PREFIX: &str = "\x1b]51;CWD;";
 const CWD_OSC_SUFFIX: char = '\x07';
+
+/// Invisible OSC sequence used to report command execution state.
+/// Format: ESC ] 51 ; CMD ; start|end BEL
+const CMD_OSC_PREFIX: &str = "\x1b]51;CMD;";
 
 #[derive(Clone)]
 pub struct SandboxState {
@@ -187,6 +193,8 @@ pub struct ShellSessionHandle {
     pub resize_tx: mpsc::UnboundedSender<Winsize>,
     pub cwd: Arc<Mutex<String>>,
     pub command_running: Arc<AtomicBool>,
+    pub shutdown: Arc<AtomicBool>,
+    pub last_activity: Arc<Mutex<Instant>>,
 }
 
 impl ShellSessionHandle {
@@ -196,6 +204,23 @@ impl ShellSessionHandle {
 
     pub fn resize(&self, winsize: Winsize) {
         let _ = self.resize_tx.send(winsize);
+    }
+
+    /// Mark activity so the idle reaper doesn't kill this session.
+    pub fn touch(&self) {
+        if let Ok(mut t) = self.last_activity.try_lock() {
+            *t = Instant::now();
+        }
+    }
+
+    /// Request graceful shutdown of the PTY session.
+    pub fn shutdown_session(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+        // Send SIGTERM to the top-level shell process group. If the child is
+        // the leader of a new process group (which we set via setpgid), this
+        // signals the whole group and avoids leaking grandchildren.
+        let _ = kill(Pid::from_raw(-self.shell_pid), Signal::SIGTERM);
+        let _ = kill(Pid::from_raw(self.shell_pid), Signal::SIGTERM);
     }
 }
 
@@ -363,21 +388,29 @@ pub async fn get_or_create_shell_session(
     let (resize_tx, resize_rx) = mpsc::unbounded_channel::<Winsize>();
     let cwd = Arc::new(Mutex::new(WORKSPACE_GUEST_PATH.to_string()));
     let command_running = Arc::new(AtomicBool::new(false));
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let last_activity = Arc::new(Mutex::new(Instant::now()));
 
     let handle = ShellSessionHandle {
         user_id: user_id.clone(),
         tab_id: tab_id.clone(),
         shell_pid: child_pid,
-        input_tx,
-        resize_tx,
+        input_tx: input_tx.clone(),
+        resize_tx: resize_tx.clone(),
         cwd: cwd.clone(),
         command_running: command_running.clone(),
+        shutdown: shutdown.clone(),
+        last_activity: last_activity.clone(),
     };
 
     {
         let mut sessions = state.sessions.lock().await;
         sessions.insert(key.clone(), handle.clone());
     }
+
+    // Clone senders for the idle reaper handle (so it can touch activity).
+    let idle_handle = handle.clone();
+    let sessions_for_task = state.sessions.clone();
 
     tokio::spawn(run_pty_session(
         child,
@@ -387,12 +420,16 @@ pub async fn get_or_create_shell_session(
         resize_rx,
         output_tx,
         cwd,
-        command_running,
-        state.sessions,
+        shutdown,
+        sessions_for_task,
         user_id,
         tab_id,
         permit,
+        idle_handle,
     ));
+
+    // Spawn an idle reaper that kills sessions with no active WebSocket after 30 minutes.
+    tokio::spawn(idle_session_reaper(state.sessions.clone()));
 
     Ok(handle)
 }
@@ -422,11 +459,12 @@ async fn run_pty_session(
     mut resize_rx: mpsc::UnboundedReceiver<Winsize>,
     output_tx: mpsc::UnboundedSender<ShellOutput>,
     cwd: Arc<Mutex<String>>,
-    _command_running: Arc<AtomicBool>,
+    shutdown: Arc<AtomicBool>,
     sessions: Arc<Mutex<HashMap<(String, String), ShellSessionHandle>>>,
     user_id: String,
     tab_id: String,
     _permit: tokio::sync::OwnedSemaphorePermit,
+    idle_handle: ShellSessionHandle,
 ) {
     let master_raw = master_fd.as_raw_fd();
 
@@ -485,6 +523,21 @@ async fn run_pty_session(
         tokio::select! {
             biased;
 
+            // Explicit shutdown requested (tab closed or idle timeout).
+            _ = async {
+                while !shutdown.load(Ordering::Relaxed) {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            } => {
+                tracing::info!(
+                    user_id = %user_id,
+                    tab_id = %tab_id,
+                    shell_pid = child_pid,
+                    "Terminal session shutdown requested"
+                );
+                break;
+            }
+
             // Child exited
             Some(_code) = reaper_rx.recv() => {
                 break;
@@ -514,7 +567,7 @@ async fn run_pty_session(
                         }) {
                             Ok(Ok(Some(data))) => {
                                 leftover.extend_from_slice(&data);
-                                let (output, new_leftover, parsed_cwd) = strip_osc_sequences(&leftover);
+                                let (output, new_leftover, parsed_cwd, cmd_status) = strip_osc_sequences(&leftover);
                                 leftover = new_leftover;
                                 if let Some(new_cwd) = parsed_cwd {
                                     {
@@ -523,6 +576,9 @@ async fn run_pty_session(
                                     }
                                     let _ = output_tx.send(ShellOutput::Cwd(new_cwd));
                                 }
+                                if let Some(running) = cmd_status {
+                                    let _ = output_tx.send(ShellOutput::Status { running, code: None });
+                                }
                                 let filtered = filter_bash_warnings(&output);
                                 if !filtered.is_empty() {
                                     let _ = output_tx.send(ShellOutput::Data(filtered));
@@ -530,10 +586,12 @@ async fn run_pty_session(
                             }
                             Ok(Ok(None)) => {
                                 // EOF — shell closed the PTY
+                                let _ = output_tx.send(ShellOutput::Status { running: false, code: None });
                                 break;
                             }
                             Ok(Err(_)) => {
                                 // Read error
+                                let _ = output_tx.send(ShellOutput::Status { running: false, code: None });
                                 break;
                             }
                             Err(_) => {
@@ -548,10 +606,12 @@ async fn run_pty_session(
 
             // Input from WebSocket — write to PTY master
             Some(data) = input_rx.recv() => {
+                idle_handle.touch();
                 if let Err(e) = async_write_all(&async_master, master_raw, &data).await {
                     let _ = output_tx.send(ShellOutput::Data(
                         format!("\r\nPTY write error: {}\r\n", e).into_bytes(),
                     ));
+                    let _ = output_tx.send(ShellOutput::Status { running: false, code: None });
                     break;
                 }
             }
@@ -565,8 +625,22 @@ async fn run_pty_session(
         }
     }
 
-    // Cleanup: kill child if still alive, remove session from map.
+    // Cleanup: kill child process group if still alive, remove session from map.
+    let _ = kill(Pid::from_raw(-child_pid), Signal::SIGTERM);
     let _ = kill(Pid::from_raw(child_pid), Signal::SIGTERM);
+
+    // Give the shell a moment to exit gracefully, then SIGKILL if necessary.
+    for _ in 0..10 {
+        match waitpid(Pid::from_raw(child_pid), Some(WaitPidFlag::WNOHANG)) {
+            Ok(WaitStatus::StillAlive) => {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            _ => break,
+        }
+    }
+    let _ = kill(Pid::from_raw(-child_pid), Signal::SIGKILL);
+    let _ = kill(Pid::from_raw(child_pid), Signal::SIGKILL);
+
     cleanup_session(&sessions, &user_id, &tab_id).await;
 }
 
@@ -615,10 +689,11 @@ async fn async_write_all(
 
 ioctl_write_ptr_bad!(set_winsize, TIOCSWINSZ, Winsize);
 
-fn strip_osc_sequences(data: &[u8]) -> (Vec<u8>, Vec<u8>, Option<String>) {
+fn strip_osc_sequences(data: &[u8]) -> (Vec<u8>, Vec<u8>, Option<String>, Option<bool>) {
     let mut output = Vec::with_capacity(data.len());
     let mut i = 0;
     let mut parsed_cwd: Option<String> = None;
+    let mut cmd_status: Option<bool> = None;
     while i < data.len() {
         if data[i] == 0x1b && i + 1 < data.len() && data[i + 1] == b']' {
             // Start of OSC sequence. Try to find BEL (0x07) or ST (ESC \).
@@ -627,17 +702,20 @@ fn strip_osc_sequences(data: &[u8]) -> (Vec<u8>, Vec<u8>, Option<String>) {
                 if let Some(cwd) = parse_cwd_osc(seq) {
                     parsed_cwd = Some(cwd);
                 }
+                if let Some(running) = parse_cmd_osc(seq) {
+                    cmd_status = Some(running);
+                }
                 i = end + 1;
                 continue;
             } else {
                 // Incomplete OSC: keep from i onward as leftover.
-                return (output, data[i..].to_vec(), parsed_cwd);
+                return (output, data[i..].to_vec(), parsed_cwd, cmd_status);
             }
         }
         output.push(data[i]);
         i += 1;
     }
-    (output, Vec::new(), parsed_cwd)
+    (output, Vec::new(), parsed_cwd, cmd_status)
 }
 
 /// Bash prints these warnings when it cannot acquire the PTY as its controlling
@@ -687,6 +765,50 @@ fn parse_cwd_osc(seq: &str) -> Option<String> {
         .strip_suffix(CWD_OSC_SUFFIX.to_string().as_str())
         .or_else(|| seq.strip_suffix("\x1b\\"))?;
     Some(seq.to_string())
+}
+
+fn parse_cmd_osc(seq: &str) -> Option<bool> {
+    let seq = seq.strip_prefix(CMD_OSC_PREFIX)?;
+    let seq = seq
+        .strip_suffix(CWD_OSC_SUFFIX.to_string().as_str())
+        .or_else(|| seq.strip_suffix("\x1b\\"))?;
+    match seq {
+        "start" => Some(true),
+        "end" => Some(false),
+        _ => None,
+    }
+}
+
+/// Reap shell sessions that have had no WebSocket activity for a long time.
+/// This is a safety net in case a browser disconnects without sending the
+/// explicit close message.
+async fn idle_session_reaper(sessions: Arc<Mutex<HashMap<(String, String), ShellSessionHandle>>>) {
+    const IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        let to_shutdown: Vec<ShellSessionHandle> = {
+            let sessions = sessions.lock().await;
+            sessions
+                .values()
+                .filter(|h| {
+                    h.last_activity
+                        .try_lock()
+                        .map(|t| t.elapsed() >= IDLE_TIMEOUT)
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect()
+        };
+        for h in to_shutdown {
+            tracing::info!(
+                user_id = %h.user_id,
+                tab_id = %h.tab_id,
+                shell_pid = h.shell_pid,
+                "Idle terminal session reaper shutting down session"
+            );
+            h.shutdown_session();
+        }
+    }
 }
 
 async fn cleanup_session(

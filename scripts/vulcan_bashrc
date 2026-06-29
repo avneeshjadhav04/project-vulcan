@@ -21,7 +21,19 @@ __vulcan_set_prompt() {
     printf "\033]51;CWD;%s\007" "$dir"
 }
 
-PROMPT_COMMAND='__vulcan_set_prompt'
+# Emit an OSC sequence before a command starts so the frontend can show a
+# "Running…" indicator only while a command is actually executing.
+__vulcan_cmd_start() {
+    printf "\033]51;CMD;start\007"
+}
+
+# Emit an OSC sequence after a command finishes (prompt is about to print).
+__vulcan_cmd_end() {
+    printf "\033]51;CMD;end\007"
+}
+
+PS0='$(__vulcan_cmd_start)'
+PROMPT_COMMAND='__vulcan_cmd_end; __vulcan_set_prompt'
 
 # Basic readline / history defaults for the sandbox.
 HISTSIZE=1000
