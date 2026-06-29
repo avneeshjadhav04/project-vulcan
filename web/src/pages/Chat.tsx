@@ -391,39 +391,41 @@ export default function Chat() {
             sidebarOpen={sidebarOpen}
           />
 
-          <AnimatePresence>
-            {showTerminal && (
-              <>
-                {/* Terminal resize handle */}
-                <div
-                  onMouseDown={startResizeTerminal}
-                  className={`relative z-20 h-1 shrink-0 cursor-row-resize transition-colors ${
-                    isResizingTerminal ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
-                  }`}
-                />
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: isTerminalMaximized ? MAX_TERMINAL_HEIGHT : terminalHeight, opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden border-t border-border-subtle"
-                  style={{ height: isTerminalMaximized ? MAX_TERMINAL_HEIGHT : terminalHeight }}
-                >
-                  <Terminal 
-                    isMaximized={isTerminalMaximized}
-                    onToggleMaximize={() => {
-                      setIsTerminalMaximized(!isTerminalMaximized)
-                      if (!isTerminalMaximized) {
-                        setTerminalHeight(MAX_TERMINAL_HEIGHT)
-                      } else {
-                        setTerminalHeight(DEFAULT_TERMINAL_HEIGHT)
-                      }
-                    }}
-                  />
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
+          {/* Terminal panel — always mounted so shell sessions survive hide/show. */}
+          {/* Terminal resize handle */}
+          <div
+            onMouseDown={startResizeTerminal}
+            className={`relative z-20 h-1 shrink-0 cursor-row-resize transition-colors ${
+              isResizingTerminal ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
+            } ${showTerminal ? '' : 'hidden'}`}
+          />
+          <motion.div
+            initial={false}
+            animate={{
+              height: showTerminal
+                ? isTerminalMaximized
+                  ? MAX_TERMINAL_HEIGHT
+                  : terminalHeight
+                : 0,
+              opacity: showTerminal ? 1 : 0,
+            }}
+            transition={{ duration: 0.2 }}
+            className={`overflow-hidden border-t border-border-subtle ${showTerminal ? '' : 'pointer-events-none'}`}
+            style={{ height: showTerminal ? (isTerminalMaximized ? MAX_TERMINAL_HEIGHT : terminalHeight) : 0 }}
+            aria-hidden={!showTerminal}
+          >
+            <Terminal
+              isMaximized={isTerminalMaximized}
+              onToggleMaximize={() => {
+                setIsTerminalMaximized(!isTerminalMaximized)
+                if (!isTerminalMaximized) {
+                  setTerminalHeight(MAX_TERMINAL_HEIGHT)
+                } else {
+                  setTerminalHeight(DEFAULT_TERMINAL_HEIGHT)
+                }
+              }}
+            />
+          </motion.div>
         </div>
 
         {/* Workspace resize handle */}
