@@ -241,21 +241,7 @@ export class ShellClient {
     }
   }
 
-  private handleInput(data: string) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    // Ctrl+L clears the screen locally; also send it to bash which handles it.
-    if (data === '\x0c') {
-      this.term?.clear()
-    }
-
-    // If the user pressed Enter, mark command as running for the UI.
-    if (data === '\r' || data === '\n') {
-      this.onRunningChange?.(true)
-    }
-
-    this.ws.send(JSON.stringify({ type: 'input', data }))
-  }
 
   private writeBytes(data: Uint8Array) {
     this.term?.write(data)
@@ -264,10 +250,6 @@ export class ShellClient {
   private writeError(text: string) {
     this.term?.writeln('')
     this.term?.writeln(`\x1b[31m${text}\x1b[0m`)
-  }
-
-  focus() {
-    this.term?.focus()
   }
 
   clear() {
@@ -293,6 +275,21 @@ export class ShellClient {
     }
   }
 
+  private handleInput(data: string) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+
+    // Ctrl+L clears the screen locally; also send it to bash which handles it.
+    if (data === '\x0c') {
+      this.term?.clear()
+    }
+
+    this.ws.send(JSON.stringify({ type: 'input', data }))
+  }
+
+  focus() {
+    this.term?.focus()
+  }
+
   fit() {
     try {
       this.fitAddon?.fit()
@@ -304,6 +301,12 @@ export class ShellClient {
 
   get isConnected() {
     return this.connected
+  }
+
+  sendClose() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'close' }))
+    }
   }
 
   disconnect() {

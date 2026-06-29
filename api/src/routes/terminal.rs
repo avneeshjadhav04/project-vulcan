@@ -34,20 +34,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
     let db = state.db.clone();
     let sandbox = state.sandbox.clone();
 
-    // Send initial connection messages (text JSON for compatibility with the client banner).
-    let init_msgs = [
-        r#"{"type":"stdout","data":""}"#,
-        r#"{"type":"stdout","data":"  Project Vulcan Sandbox Terminal"}"#,
-        r#"{"type":"stdout","data":"  ───────────────────────────"}"#,
-        r#"{"type":"stdout","data":"  Connected to sandboxed environment."}"#,
-        r#"{"type":"stdout","data":"  Type commands and press Enter to execute."}"#,
-        r#"{"type":"stdout","data":"  Commands run in an isolated container with limited resources."}"#,
-        r#"{"type":"stdout","data":""}"#,
-    ];
-    for msg in &init_msgs {
-        let _ = sender.send(WsMessage::text(*msg)).await;
-    }
-
     let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<crate::sandbox_engine::ShellOutput>();
     let session = match crate::sandbox_engine::get_or_create_shell_session(
         sandbox.clone(),
@@ -75,6 +61,20 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
     };
 
     let shell_pid = session.shell_pid;
+
+    // Send initial connection messages only after the session is ready.
+    let init_msgs = [
+        r#"{"type":"stdout","data":""}"#,
+        r#"{"type":"stdout","data":"  Project Vulcan Sandbox Terminal"}"#,
+        r#"{"type":"stdout","data":"  ───────────────────────────"}"#,
+        r#"{"type":"stdout","data":"  Connected to sandboxed environment."}"#,
+        r#"{"type":"stdout","data":"  Type commands and press Enter to execute."}"#,
+        r#"{"type":"stdout","data":"  Commands run in an isolated container with limited resources."}"#,
+        r#"{"type":"stdout","data":""}"#,
+    ];
+    for msg in &init_msgs {
+        let _ = sender.send(WsMessage::text(*msg)).await;
+    }
 
     // Forward output messages to the WebSocket client.
     let forward_task = tokio::spawn(async move {
@@ -134,14 +134,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
 
                         // Forward raw keystrokes to the PTY.
                         session.send_input(data.as_bytes().to_vec());
-
-                        // Notify frontend that a command may be running when Enter is pressed.
-                        if data.ends_with('\n') && !command.is_empty() {
-                            let _ = out_tx.send(crate::sandbox_engine::ShellOutput::Status {
-                                running: true,
-                                code: None,
-                            });
-                        }
                     }
                     Some("resize") => {
                         let cols = envelope["cols"].as_u64().unwrap_or(80) as u16;
@@ -159,6 +151,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
                             payload.into_bytes(),
                         ));
                     }
+                    Some("close") => {
+                        break;
+                    }
                     _ => {}
                 }
             }
@@ -173,11 +168,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
 
     forward_task.abort();
 
-    // Connection closed: remove the session from the map.
-    {
-        let mut sessions = sandbox.sessions.lock().await;
-        sessions.remove(&(user_id.clone(), tab_id.clone()));
-    }
+    // Always shut down the PTY session when the WebSocket ends, unless the
+    // client explicitly closed the tab (in which case we also shut it down).
+    // This prevents leaked proot/bash processes and semaphore permits after a
+    // page refresh or unexpected disconnect.
+    session.shutdown_session();
+
     let _ = sqlx::query(
         "UPDATE terminal_sessions SET status = 'killed', ended_at = datetime('now') WHERE user_id = ?1 AND tab_id = ?2 AND status = 'running'"
     )
@@ -185,4 +181,14 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
     .bind(&tab_id)
     .execute(&db)
     .await;
+
+    // Give run_pty_session a moment to reap the child and remove the map entry.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // If shutdown didn't finish cleaning up the map entry (e.g. the shell
+    // refused to die), remove it explicitly.
+    {
+        let mut sessions = sandbox.sessions.lock().await;
+        sessions.remove(&(user_id.clone(), tab_id.clone()));
+    }
 }
