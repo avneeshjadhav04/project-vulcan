@@ -3,20 +3,30 @@ import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
 
 export interface ShellMessage {
-  type: 'cwd' | 'status'
+  type: 'cwd' | 'status' | 'stdout' | 'stderr'
   cwd?: string
   running?: boolean
   code?: number
+  data?: string
 }
 
 export interface ShellClientOptions {
   tabId: string
   container: HTMLElement
   theme: ITheme
-  onConnectedChange?: (connected: boolean) => void
+  onStateChange?: (state: ShellState) => void
   onRunningChange?: (running: boolean) => void
   onCwdChange?: (cwd: string) => void
 }
+
+export interface ShellState {
+  connecting: boolean
+  connected: boolean
+  error?: string
+}
+
+const OPEN_TIMEOUT_MS = 5000
+const RETRY_BACKOFF_MS = [1000, 2000, 4000]
 
 export class ShellClient {
   private tabId: string
@@ -25,10 +35,14 @@ export class ShellClient {
   private term: XTerm | null = null
   private fitAddon: FitAddon | null = null
   private ws: WebSocket | null = null
-  private onConnectedChange?: (connected: boolean) => void
+  private onStateChange?: (state: ShellState) => void
   private onRunningChange?: (running: boolean) => void
   private onCwdChange?: (cwd: string) => void
   private connected = false
+  private connecting = false
+  private retryCount = 0
+  private openTimeout: ReturnType<typeof setTimeout> | null = null
+  private retryTimeout: ReturnType<typeof setTimeout> | null = null
   private resizeObserver: ResizeObserver | null = null
   private cleanupWindowResize: (() => void) | null = null
 
@@ -36,15 +50,16 @@ export class ShellClient {
     this.tabId = options.tabId
     this.container = options.container
     this.theme = options.theme
-    this.onConnectedChange = options.onConnectedChange
+    this.onStateChange = options.onStateChange
     this.onRunningChange = options.onRunningChange
     this.onCwdChange = options.onCwdChange
   }
 
   connect() {
-    if (this.ws) {
-      this.disconnect()
-    }
+    if (this.ws || this.connecting) return
+
+    this.connecting = true
+    this.emitState()
 
     this.container.innerHTML = ''
     const term = new XTerm({
@@ -62,8 +77,6 @@ export class ShellClient {
     term.loadAddon(fitAddon)
     term.loadAddon(new WebLinksAddon())
     term.open(this.container)
-    fitAddon.fit()
-    term.focus()
 
     this.term = term
     this.fitAddon = fitAddon
@@ -72,7 +85,9 @@ export class ShellClient {
       try {
         fitAddon.fit()
         this.sendResize()
-      } catch {}
+      } catch (err) {
+        console.warn('[ShellClient] fit/resize error:', err)
+      }
     })
     this.resizeObserver.observe(this.container)
 
@@ -81,11 +96,32 @@ export class ShellClient {
     ws.binaryType = 'arraybuffer'
     this.ws = ws
 
+    this.openTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        console.warn('[ShellClient] WebSocket open timeout')
+        ws.close()
+        this.handleDisconnect('Connection timed out.')
+        this.scheduleRetry()
+      }
+    }, OPEN_TIMEOUT_MS)
+
     ws.onopen = () => {
+      if (this.openTimeout) {
+        clearTimeout(this.openTimeout)
+        this.openTimeout = null
+      }
+      this.retryCount = 0
+      this.connecting = false
       this.connected = true
-      this.onConnectedChange?.(true)
+      this.emitState()
+
+      try {
+        fitAddon.fit()
+      } catch (err) {
+        console.warn('[ShellClient] initial fit error:', err)
+      }
       this.sendResize()
-      // Backend sends an initial banner in text JSON, then PTY output.
+      term.focus()
     }
 
     ws.onmessage = (event) => {
@@ -102,16 +138,31 @@ export class ShellClient {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (this.openTimeout) {
+        clearTimeout(this.openTimeout)
+        this.openTimeout = null
+      }
+      const wasConnected = this.connected
       this.connected = false
-      this.onConnectedChange?.(false)
-      this.writeError('Connection closed.')
+      this.connecting = false
+      this.emitState()
+
+      if (!event.wasClean && wasConnected) {
+        this.writeError('Connection lost. Reconnecting…')
+        this.scheduleRetry()
+      } else if (!wasConnected && !this.connecting) {
+        this.handleDisconnect('Connection closed.')
+        this.scheduleRetry()
+      }
     }
 
     ws.onerror = () => {
+      this.connecting = false
       this.connected = false
-      this.onConnectedChange?.(false)
-      this.writeError('Terminal connection error.')
+      this.emitState()
+      this.handleDisconnect('Terminal connection error.')
+      this.scheduleRetry()
     }
 
     term.onData((data) => this.handleInput(data))
@@ -120,10 +171,40 @@ export class ShellClient {
       try {
         fitAddon.fit()
         this.sendResize()
-      } catch {}
+      } catch (err) {
+        console.warn('[ShellClient] window resize error:', err)
+      }
     }
     window.addEventListener('resize', handleWindowResize)
     this.cleanupWindowResize = () => window.removeEventListener('resize', handleWindowResize)
+  }
+
+  private scheduleRetry() {
+    if (this.retryTimeout) return
+    const delay = RETRY_BACKOFF_MS[Math.min(this.retryCount, RETRY_BACKOFF_MS.length - 1)]
+    this.retryCount += 1
+    console.info(`[ShellClient] retrying connection in ${delay}ms (attempt ${this.retryCount})`)
+    this.connecting = true
+    this.emitState()
+    this.retryTimeout = setTimeout(() => {
+      this.retryTimeout = null
+      this.ws = null
+      this.connect()
+    }, delay)
+  }
+
+  private handleDisconnect(reason: string) {
+    this.connected = false
+    this.connecting = false
+    this.emitState()
+    this.writeError(reason)
+  }
+
+  private emitState() {
+    this.onStateChange?.({
+      connecting: this.connecting,
+      connected: this.connected,
+    })
   }
 
   private sendResize() {
@@ -132,16 +213,31 @@ export class ShellClient {
     const rows = this.term.rows
     if (cols > 0 && rows > 0) {
       this.ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+    } else {
+      console.warn('[ShellClient] refusing resize with zero dimensions', { cols, rows })
     }
   }
 
   private handleMessage(msg: ShellMessage) {
-    if (msg.type === 'cwd' && msg.cwd) {
-      this.onCwdChange?.(msg.cwd)
-      // When cwd arrives, prompt has returned; command is no longer running.
-      this.onRunningChange?.(false)
-    } else if (msg.type === 'status') {
-      this.onRunningChange?.(msg.running ?? false)
+    switch (msg.type) {
+      case 'cwd':
+        if (msg.cwd) {
+          this.onCwdChange?.(msg.cwd)
+          this.onRunningChange?.(false)
+        }
+        break
+      case 'status':
+        this.onRunningChange?.(msg.running ?? false)
+        break
+      case 'stdout':
+      case 'stderr':
+        if (msg.data) {
+          this.writeBytes(new TextEncoder().encode(msg.data))
+        }
+        break
+      default:
+        // Unknown JSON messages are intentionally ignored.
+        console.warn('[ShellClient] unknown message type:', msg)
     }
   }
 
@@ -201,7 +297,9 @@ export class ShellClient {
     try {
       this.fitAddon?.fit()
       this.sendResize()
-    } catch {}
+    } catch (err) {
+      console.warn('[ShellClient] fit error:', err)
+    }
   }
 
   get isConnected() {
@@ -209,6 +307,19 @@ export class ShellClient {
   }
 
   disconnect() {
+    if (this.openTimeout) {
+      clearTimeout(this.openTimeout)
+      this.openTimeout = null
+    }
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout)
+      this.retryTimeout = null
+    }
+    this.connected = false
+    this.connecting = false
+    this.retryCount = 0
+    this.emitState()
+
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     if (this.cleanupWindowResize) {

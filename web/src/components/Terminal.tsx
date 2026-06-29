@@ -15,6 +15,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  Loader2,
 } from 'lucide-react'
 import { useThemeStore } from '../stores/themeStore'
 import { ShellClient } from '../lib/shellClient'
@@ -25,6 +26,7 @@ interface TerminalTab {
   name: string
   shell?: ShellClient
   connected: boolean
+  connecting: boolean
   running: boolean
   cwd: string
   pid: number
@@ -47,6 +49,7 @@ export default function Terminal({
             id,
             name: `bash ${idx + 1}`,
             connected: false,
+            connecting: false,
             running: false,
             cwd: '/workspace',
             pid: 0,
@@ -56,11 +59,12 @@ export default function Terminal({
         // ignore
       }
     }
-    return [{ id: crypto.randomUUID(), name: 'bash 1', connected: false, running: false, cwd: '/workspace', pid: 0 }]
+    return [{ id: crypto.randomUUID(), name: 'bash 1', connected: false, connecting: false, running: false, cwd: '/workspace', pid: 0 }]
   })
 
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '')
   const [tabCounter, setTabCounter] = useState(() => tabs.length + 1)
+  const [pendingAttachIds, setPendingAttachIds] = useState<Set<string>>(new Set())
   const containerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
 
@@ -122,34 +126,62 @@ export default function Terminal({
   }, [])
 
   const attachShell = useCallback(
-    (tab: TerminalTab) => {
-      const container = containerRefs.current[tab.id]
-      if (!container || tab.shell) return
+    (tabId: string) => {
+      const container = containerRefs.current[tabId]
+      if (!container) return
 
-      const shell = new ShellClient({
-        tabId: tab.id,
-        container,
-        theme,
-        onConnectedChange: (connected) => updateTab(tab.id, { connected }),
-        onRunningChange: (running) => updateTab(tab.id, { running }),
-        onCwdChange: (cwd) => updateTab(tab.id, { cwd }),
+      setTabs((prev) => {
+        const tab = prev.find((t) => t.id === tabId)
+        if (!tab || tab.shell) return prev
+
+        const shell = new ShellClient({
+          tabId: tab.id,
+          container,
+          theme,
+          onStateChange: ({ connected, connecting }) => {
+            updateTab(tab.id, { connected, connecting })
+          },
+          onRunningChange: (running) => updateTab(tab.id, { running }),
+          onCwdChange: (cwd) => updateTab(tab.id, { cwd }),
+        })
+
+        shell.connect()
+        return prev.map((t) => (t.id === tabId ? { ...t, shell } : t))
       })
-
-      shell.connect()
-      updateTab(tab.id, { shell })
     },
     [theme, updateTab]
   )
 
-  // Initialize shells for visible tabs on first mount.
+  // Initialize shells for visible tabs after first render, sequentially to reduce backend contention.
   useEffect(() => {
-    tabs.forEach((tab) => {
-      if (!tab.shell) {
-        setTimeout(() => attachShell(tab), 0)
+    let cancelled = false
+    ;(async () => {
+      for (const tab of tabs) {
+        if (cancelled) return
+        if (!tab.shell) {
+          setPendingAttachIds((prev) => new Set(prev).add(tab.id))
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          attachShell(tab.id)
+          // Small spacing between tabs so the backend's 4-shell permit pool is not overwhelmed.
+          await new Promise((resolve) => setTimeout(resolve, 150))
+        }
       }
-    })
+      setPendingAttachIds(new Set())
+    })()
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Re-attach any tab that became visible but has no shell (e.g. restored from localStorage after a later mount).
+  useEffect(() => {
+    tabs.forEach((tab) => {
+      if (!tab.shell && !pendingAttachIds.has(tab.id) && containerRefs.current[tab.id]) {
+        attachShell(tab.id)
+      }
+    })
+  }, [tabs, pendingAttachIds, attachShell])
 
   // Re-attach shell when theme changes for all tabs.
   useEffect(() => {
@@ -172,6 +204,7 @@ export default function Terminal({
       id: crypto.randomUUID(),
       name: `bash ${tabCounter}`,
       connected: false,
+      connecting: false,
       running: false,
       cwd: '/workspace',
       pid: 0,
@@ -179,7 +212,8 @@ export default function Terminal({
     setTabCounter((c) => c + 1)
     setTabs((prev) => [...prev, newTab])
     setActiveTabId(newTab.id)
-    setTimeout(() => attachShell(newTab), 0)
+    setPendingAttachIds((prev) => new Set(prev).add(newTab.id))
+    setTimeout(() => attachShell(newTab.id), 0)
   }, [tabCounter, attachShell])
 
   const closeTab = useCallback(
@@ -196,13 +230,15 @@ export default function Terminal({
             id: crypto.randomUUID(),
             name: 'bash 1',
             connected: false,
+            connecting: false,
             running: false,
             cwd: '/workspace',
             pid: 0,
           }
           setTabCounter(2)
           setActiveTabId(fresh.id)
-          setTimeout(() => attachShell(fresh), 0)
+          setPendingAttachIds((prevSet) => new Set(prevSet).add(fresh.id))
+          setTimeout(() => attachShell(fresh.id), 0)
           return [fresh]
         }
         if (activeTabId === tabId) {
@@ -220,24 +256,13 @@ export default function Terminal({
     activeTab?.shell?.clear()
   }
 
-  const handleReconnect = () => {
-    activeTab?.shell?.disconnect()
-    setTimeout(() => {
-      const container = containerRefs.current[activeTabId]
-      if (!container) return
-      const shell = new ShellClient({
-        tabId: activeTabId,
-        container,
-        theme,
-        onConnectedChange: (connected) => updateTab(activeTabId, { connected }),
-        onRunningChange: (running) => updateTab(activeTabId, { running }),
-        onCwdChange: (cwd) => updateTab(activeTabId, { cwd }),
-      })
-      shell.connect()
-      updateTab(activeTabId, { shell })
-      setTimeout(() => shell.focus(), 50)
-    }, 0)
-  }
+  const handleReconnect = useCallback(() => {
+    if (!activeTab) return
+    activeTab.shell?.disconnect()
+    updateTab(activeTab.id, { shell: undefined, connected: false, connecting: true })
+    setPendingAttachIds((prev) => new Set(prev).add(activeTab.id))
+    setTimeout(() => attachShell(activeTab.id), 0)
+  }, [activeTab, attachShell, updateTab])
 
   return (
     <div className="flex h-full flex-col border border-border-subtle bg-background">
@@ -261,6 +286,17 @@ export default function Terminal({
                   >
                     <Wifi className="h-2.5 w-2.5 text-support-success" />
                     <span className="text-[10px] text-support-success">Connected</span>
+                  </motion.div>
+                ) : activeTab?.connecting ? (
+                  <motion.div
+                    key="connecting"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center gap-1"
+                  >
+                    <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+                    <span className="text-[10px] text-support-warning">Connecting…</span>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -334,7 +370,7 @@ export default function Terminal({
             <Trash2 className="h-3 w-3" />
             Clear
           </button>
-          {!activeTab?.connected && (
+          {(!activeTab?.connected || activeTab?.connecting) && (
             <button
               onClick={handleReconnect}
               className="ml-1 flex items-center gap-1 border border-interactive/30 bg-interactive/10 px-2 py-1 text-[11px] text-interactive transition-colors hover:bg-interactive/20"
@@ -353,8 +389,8 @@ export default function Terminal({
             key={tab.id}
             onClick={() => {
               setActiveTabId(tab.id)
-              if (!tab.shell) {
-                setTimeout(() => attachShell(tab), 0)
+              if (!tab.shell && containerRefs.current[tab.id]) {
+                attachShell(tab.id)
               }
             }}
             title={tab.pid > 0 ? `PID: ${tab.pid}` : `Shell ${tab.name}`}
@@ -365,6 +401,9 @@ export default function Terminal({
             }`}
           >
             <span className="truncate">{tab.name}</span>
+            {tab.connecting && (
+              <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+            )}
             {tab.running && (
               <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
             )}
