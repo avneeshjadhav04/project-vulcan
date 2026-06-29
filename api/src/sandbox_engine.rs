@@ -235,7 +235,13 @@ pub enum ShellOutput {
     Status { running: bool, code: Option<i32> },
 }
 
-/// Spawn or attach to a persistent PTY-based bash session for a user/tab.
+/// Spawn a fresh PTY-based bash session for a user/tab.
+///
+/// Any pre-existing session for the same (user_id, tab_id) is shut down and
+/// removed from the map before creating a new one. This guarantees that a new
+/// WebSocket always receives a brand-new output channel and a live PTY,
+/// avoiding the stale-handle race where output from a reconnecting client was
+/// routed to an already-closed WebSocket.
 pub async fn get_or_create_shell_session(
     state: SandboxState,
     user_id: String,
@@ -243,11 +249,21 @@ pub async fn get_or_create_shell_session(
     output_tx: mpsc::UnboundedSender<ShellOutput>,
 ) -> Result<ShellSessionHandle, String> {
     let key = (user_id.clone(), tab_id.clone());
-    {
-        let sessions = state.sessions.lock().await;
-        if let Some(handle) = sessions.get(&key) {
-            return Ok(handle.clone());
-        }
+
+    // Always start fresh: kill any existing session for this tab so we never
+    // reuse a stale handle with a dead output channel.
+    let old_session = {
+        let mut sessions = state.sessions.lock().await;
+        sessions.remove(&key)
+    };
+    if let Some(old) = old_session {
+        tracing::info!(
+            user_id = %user_id,
+            tab_id = %tab_id,
+            shell_pid = old.shell_pid,
+            "Replacing existing terminal session with fresh PTY"
+        );
+        old.shutdown_session();
     }
 
     let semaphore = state.semaphore.clone();
