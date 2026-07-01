@@ -24,7 +24,7 @@ const IDEA_POOL: Suggestion[] = [
   { id: 12, text: 'Refactor this function to use async/await' },
 
   // Daily tasks / Productivity
-  { id: 13, text: 'Draft a professional email to request time off' },
+  { id: 13, text: 'Draft a professional message to request time off' },
   { id: 14, text: 'Summarize my notes into bullet points' },
   { id: 15, text: 'Create a weekly meal plan' },
   { id: 16, text: 'Write a to-do list for my project' },

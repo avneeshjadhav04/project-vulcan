@@ -1073,7 +1073,7 @@ export default function Settings() {
                     <Puzzle className="mx-auto mb-2 h-6 w-6 text-text-helper" />
                     <p className="text-xs text-text-helper">MCP-based integrations are coming soon.</p>
                     <p className="mt-1 text-[10px] text-text-helper/70">
-                      Calendar, email, and task integrations will be managed here.
+                      Third-party service integrations will be managed here.
                     </p>
                   </div>
 
