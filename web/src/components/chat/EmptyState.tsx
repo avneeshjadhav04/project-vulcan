@@ -29,9 +29,6 @@ const IDEA_POOL: Suggestion[] = [
   { id: 15, text: 'Create a weekly meal plan' },
   { id: 16, text: 'Write a to-do list for my project' },
   { id: 17, text: 'Generate a meeting agenda template' },
-  { id: 18, text: 'List my upcoming Google Calendar events' },
-  { id: 19, text: 'Add a task to my Todoist inbox' },
-  { id: 20, text: 'Show me the latest unread emails in Gmail' },
   { id: 21, text: 'Help me write a project README' },
   { id: 22, text: 'Create a JSON schema for an e-commerce order' },
 

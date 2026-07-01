@@ -14,22 +14,6 @@ export interface ToolExecution {
   filename?: string
   query?: string
   results?: Array<{ title: string; url: string; snippet: string }>
-  events?: any[]
-  emails?: any[]
-  tasks?: any[]
-  to?: string
-  subject?: string
-  body?: string
-  from?: string
-  date?: string
-  summary?: string
-  start?: string
-  end?: string
-  location?: string
-  content?: string
-  due_string?: string
-  priority?: number
-  task_id?: string
   url?: string
   page_content?: string
   code?: string
@@ -305,22 +289,6 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
                         filename: toolData.filename || '',
                         query: toolData.query || '',
                         results: toolData.results || [],
-                        events: toolData.events,
-                        emails: toolData.emails,
-                        tasks: toolData.tasks,
-                        to: toolData.to,
-                        subject: toolData.subject,
-                        body: toolData.body,
-                        from: toolData.from,
-                        date: toolData.date,
-                        summary: toolData.summary,
-                        start: toolData.start,
-                        end: toolData.end,
-                        location: toolData.location,
-                        content: toolData.content,
-                        due_string: toolData.due_string,
-                        priority: toolData.priority,
-                        task_id: toolData.task_id,
                         url: toolData.url,
                         page_content: toolData.page_content || toolData.content,
                         code: toolData.code,

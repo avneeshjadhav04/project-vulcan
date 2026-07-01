@@ -64,9 +64,9 @@ const MAX_TITLE_LENGTH: usize = 255;
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
 const MEMORY_RECENT_WINDOW: usize = 6; // Always keep last 6 messages
 
-/// Build the tools definition array for LLM requests, filtered by connected integrations.
-fn build_tools_def(has_google: bool, has_todoist: bool) -> Vec<serde_json::Value> {
-    let mut tools = vec![
+/// Build the tools definition array for LLM requests.
+fn build_tools_def() -> Vec<serde_json::Value> {
+    vec![
         json!({
             "type": "function",
             "function": {
@@ -215,170 +215,7 @@ fn build_tools_def(has_google: bool, has_todoist: bool) -> Vec<serde_json::Value
                 }
             }
         }),
-    ];
-    
-    if has_google {
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_list_events",
-                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
-                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
-                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_create_event",
-                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string", "description": "Event title/summary"},
-                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
-                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
-                        "description": {"type": "string", "description": "Event description"},
-                        "location": {"type": "string", "description": "Event location"},
-                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
-                    },
-                    "required": ["summary", "start_time", "end_time"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_delete_event",
-                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "event_id": {"type": "string", "description": "ID of the event to delete"}
-                    },
-                    "required": ["event_id"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_send",
-                "description": "Send an email. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "to": {"type": "string", "description": "Recipient email address"},
-                        "subject": {"type": "string", "description": "Email subject"},
-                        "body": {"type": "string", "description": "Email body text"}
-                    },
-                    "required": ["to", "subject", "body"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_list",
-                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
-                        "query": {"type": "string", "description": "Search query for emails"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_read",
-                "description": "Read a specific email by ID. Requires Gmail connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "email_id": {"type": "string", "description": "ID of the email to read"}
-                    },
-                    "required": ["email_id"]
-                }
-            }
-        }));
-    }
-    
-    if has_todoist {
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_list",
-                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_create",
-                "description": "Create a new task in Todoist. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "content": {"type": "string", "description": "Task content/name"},
-                        "description": {"type": "string", "description": "Task description"},
-                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
-                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
-                    },
-                    "required": ["content"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_update",
-                "description": "Update an existing Todoist task. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to update"},
-                        "content": {"type": "string", "description": "New task content"},
-                        "due_string": {"type": "string", "description": "New due date"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_complete",
-                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to complete"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }));
-    }
-    
-    tools
+    ]
 }
 
 /// Execute a single tool call and return the result JSON.
@@ -563,42 +400,6 @@ async fn execute_tool(
                 Ok(json!({"status": "success", "content": "Scratchpad is empty."}))
             }
         }
-        "calendar_list_events" => {
-            crate::integrations::google::list_calendar_events(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "calendar_create_event" => {
-            crate::integrations::google::create_calendar_event(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "calendar_delete_event" => {
-            crate::integrations::google::delete_calendar_event(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "email_send" => crate::integrations::google::send_email(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "email_list" => crate::integrations::google::list_emails(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "email_read" => crate::integrations::google::read_email(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_list" => crate::integrations::todoist::list_tasks(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_create" => crate::integrations::todoist::create_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_update" => crate::integrations::todoist::update_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_complete" => crate::integrations::todoist::complete_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
         "fetch_webpage" => {
             let url = args["url"].as_str().ok_or("Missing url")?;
             let extract_mode = args["extract_mode"].as_str().unwrap_or("text");
@@ -807,33 +608,17 @@ async fn persist_tool_message(
     }
 }
 
-/// Build a dynamic system prompt based on available integrations and current context.
-fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
-    let mut prompt = String::from(
+/// Build the dynamic system prompt based on current context.
+fn build_dynamic_system_prompt() -> String {
+    String::from(
         "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform.\n\n\
          You have access to the following capabilities:\n\
          - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
          - File operations: Create, read, and modify files in the workspace.\n\
          - Web search: Search the web for current information.\n\
          - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
-           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n",
-    );
-
-    if has_google {
-        prompt.push_str(
-            "- Google Calendar: You can list, create, and manage calendar events on the user's behalf.\n\
-             - Gmail: You can read, search, and send emails for the user.\n\n"
-        );
-    }
-
-    if has_todoist {
-        prompt.push_str(
-            "- Todoist: You can list, create, update, and complete tasks on the user's behalf.\n\n",
-        );
-    }
-
-    prompt.push_str(
-        "When the user asks you to do something that requires these tools, use them proactively. \
+           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n\
+         When the user asks you to do something that requires these tools, use them proactively. \
          If you need multiple tools, call them in sequence. \
          Always explain what you're doing when using tools. \
          **Self-Healing execution:** If a tool execution fails (e.g. returns an error or non-zero exit code), \
@@ -842,9 +627,7 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
          **Artifacts:** When generating complex HTML, CSS, SVG, React, or Mermaid diagrams, wrap the code block in an artifact tag to render it visually for the user. \
          Syntax: ```html artifact=\"Title of Artifact\"\n...code...\n```. \
          Be concise and helpful.",
-    );
-
-    prompt
+    )
 }
 
 async fn get_scratchpad(
@@ -2002,20 +1785,7 @@ async fn send_message(
     // Resolve file attachments for AI context
     resolve_message_attachments(&state.db, &mut history).await;
 
-    let connected_integrations: Vec<(String,)> = sqlx::query_as(
-        "SELECT provider FROM integration_credentials WHERE user_id = ?1 AND provider IN ('google', 'todoist')"
-    )
-    .bind(&claims.sub)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-    let has_google = connected_integrations
-        .iter()
-        .any(|(provider,)| provider == "google");
-    let has_todoist = connected_integrations
-        .iter()
-        .any(|(provider,)| provider == "todoist");
-    let mut system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
+    let mut system_prompt = build_dynamic_system_prompt();
 
     // ─── Scratchpad Memory (always available if enabled) ───
     let scratchpad_enabled = user.memory_enabled == 1;
@@ -2228,7 +1998,7 @@ async fn send_message(
         }
 
         let mut current_messages = messages_payload;
-        let tools = build_tools_def(has_google, has_todoist);
+        let tools = build_tools_def();
         let mut total_steps = 0;
 
         loop {
