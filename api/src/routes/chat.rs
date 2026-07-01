@@ -218,6 +218,92 @@ fn build_tools_def() -> Vec<serde_json::Value> {
     ]
 }
 
+/// Build the MCP tools definition array for LLM requests by reading discovered
+/// tools from `mcp_tools`. Only tools whose MCP server is currently connected
+/// are included.
+async fn build_mcp_tools_def(
+    db: &sqlx::SqlitePool,
+    user_id: &str,
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT mt.id, mt.server_id, mt.tool_name, mt.namespaced_name, mt.schema
+        FROM mcp_tools mt
+        JOIN mcp_servers ms ON ms.id = mt.server_id
+        WHERE mt.user_id = ?1 AND ms.enabled = 1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut defs = Vec::with_capacity(rows.len());
+    for (_id, _server_id, original_name, namespaced_name, schema_str) in rows {
+        let schema: serde_json::Value = match serde_json::from_str(&schema_str) {
+            Ok(v) => v,
+            Err(_) => serde_json::json!({}),
+        };
+
+        // Normalize schema into OpenAI function parameters shape.
+        let parameters = if schema.get("type").is_some() {
+            schema
+        } else {
+            serde_json::json!({
+                "type": "object",
+                "properties": schema.get("properties").cloned().unwrap_or_else(|| serde_json::json!({})),
+                "required": schema.get("required").cloned().unwrap_or_else(|| serde_json::json!([]))
+            })
+        };
+
+        defs.push(serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": namespaced_name,
+                "description": format!("MCP tool '{}'.", original_name),
+                "parameters": parameters
+            }
+        }));
+    }
+
+    Ok(defs)
+}
+
+/// Call an MCP tool with up to 3 retries on transient failures.
+async fn call_mcp_tool_with_retry(
+    state: &AppState,
+    user_id: &str,
+    namespaced_tool: &str,
+    args_str: &str,
+) -> Result<serde_json::Value, String> {
+    let args: serde_json::Value =
+        serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
+
+    let mut last_error = String::new();
+    for attempt in 0..3 {
+        match state
+            .mcp_manager
+            .call_tool(user_id, namespaced_tool, args.clone())
+            .await
+        {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = e.to_string();
+                tracing::warn!(
+                    "MCP tool call {} attempt {} failed: {}",
+                    namespaced_tool,
+                    attempt + 1,
+                    e
+                );
+                if attempt < 2 {
+                    tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64))
+                        .await;
+                }
+            }
+        }
+    }
+    Err(format!("MCP tool call failed after 3 attempts: {}", last_error))
+}
+
 /// Execute a single tool call and return the result JSON.
 async fn execute_tool(
     name: &str,
@@ -526,6 +612,12 @@ async fn execute_tool(
                     "error": format!("Execution failed: {}", e),
                     "status": "error"
                 })),
+            }
+        }
+        _ if state.mcp_manager.is_mcp_tool(user_id, name).await => {
+            match call_mcp_tool_with_retry(state, user_id, name, args_str).await {
+                Ok(result) => Ok(result),
+                Err(e) => Ok(json!({"error": e})),
             }
         }
         _ => Err(format!("Unknown tool: {}", name)),
@@ -1998,7 +2090,17 @@ async fn send_message(
         }
 
         let mut current_messages = messages_payload;
-        let tools = build_tools_def();
+        let mut tools = build_tools_def();
+        // Discover and append MCP tools for this user. Connect auto-start servers lazily.
+        match state_clone.mcp_manager.load_user_servers(&db, &user_id).await {
+            Ok(_) => {
+                match build_mcp_tools_def(&db, &user_id).await {
+                    Ok(mut mcp_tools) => tools.append(&mut mcp_tools),
+                    Err(e) => tracing::warn!("Failed to build MCP tools def: {}", e),
+                }
+            }
+            Err(e) => tracing::warn!("Failed to load user MCP servers: {}", e),
+        }
         let mut total_steps = 0;
 
         loop {

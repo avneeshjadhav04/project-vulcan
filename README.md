@@ -11,11 +11,11 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 - **AI Chat**: Real-time streaming responses with Markdown rendering, Shiki syntax highlighting, message editing, regeneration, reactions, and file attachments
 - **Multi-Provider Models**: Bring your own keys for NVIDIA NIM, OpenAI, Groq, Anthropic, Ollama, OpenRouter, Together AI, or any OpenAI-compatible provider
-- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad — with per-tool permissions (auto/ask/deny)
+- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad — with per-tool permissions (auto/ask/deny) plus user-configured MCP servers
 - **Memory & Context**: Conversation summarization, opt-in cross-chat memory, and a persistent scratchpad the AI can read and update
 - **Workspace & Files**: User workspace file tree with upload/download, AI-generated artifact previews, and chat export to Markdown or JSON
 - **Sandboxed Terminal**: WebSocket terminal running commands inside an isolated Ubuntu/proot environment
-- **Integrations**: MCP-based integrations (coming soon)
+- **Integrations**: User-configured MCP servers (stdio and SSE) expose external tools to the AI; secrets encrypted at rest
 - **Organization**: Pin, archive, folder, and tag chats; command palette; global chat search; and a usage dashboard
 - **Voice Input**: Browser microphone transcription via Vosk
 - **Accessible & Themed**: Dark/light/system theme, resizable panels, keyboard shortcuts (`Ctrl + `` for terminal), ARIA labels, and focus rings
@@ -94,7 +94,8 @@ docker run -p 8765:8080 \
 1. Open [http://localhost:8765](http://localhost:8765)
 2. Sign up for a new account
 3. Go to **Settings** and add your AI provider API key(s)
-4. Start chatting
+4. (Optional) Go to **Settings → Integrations** and add MCP servers (stdio or SSE) to extend the AI with external tools
+5. Start chatting
 
 ## CLI Commands (after install)
 

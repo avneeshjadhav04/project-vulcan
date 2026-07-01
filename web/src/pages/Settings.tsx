@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import ToolPermissionsPanel from '../components/ToolPermissionsPanel'
+import McpServersPanel from '../components/McpServersPanel'
 import ThemeLogo from '../components/ThemeLogo'
 import { PasswordInput } from '../components/PasswordInput'
 import { PasswordStrength } from '../components/PasswordStrength'
@@ -1056,34 +1057,7 @@ export default function Settings() {
                 transition={{ duration: 0.2 }}
                 className="space-y-4"
               >
-                <div className="border border-border-subtle bg-layer p-5">
-                  <div className="mb-4 flex items-start justify-between">
-                    <div>
-                      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                        <Wrench className="h-4 w-4" />
-                        Integrations
-                      </h2>
-                      <p className="mt-1 text-xs text-text-helper">
-                        Third-party services will be connected through MCP servers.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="border border-border-subtle bg-background px-4 py-6 text-center">
-                    <Puzzle className="mx-auto mb-2 h-6 w-6 text-text-helper" />
-                    <p className="text-xs text-text-helper">MCP-based integrations are coming soon.</p>
-                    <p className="mt-1 text-[10px] text-text-helper/70">
-                      Third-party service integrations will be managed here.
-                    </p>
-                  </div>
-
-                  <div className="mt-2 space-y-1.5">
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Third-party integrations will be managed here once MCP support is enabled.</span>
-                    </div>
-                  </div>
-                </div>
+                <McpServersPanel />
               </motion.div>
             )}
 
