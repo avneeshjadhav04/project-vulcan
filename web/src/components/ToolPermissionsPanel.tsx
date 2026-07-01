@@ -8,9 +8,6 @@ import {
   FileText,
   Terminal,
   Globe,
-  Calendar,
-  Mail,
-  ListTodo,
   BookOpen,
   Code,
   ChevronDown,
@@ -43,21 +40,6 @@ const TOOL_CATEGORIES: ToolCategory[] = [
     name: 'Web',
     icon: <Globe className="h-4 w-4" />,
     tools: ['search_web', 'browser_fetch', 'fetch_webpage'],
-  },
-  {
-    name: 'Calendar',
-    icon: <Calendar className="h-4 w-4" />,
-    tools: ['calendar_list_events', 'calendar_create_event', 'calendar_delete_event'],
-  },
-  {
-    name: 'Email',
-    icon: <Mail className="h-4 w-4" />,
-    tools: ['email_send', 'email_list', 'email_read'],
-  },
-  {
-    name: 'Tasks',
-    icon: <ListTodo className="h-4 w-4" />,
-    tools: ['tasks_list', 'tasks_create', 'tasks_update', 'tasks_complete'],
   },
   {
     name: 'Scratchpad',

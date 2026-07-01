@@ -120,19 +120,11 @@ DATABASE_URL=sqlite:/data/vulcan.db
 # Logging level (trace, debug, info, warn, error)
 RUST_LOG=info
 
-# Application base URL (for OAuth redirect callbacks)
+# Application base URL
 APP_BASE_URL=http://localhost:$VULCAN_PORT
 
 # External host port mapped by Docker Compose
 VULCAN_PORT=$VULCAN_PORT
-
-# Optional: Google OAuth2 credentials for Calendar + Gmail integration
-# GOOGLE_CLIENT_ID=
-# GOOGLE_CLIENT_SECRET=
-
-# Optional: Todoist OAuth2 credentials for task integration
-# TODOIST_CLIENT_ID=
-# TODOIST_CLIENT_SECRET=
 
 # Optional: disable AI tool execution
 # DISABLE_TOOLS=1

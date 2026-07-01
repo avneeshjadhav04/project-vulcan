@@ -16,10 +16,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod auth;
 pub mod config;
 pub mod db;
-pub mod integrations;
 pub mod middleware;
 pub mod models;
-pub mod oauth;
 pub mod providers;
 pub mod routes;
 pub mod sandbox_engine;
@@ -162,10 +160,6 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
-        )
-        .merge(
-            routes::integrations::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
             routes::automations::router().layer(from_fn_with_state(state.clone(), auth_middleware)),

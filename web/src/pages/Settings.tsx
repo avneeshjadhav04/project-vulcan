@@ -26,11 +26,7 @@ import {
   Server,
   TestTube,
   Loader2,
-  Link,
-  Unlink,
   Wrench,
-  Mail,
-  ListTodo,
   Sun,
   Moon,
   Notebook,
@@ -51,14 +47,6 @@ interface Provider {
   provider_type: string
   base_url: string
   is_active: boolean
-}
-
-interface IntegrationInfo {
-  provider: string
-  connected: boolean
-  scopes?: string
-  expires_at?: string
-  is_configured: boolean
 }
 
 const BUILT_IN_PROVIDERS = [
@@ -131,16 +119,6 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false)
   const [validationResult, setValidationResult] = useState<{valid: boolean; error?: string; provider_id?: string} | null>(null)
   const [validating, setValidating] = useState(false)
-  const [integrations, setIntegrations] = useState<IntegrationInfo[]>([])
-  const [integrationsLoading, setIntegrationsLoading] = useState(false)
-  const [connectingProvider, setConnectingProvider] = useState<string | null>(null)
-
-  const [showConfigModal, setShowConfigModal] = useState(false)
-  const [configProvider, setConfigProvider] = useState('')
-  const [clientId, setClientId] = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [configSaving, setConfigSaving] = useState(false)
-
   // Scratchpad state
   const [scratchpad, setScratchpad] = useState('')
   const [scratchpadLoading, setScratchpadLoading] = useState(false)
@@ -185,16 +163,9 @@ export default function Settings() {
 
   useEffect(() => {
     loadProviders()
-    loadIntegrations()
     loadScratchpad()
     if (isAdmin) {
       loadUsers()
-    }
-    const params = new URLSearchParams(window.location.search)
-    const justConnected = params.get('status')
-    if (justConnected === 'connected') {
-      setSaved(true)
-      window.history.replaceState({}, '', '/settings')
     }
   }, [isAdmin])
 
@@ -239,66 +210,6 @@ export default function Settings() {
       setError(err.response?.data?.error || 'Failed to load providers')
     } finally {
       setProvidersLoading(false)
-    }
-  }
-
-  const loadIntegrations = async () => {
-    setIntegrationsLoading(true)
-    try {
-      const res = await api.get('/integrations')
-      setIntegrations(res.data || [])
-    } catch {
-      // integrations not yet deployed
-    } finally {
-      setIntegrationsLoading(false)
-    }
-  }
-
-  const handleConnect = async (provider: string) => {
-    setError('')
-    setConnectingProvider(provider)
-    try {
-      const res = await api.get(`/integrations/${provider}/auth-url`)
-      window.location.href = res.data.url
-    } catch (err: any) {
-      setError(err.response?.data?.error || `Failed to connect ${provider}`)
-      setConnectingProvider(null)
-    }
-  }
-
-  const handleDisconnectIntegration = async (provider: string) => {
-    if (!confirm(`Disconnect ${provider}? The AI will no longer be able to access your ${provider} data.`)) return
-    setError('')
-    try {
-      await api.delete(`/integrations/${provider}`)
-      await loadIntegrations()
-      setSaved(true)
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to disconnect')
-    }
-  }
-
-  const handleSaveConfig = async () => {
-    if (!clientId.trim() || !clientSecret.trim()) {
-      setError('Client ID and Secret are required')
-      return
-    }
-    setError('')
-    setConfigSaving(true)
-    try {
-      await api.put(`/integrations/${configProvider}/config`, {
-        client_id: clientId.trim(),
-        client_secret: clientSecret.trim(),
-      })
-      await loadIntegrations()
-      setShowConfigModal(false)
-      setClientId('')
-      setClientSecret('')
-      setSaved(true)
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save configuration')
-    } finally {
-      setConfigSaving(false)
     }
   }
 
@@ -1153,87 +1064,23 @@ export default function Settings() {
                         Integrations
                       </h2>
                       <p className="mt-1 text-xs text-text-helper">
-                        Connect external services so the AI can manage your calendar, email, and tasks.
+                        Third-party services will be connected through MCP servers.
                       </p>
                     </div>
                   </div>
 
-                  {integrationsLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {integrations.map((int) => {
-                        const isGoogle = int.provider === 'google'
-                        const isTodoist = int.provider === 'todoist'
-                        const Icon = isGoogle ? Mail : isTodoist ? ListTodo : Link
-                        const label = isGoogle ? 'Google (Calendar + Gmail)' : isTodoist ? 'Todoist (Tasks)' : int.provider
-
-                        return (
-                          <div key={int.provider} className="flex items-center justify-between border border-border-subtle bg-background px-3 py-2.5">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`flex h-6 w-6 shrink-0 items-center justify-center ${int.connected ? 'bg-support-success/10' : 'bg-border-subtle'}`}>
-                                <Icon className={`h-3 w-3 ${int.connected ? 'text-support-success' : 'text-text-helper'}`} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-text-primary">{label}</p>
-                                <p className="text-[11px] text-text-helper">
-                                  {int.connected ? 'Connected' : 'Not connected'}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {int.connected ? (
-                                <button
-                                  onClick={() => handleDisconnectIntegration(int.provider)}
-                                  className="flex items-center gap-1 px-2 py-1 text-[11px] text-support-error transition-colors hover:bg-support-error/10"
-                                >
-                                  <Unlink className="h-3 w-3" />
-                                  Disconnect
-                                </button>
-                              ) : !int.is_configured ? (
-                                <button
-                                  onClick={() => {
-                                    setConfigProvider(int.provider)
-                                    setClientId('')
-                                    setClientSecret('')
-                                    setShowConfigModal(true)
-                                  }}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover"
-                                >
-                                  <Key className="h-4 w-4" />
-                                  Configure App
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleConnect(int.provider)}
-                                  disabled={connectingProvider === int.provider}
-                                  className="flex items-center gap-1 bg-interactive px-2 py-1 text-[11px] text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-40"
-                                >
-                                  {connectingProvider === int.provider ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Link className="h-3 w-3" />
-                                  )}
-                                  Connect
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                  <div className="border border-border-subtle bg-background px-4 py-6 text-center">
+                    <Puzzle className="mx-auto mb-2 h-6 w-6 text-text-helper" />
+                    <p className="text-xs text-text-helper">MCP-based integrations are coming soon.</p>
+                    <p className="mt-1 text-[10px] text-text-helper/70">
+                      Calendar, email, and task integrations will be managed here.
+                    </p>
+                  </div>
 
                   <div className="mt-2 space-y-1.5">
                     <div className="flex items-start gap-2 text-[11px] text-text-helper">
                       <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>Your credentials are encrypted with AES-256-GCM and never stored in plain text</span>
-                    </div>
-                    <div className="flex items-start gap-2 text-[11px] text-text-helper">
-                      <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-support-success" />
-                      <span>You can revoke access at any time from either Vulcan or the provider's settings</span>
+                      <span>Third-party integrations will be managed here once MCP support is enabled.</span>
                     </div>
                   </div>
                 </div>
@@ -1351,87 +1198,6 @@ export default function Settings() {
           </div>
         </main>
       </div>
-
-      {/* Configure Integration Modal */}
-      <AnimatePresence>
-        {showConfigModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 p-4"
-            onClick={() => setShowConfigModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md border border-border-subtle bg-layer p-5 shadow-xl"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text-primary capitalize">
-                  Configure {configProvider} App
-                </h3>
-                <button onClick={() => setShowConfigModal(false)} className="text-text-helper hover:text-text-primary">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {error && (
-                <div className="mb-3 flex items-center gap-2 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <p className="text-[11px] text-text-helper">
-                  To connect {configProvider}, you need to provide your own OAuth Client ID and Secret. 
-                  These credentials will be encrypted using AES-256-GCM and stored securely in your database.
-                </p>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">Client ID</label>
-                  <input
-                    type="text"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-helper focus:border-interactive focus:outline-none"
-                    placeholder="Enter your Client ID"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">Client Secret</label>
-                  <input
-                    type="password"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    className="w-full border border-border-subtle bg-background px-3 py-2 text-sm text-text-primary placeholder:text-text-helper focus:border-interactive focus:outline-none"
-                    placeholder="Enter your Client Secret"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowConfigModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveConfig}
-                  disabled={configSaving || !clientId.trim() || !clientSecret.trim()}
-                  className="flex items-center gap-2 bg-interactive px-4 py-2 text-sm font-medium text-on-interactive transition-colors hover:bg-interactive-hover disabled:opacity-50"
-                >
-                  {configSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  Save Credentials
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Add Provider Modal */}
       <AnimatePresence>

@@ -11,11 +11,11 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 - **AI Chat**: Real-time streaming responses with Markdown rendering, Shiki syntax highlighting, message editing, regeneration, reactions, and file attachments
 - **Multi-Provider Models**: Bring your own keys for NVIDIA NIM, OpenAI, Groq, Anthropic, Ollama, OpenRouter, Together AI, or any OpenAI-compatible provider
-- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad, and Google Calendar/Gmail/Todoist integrations — with per-tool permissions (auto/ask/deny)
+- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad — with per-tool permissions (auto/ask/deny)
 - **Memory & Context**: Conversation summarization, opt-in cross-chat memory, and a persistent scratchpad the AI can read and update
 - **Workspace & Files**: User workspace file tree with upload/download, AI-generated artifact previews, and chat export to Markdown or JSON
 - **Sandboxed Terminal**: WebSocket terminal running commands inside an isolated Ubuntu/proot environment
-- **Integrations**: OAuth connections to Google (Calendar + Gmail) and Todoist
+- **Integrations**: MCP-based integrations (coming soon)
 - **Organization**: Pin, archive, folder, and tag chats; command palette; global chat search; and a usage dashboard
 - **Voice Input**: Browser microphone transcription via Vosk
 - **Accessible & Themed**: Dark/light/system theme, resizable panels, keyboard shortcuts (`Ctrl + `` for terminal), ARIA labels, and focus rings
