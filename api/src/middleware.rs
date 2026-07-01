@@ -9,6 +9,7 @@ use crate::{
     auth::build_cookie,
     config::Config,
     models::Claims,
+    mcp::McpManager,
     sandbox_engine::SandboxState,
 };
 
@@ -20,6 +21,7 @@ pub struct AppState {
     pub jwt_public_key: Option<Vec<u8>>,
     pub sandbox: SandboxState,
     pub vosk_model: Option<std::sync::Arc<std::sync::Mutex<vosk::Model>>>,
+    pub mcp_manager: McpManager,
 }
 
 pub async fn auth_middleware(

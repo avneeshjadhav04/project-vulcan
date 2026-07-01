@@ -17,6 +17,7 @@ mod auth;
 pub mod config;
 pub mod db;
 pub mod middleware;
+pub mod mcp;
 pub mod models;
 pub mod providers;
 pub mod routes;
@@ -98,11 +99,12 @@ async fn run() -> anyhow::Result<()> {
 
     let state = AppState {
         config: config.clone(),
-        db: db_pool,
-        http_client,
+        db: db_pool.clone(),
+        http_client: http_client.clone(),
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
         vosk_model,
+        mcp_manager: mcp::McpManager::new(http_client.clone(), config.master_key),
     };
     let bg_state = state.clone();
 
@@ -163,6 +165,9 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(
             routes::automations::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+        )
+        .merge(
+            routes::mcp::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
             routes::admin::router()

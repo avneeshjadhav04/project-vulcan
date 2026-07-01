@@ -16,6 +16,12 @@ interface ToolResult {
   page_content?: string
   code?: string
   language?: string
+  content?: any
+  text?: string[]
+  is_error?: boolean
+  error?: string
+  approval_needed?: boolean
+  args_preview?: string
 }
 
 export default function ToolExecutionCard({
@@ -30,24 +36,32 @@ export default function ToolExecutionCard({
   const [expanded, setExpanded] = useState(defaultExpanded)
   const isSuccess = tool.status === 'success' || tool.status === 'created' || tool.status === 'modified'
   const isError = tool.status === 'error'
+  const isMcp = tool.tool_name.includes('__')
   const isTerminal = tool.tool_name === 'execute_terminal_command'
   const isFile = tool.tool_name === 'create_file' || tool.tool_name === 'read_file' || tool.tool_name === 'modify_file'
   const isSearch = tool.tool_name === 'search_web'
   const isPython = tool.tool_name === 'execute_python'
   const isWebpage = tool.tool_name === 'fetch_webpage'
 
-  const toolLabel = isTerminal ? tool.command
+  const toolLabel = isMcp
+    ? tool.tool_name.split('__')[1]?.replace(/_/g, ' ') || tool.tool_name
+    : isTerminal ? tool.command
     : isFile ? tool.filename
     : isSearch ? tool.query
     : isPython ? 'Python Script'
     : isWebpage ? tool.url
     : tool.tool_name
 
-  const ToolIcon = isTerminal ? Terminal
+  const ToolIcon = isMcp ? Globe
+    : isTerminal ? Terminal
     : isFile ? FileText
     : isSearch ? Search
     : isPython ? Code
     : Globe
+
+  const displayToolName = isMcp
+    ? `MCP / ${tool.tool_name.split('__')[1] || tool.tool_name}`
+    : tool.tool_name.replace(/_/g, ' ')
 
   return (
     <motion.div
@@ -74,7 +88,7 @@ export default function ToolExecutionCard({
           </div>
         </div>
         <span className="ml-2 shrink-0 text-[10px] font-semibold uppercase text-text-helper">
-          {tool.tool_name.replace(/_/g, ' ')}
+          {displayToolName}
         </span>
       </button>
 
@@ -87,6 +101,21 @@ export default function ToolExecutionCard({
             className="overflow-hidden"
           >
             <div className="border-t border-border-subtle">
+              {isMcp && (
+                <div className="px-3 py-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">MCP Result</p>
+                  {tool.error ? (
+                    <pre className="max-h-96 overflow-auto bg-background p-2 font-mono text-[11px] text-support-error">
+                      {tool.error}
+                    </pre>
+                  ) : (
+                    <pre className="max-h-96 overflow-auto whitespace-pre-wrap bg-background p-2 font-mono text-[11px] text-text-secondary">
+                      {tool.text ? tool.text.join('\n') : JSON.stringify(tool, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              )}
+
               {isTerminal && (
                 <>
                   {tool.stdout && (
@@ -199,7 +228,7 @@ export default function ToolExecutionCard({
                 </div>
               )}
 
-              {!isTerminal && !isFile && !isSearch && !isPython && !isWebpage && (
+              {!isMcp && !isTerminal && !isFile && !isSearch && !isPython && !isWebpage && (
                 <div className="px-3 py-2">
                   <pre className="max-h-96 overflow-auto bg-background p-2 font-mono text-[11px] text-text-secondary">
                     {JSON.stringify(tool, null, 2)}
