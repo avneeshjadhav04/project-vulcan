@@ -120,9 +120,16 @@ export default function McpServersPanel() {
   useEffect(() => {
     if (servers.length === 0) return
     fetchStatuses()
-    const interval = setInterval(fetchStatuses, 10000)
+    // Poll less aggressively once servers are connected. Disconnected/unknown
+    // servers poll every 10s for fast recovery; connected servers poll every
+    // 60s as a liveness check so healthy stdio children aren't harassed.
+    const anyDisconnected = servers.some((s) => {
+      const st = statuses[s.id]
+      return !st || !st.connected
+    })
+    const interval = setInterval(fetchStatuses, anyDisconnected ? 10000 : 60000)
     return () => clearInterval(interval)
-  }, [servers, fetchStatuses])
+  }, [servers, fetchStatuses, statuses])
 
   const openCreate = () => {
     setEditingId(null)

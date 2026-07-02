@@ -59,15 +59,27 @@ RUN LDFLAGS="-static" make -C src proot GIT=false
 
 # Stage 4: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22 LTS (NodeSource) so MCP stdio servers spawned by the API
+# host (e.g. `npx -y @modelcontextprotocol/server-*`) can run. Version matches
+# the web-builder stage for parity.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install proot v5.4.0 (built from source in proot-builder stage)
 COPY --from=proot-builder /proot-src/src/proot /usr/local/bin/proot
 
 WORKDIR /app
 
-# Create data directory with open permissions for SQLite
+# Create data directory with open permissions for SQLite and npm cache
 RUN mkdir -p /data && chmod 777 /data
+
+# Persist the npm/npx cache alongside the SQLite DB on the /data volume so
+# `npx -y <pkg>` downloads survive container restarts on any deployment.
+ENV npm_config_cache=/data/.npm
+RUN mkdir -p /data/.npm && chmod 777 /data/.npm
 
 # Create workspace directory for sandbox bind-mount
 RUN mkdir -p /app/workspace && chmod 755 /app/workspace

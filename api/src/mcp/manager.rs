@@ -256,6 +256,14 @@ impl McpManager {
             .unwrap_or_default()
     }
 
+    /// Check whether a specific MCP server is currently connected for a user.
+    pub async fn is_connected(&self, user_id: &str, server_id: &str) -> bool {
+        self.servers.lock().await
+            .get(user_id)
+            .and_then(|m| m.get(server_id))
+            .is_some()
+    }
+
     /// Call a namespaced tool for a user. The tool name must be `{server_id}__{tool_name}`.
     pub async fn call_tool(
         &self,
