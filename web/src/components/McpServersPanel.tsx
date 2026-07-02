@@ -123,12 +123,20 @@ export default function McpServersPanel() {
     // Poll less aggressively once servers are connected. Disconnected/unknown
     // servers poll every 10s for fast recovery; connected servers poll every
     // 60s as a liveness check so healthy stdio children aren't harassed.
-    const anyDisconnected = servers.some((s) => {
-      const st = statuses[s.id]
-      return !st || !st.connected
-    })
-    const interval = setInterval(fetchStatuses, anyDisconnected ? 10000 : 60000)
-    return () => clearInterval(interval)
+    let interval: ReturnType<typeof setInterval> | null = null
+    const schedule = () => {
+      if (interval) clearInterval(interval)
+      const anyDisconnected = servers.some((s) => {
+        const st = statuses[s.id]
+        return !st || !st.connected
+      })
+      interval = setInterval(fetchStatuses, anyDisconnected ? 10000 : 60000)
+    }
+    const initialTimeout = setTimeout(schedule, 10000)
+    return () => {
+      clearTimeout(initialTimeout)
+      if (interval) clearInterval(interval)
+    }
   }, [servers, fetchStatuses, statuses])
 
   const openCreate = () => {
