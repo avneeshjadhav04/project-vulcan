@@ -247,20 +247,27 @@ async fn update_server(
         (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
     })?;
 
-    let _existing =
+    let existing =
         existing.ok_or((StatusCode::NOT_FOUND, "Server not found".to_string()))?;
 
-    let env_encrypted = encrypt_optional_blob(
-        payload.env.as_ref(),
-        &state.config.master_key,
-    )
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to encrypt env: {}", e)))?;
-
-    let headers_encrypted = encrypt_optional_blob(
-        payload.headers.as_ref(),
-        &state.config.master_key,
-    )
-    .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to encrypt headers: {}", e)))?;
+    // Preserve existing encrypted secrets when the frontend omits them. The
+    // edit form does not decrypt secret values, so it sends env/headers as
+    // undefined to avoid leaking them; without this guard the row would be
+    // overwritten with NULL.
+    let env_encrypted = match payload.env.as_ref() {
+        Some(v) if !v.is_null() => Some(
+            encrypt_json_blob(v, &state.config.master_key)
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to encrypt env: {}", e)))?,
+        ),
+        _ => existing.env.clone(),
+    };
+    let headers_encrypted = match payload.headers.as_ref() {
+        Some(v) if !v.is_null() => Some(
+            encrypt_json_blob(v, &state.config.master_key)
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Failed to encrypt headers: {}", e)))?,
+        ),
+        _ => existing.headers.clone(),
+    };
 
     let config: McpServerConfig = sqlx::query_as::<_, McpServerConfig>(
         r#"

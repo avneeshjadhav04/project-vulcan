@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 
 /// Abstraction over any MCP transport (stdio, SSE, etc.).
 #[async_trait]
@@ -31,7 +31,10 @@ pub struct StdioTransport {
     args: Vec<String>,
     stdin: Arc<Mutex<ChildStdin>>,
     reader: Arc<Mutex<BufReader<ChildStdout>>>,
-    shutdown: mpsc::Sender<()>,
+    /// Handle to the spawned child process, used to kill it on close.
+    child: Arc<Mutex<tokio::process::Child>>,
+    /// Flag set once close() has been called so we do not try to kill twice.
+    closed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl StdioTransport {
@@ -56,10 +59,16 @@ impl StdioTransport {
         let mut cmd = Command::new(program);
         cmd.args(&leading)
             .args(&args)
-            .envs(env.iter().cloned())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+
+        // Inherit the API process environment and layer user-provided env vars
+        // on top. A bare `.envs()` call would *replace* the whole environment,
+        // breaking tools that rely on PATH, HOME, etc.
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
 
         let mut child = cmd.spawn().with_context(|| {
             format!("Failed to spawn MCP server process: {}", command)
@@ -89,32 +98,14 @@ impl StdioTransport {
             });
         }
 
-        // Start a task that waits for the child process to exit and reports it.
-        tokio::spawn(async move {
-            match child.wait().await {
-                Ok(status) => {
-                    if !status.success() {
-                        tracing::warn!("MCP server process exited with: {:?}", status);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("MCP server process wait failed: {}", e);
-                }
-            }
-        });
-
-        let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
-
         let transport = Self {
             command,
             args,
             stdin: Arc::new(Mutex::new(stdin)),
             reader: Arc::new(Mutex::new(BufReader::new(stdout))),
-            shutdown: shutdown_tx,
+            child: Arc::new(Mutex::new(child)),
+            closed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
-
-        // Reap-on-shutdown helper is mostly informational; the actual kill happens in close().
-        let _ = shutdown_rx.recv().await;
 
         Ok(transport)
     }
@@ -158,9 +149,29 @@ impl McpTransport for StdioTransport {
         &mut self,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + '_>> {
         Box::pin(async move {
-            let _ = self.shutdown.try_send(());
-            let mut stdin = self.stdin.lock().await;
-            let _ = stdin.shutdown().await;
+            if self
+                .closed
+                .swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                return Ok(());
+            }
+
+            // Close stdin first to give the server a graceful shutdown hint.
+            {
+                let mut stdin = self.stdin.lock().await;
+                let _ = stdin.shutdown().await;
+            }
+
+            // Ensure the child process is actually killed and reaped so it does
+            // not linger as a zombie and leak memory/CPU.
+            {
+                let mut child = self.child.lock().await;
+                if let Err(e) = child.start_kill() {
+                    tracing::debug!("MCP server start_kill failed (may already be dead): {}", e);
+                }
+                let _ = child.wait().await;
+            }
+
             Ok(())
         })
     }

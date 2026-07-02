@@ -88,6 +88,9 @@ pub struct McpManager {
     master_key: [u8; 32],
     /// user_id -> server_id -> state
     servers: Arc<Mutex<HashMap<String, UserServerMap>>>,
+    /// Per-server connect lock to prevent concurrent reconnect races that can
+    /// leave orphaned MCP child processes.
+    connect_locks: Arc<Mutex<HashMap<(String, String), Arc<Mutex<()>>>>>,
 }
 
 impl McpManager {
@@ -96,10 +99,22 @@ impl McpManager {
             http_client,
             master_key,
             servers: Arc::new(Mutex::new(HashMap::new())),
+            connect_locks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
+    /// Return (or create) a mutex that serializes connect attempts for a
+    /// specific (user_id, server_id) pair.
+    async fn connect_lock(&self, user_id: &str, server_id: &str) -> Arc<Mutex<()>> {
+        let mut locks = self.connect_locks.lock().await;
+        locks
+            .entry((user_id.to_string(), server_id.to_string()))
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
     /// Load all enabled auto-start servers for a user and connect them.
+    /// Servers that are already connected are left alone to avoid churn.
     pub async fn load_user_servers(
         &self,
         db: &SqlitePool,
@@ -114,7 +129,9 @@ impl McpManager {
         .context("Failed to load MCP server configs")?;
 
         for config in configs {
-            let _ = self.connect(db, config).await;
+            if !self.is_connected(user_id, &config.id).await {
+                let _ = self.connect(db, config).await;
+            }
         }
 
         Ok(())
@@ -126,6 +143,20 @@ impl McpManager {
         db: &SqlitePool,
         config: McpServerConfig,
     ) -> Result<McpClientHandle> {
+        // Serialize connect attempts per (user, server) so concurrent calls do
+        // not race and spawn multiple overlapping child processes.
+        let connect_mutex = self.connect_lock(&config.user_id, &config.id).await;
+        let _lock = connect_mutex.lock().await;
+
+        // A previous concurrent connect may have already brought this server
+        // online; if so, reuse it rather than respawning.
+        if self.is_connected(&config.user_id, &config.id).await {
+            if let Some(handle) = self.get_handle(&config.user_id, &config.id).await {
+                return Ok(handle);
+            }
+            bail!("MCP server handle disappeared after connection");
+        }
+
         // Disconnect any existing connection for this server first.
         self.disconnect(&config.user_id, &config.id).await;
 
@@ -262,6 +293,20 @@ impl McpManager {
             .get(user_id)
             .and_then(|m| m.get(server_id))
             .is_some()
+    }
+
+    /// Return a clone of the client handle for a connected server, if any.
+    pub async fn get_handle(
+        &self,
+        user_id: &str,
+        server_id: &str,
+    ) -> Option<McpClientHandle> {
+        self.servers
+            .lock()
+            .await
+            .get(user_id)
+            .and_then(|m| m.get(server_id))
+            .map(|state| state.client.clone())
     }
 
     /// Call a namespaced tool for a user. The tool name must be `{server_id}__{tool_name}`.
