@@ -447,10 +447,13 @@ async fn test_server(
                 "server_info": info,
             })))
         }
-        Err(e) => Err((
-            StatusCode::BAD_GATEWAY,
-            format!("Failed to connect MCP server: {}", e),
-        )),
+        Err(e) => {
+            tracing::warn!("MCP server {} test failed: {}", id, e);
+            Err((
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to connect MCP server: {}", e),
+            ))
+        },
     }
 }
 

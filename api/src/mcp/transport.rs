@@ -41,8 +41,21 @@ impl StdioTransport {
         env: Vec<(String, String)>,
     ) -> Result<Self> {
         let command = command.into();
-        let mut cmd = Command::new(&command);
-        cmd.args(&args)
+
+        // Shell-split the command string so users can type a full command line
+        // like `npx -y @modelcontextprotocol/server-filesystem` in the UI. We
+        // treat the first token as the program and the remaining tokens as
+        // leading args, then append the separately-provided `args` array.
+        let tokens = shell_split(&command);
+        if tokens.is_empty() {
+            anyhow::bail!("MCP stdio command is empty");
+        }
+        let program = &tokens[0];
+        let leading: Vec<String> = tokens[1..].to_vec();
+
+        let mut cmd = Command::new(program);
+        cmd.args(&leading)
+            .args(&args)
             .envs(env.iter().cloned())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -362,3 +375,87 @@ impl McpTransport for SseTransport {
 
 // Need StreamExt for the bytes_stream mapping above.
 use futures::StreamExt;
+
+/// Split a command string into tokens, respecting single and double quotes.
+///
+/// This lets users type a full command line like
+/// `npx -y @modelcontextprotocol/server-filesystem` (or with quoted args
+/// `python3 -m "my server"`) into the MCP server command field, which we
+/// then split into program + leading args before spawning.
+fn shell_split(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut chars = input.chars().peekable();
+    let mut in_quote: Option<char> = None;
+
+    while let Some(ch) = chars.next() {
+        match (in_quote, ch) {
+            (Some(q), c) if c == q => in_quote = None,
+            (Some(_), '\\') => {
+                if let Some(next) = chars.next() {
+                    current.push(next);
+                }
+            }
+            (Some(_), c) => current.push(c),
+            (None, c) if c == '"' || c == '\'' => in_quote = Some(c),
+            (None, c) if c.is_whitespace() => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            (None, c) => current.push(c),
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_split;
+
+    #[test]
+    fn splits_simple_command() {
+        assert_eq!(
+            shell_split("npx -y @modelcontextprotocol/server-filesystem"),
+            vec![
+                "npx".to_string(),
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn splits_single_program() {
+        assert_eq!(shell_split("python3"), vec!["python3".to_string()]);
+    }
+
+    #[test]
+    fn respects_double_quotes() {
+        assert_eq!(
+            shell_split(r#"python3 -m "my server""#),
+            vec![
+                "python3".to_string(),
+                "-m".to_string(),
+                "my server".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn respects_single_quotes() {
+        assert_eq!(
+            shell_split("echo 'hello world'"),
+            vec!["echo".to_string(), "hello world".to_string()]
+        );
+    }
+
+    #[test]
+    fn handles_empty() {
+        assert!(shell_split("").is_empty());
+        assert!(shell_split("   ").is_empty());
+    }
+}
