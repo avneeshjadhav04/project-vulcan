@@ -4,7 +4,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::process::{ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, Mutex};
 
 /// Abstraction over any MCP transport (stdio, SSE, etc.).
@@ -29,8 +29,6 @@ pub trait McpTransport: Send + Sync {
 pub struct StdioTransport {
     command: String,
     args: Vec<String>,
-    env: Vec<(String, String)>,
-    child: Option<Child>,
     stdin: Arc<Mutex<ChildStdin>>,
     reader: Arc<Mutex<BufReader<ChildStdout>>>,
     shutdown: mpsc::Sender<()>,
@@ -97,8 +95,6 @@ impl StdioTransport {
         let transport = Self {
             command,
             args,
-            env,
-            child: None,
             stdin: Arc::new(Mutex::new(stdin)),
             reader: Arc::new(Mutex::new(BufReader::new(stdout))),
             shutdown: shutdown_tx,

@@ -386,7 +386,24 @@ async fn test_server(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    // Reuse connect logic; a successful connect implies the server is reachable.
+    // Short-circuit: if the server is already connected, return cached status
+    // without re-spawning the stdio child / re-opening the SSE stream. This
+    // prevents the frontend's periodic liveness poll from killing a healthy
+    // MCP server process every few seconds.
+    if state.mcp_manager.is_connected(&claims.sub, &id).await {
+        let tools: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_tools WHERE server_id = ?1")
+            .bind(&id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+        return Ok(Json(json!({
+            "status": "ok",
+            "connected": true,
+            "tools": tools,
+        })));
+    }
+
+    // Not connected — perform a real connect to verify reachability.
     let config: Option<McpServerConfig> = sqlx::query_as::<_, McpServerConfig>(
         "SELECT * FROM mcp_servers WHERE id = ?1 AND user_id = ?2 AND enabled = 1",
     )
@@ -417,8 +434,16 @@ async fn test_server(
                 .await
                 .unwrap_or_else(|_| json!({ "name": "unknown" }));
 
+            let tools: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_tools WHERE server_id = ?1")
+                .bind(&id)
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(0);
+
             Ok(Json(json!({
                 "status": "ok",
+                "connected": true,
+                "tools": tools,
                 "server_info": info,
             })))
         }

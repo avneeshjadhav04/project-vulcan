@@ -73,25 +73,29 @@ pub struct ClientCapabilities {
 /// Request sent by the client during initialization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeRequest {
-    pub protocolVersion: String,
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: String,
     pub capabilities: ClientCapabilities,
-    pub clientInfo: Implementation,
+    #[serde(rename = "clientInfo")]
+    pub client_info: Implementation,
 }
 
 /// Result returned by the server during initialization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitializeResult {
-    pub protocolVersion: String,
+    #[serde(rename = "protocolVersion")]
+    pub protocol_version: String,
     pub capabilities: ServerCapabilities,
-    pub serverInfo: Implementation,
+    #[serde(rename = "serverInfo")]
+    pub server_info: Implementation,
 }
 
 /// Result of `tools/list`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListToolsResult {
     pub tools: Vec<McpTool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub nextCursor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "nextCursor")]
+    pub next_cursor: Option<String>,
 }
 
 /// An MCP tool definition.
@@ -100,17 +104,19 @@ pub struct McpTool {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inputSchema: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "inputSchema",
+        rename = "input_schema"
+    )]
     pub input_schema: Option<Value>,
 }
 
 impl McpTool {
-    /// Normalizes the tool input schema regardless of whether the server used
-    /// camelCase (`inputSchema`) or snake_case (`input_schema`).
+    /// Normalizes the tool input schema.
     pub fn schema(&self) -> Option<&Value> {
-        self.inputSchema.as_ref().or(self.input_schema.as_ref())
+        self.input_schema.as_ref()
     }
 }
 
@@ -125,15 +131,18 @@ pub struct CallToolRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallToolResult {
     pub content: Vec<ToolContent>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub isError: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "isError",
+        rename = "is_error"
+    )]
     pub is_error: Option<bool>,
 }
 
 impl CallToolResult {
     pub fn is_error(&self) -> bool {
-        self.isError.unwrap_or(false) || self.is_error.unwrap_or(false)
+        self.is_error.unwrap_or(false)
     }
 }
 
@@ -144,7 +153,11 @@ pub enum ToolContent {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image")]
-    Image { data: String, mimeType: String },
+    Image {
+        data: String,
+        #[serde(rename = "mimeType")]
+        mime_type: String,
+    },
     #[serde(rename = "resource")]
     Resource { resource: Value },
     #[serde(other)]

@@ -34,9 +34,9 @@ impl McpClient {
         client_version: &str,
     ) -> Result<InitializeResult> {
         let init_request = InitializeRequest {
-            protocolVersion: "2024-11-05".to_string(),
+            protocol_version: "2024-11-05".to_string(),
             capabilities: ClientCapabilities::default(),
-            clientInfo: Implementation {
+            client_info: Implementation {
                 name: client_name.to_string(),
                 version: client_version.to_string(),
             },
@@ -54,7 +54,7 @@ impl McpClient {
         )
         .context("Invalid initialize result from MCP server")?;
 
-        self.server_info = Some(result.serverInfo.clone());
+        self.server_info = Some(result.server_info.clone());
         self.capabilities = result.capabilities.clone();
 
         // Send initialized notification.
