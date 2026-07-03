@@ -351,6 +351,12 @@ export default function McpServersPanel() {
     })
     try {
       await apiShort.post(`/mcp/servers/${id}/disconnect`)
+      // Reflect the disconnection locally immediately so the badge flips to
+      // "disconnected" without waiting for the next poll.
+      setStatuses((prev) => ({
+        ...prev,
+        [id]: { connected: false, tools: 0 },
+      }))
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect server')
     } finally {

@@ -406,16 +406,18 @@ async fn test_server(
     claims: axum::Extension<Claims>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    // Short-circuit: if the server is already connected, return cached status
-    // without re-spawning the stdio child / re-opening the SSE stream. This
-    // prevents the frontend's periodic liveness poll from killing a healthy
-    // MCP server process every few seconds.
-    if state.mcp_manager.is_connected(&claims.sub, &id).await {
-        let tools: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_tools WHERE server_id = ?1")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .unwrap_or(0);
+    // /test is intentionally read-only: it reports the current connection state
+    // without spawning a new stdio child or reopening an SSE stream. This keeps
+    // periodic frontend polls lightweight and lets manual Disconnect actually
+    // stay disconnected until the user explicitly chooses Connect.
+    let connected = state.mcp_manager.is_connected(&claims.sub, &id).await;
+    let tools: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_tools WHERE server_id = ?1")
+        .bind(&id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+
+    if connected {
         return Ok(Json(json!({
             "status": "ok",
             "connected": true,
@@ -423,71 +425,11 @@ async fn test_server(
         })));
     }
 
-    // Not connected — perform a real connect to verify reachability.
-    let config: Option<McpServerConfig> = sqlx::query_as::<_, McpServerConfig>(
-        "SELECT * FROM mcp_servers WHERE id = ?1 AND user_id = ?2 AND enabled = 1",
-    )
-    .bind(&id)
-    .bind(&claims.sub)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch MCP server for test: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
-    })?;
-
-    let config =
-        config.ok_or((StatusCode::NOT_FOUND, "Server not found or disabled".to_string()))?;
-
-    let connect_result = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
-        state.mcp_manager.connect(&state.db, config),
-    )
-    .await;
-
-    match connect_result {
-        Ok(Ok(handle)) => {
-            let info = handle
-                .with_client(|client| {
-                    Box::pin(async move {
-                        Ok(client
-                            .server_info()
-                            .cloned()
-                            .map(|i| json!({ "name": i.name, "version": i.version }))
-                            .unwrap_or_else(|| json!({ "name": "unknown", "version": "unknown" })))
-                    })
-                })
-                .await
-                .unwrap_or_else(|_| json!({ "name": "unknown" }));
-
-            let tools: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM mcp_tools WHERE server_id = ?1")
-                .bind(&id)
-                .fetch_one(&state.db)
-                .await
-                .unwrap_or(0);
-
-            Ok(Json(json!({
-                "status": "ok",
-                "connected": true,
-                "tools": tools,
-                "server_info": info,
-            })))
-        }
-        Ok(Err(e)) => {
-            tracing::warn!("MCP server {} test failed: {}", id, e);
-            Err((
-                StatusCode::BAD_GATEWAY,
-                format!("Failed to connect MCP server: {}", e),
-            ))
-        }
-        Err(_) => {
-            tracing::warn!("MCP server {} test timed out after 60s", id);
-            Err((
-                StatusCode::GATEWAY_TIMEOUT,
-                "MCP server connection timed out".to_string(),
-            ))
-        }
-    }
+    Ok(Json(json!({
+        "status": "ok",
+        "connected": false,
+        "tools": tools,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
