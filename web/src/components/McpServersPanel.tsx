@@ -77,6 +77,7 @@ export default function McpServersPanel() {
   const [showHeadersJson, setShowHeadersJson] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set())
+  const [disconnectingIds, setDisconnectingIds] = useState<Set<string>>(new Set())
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
 
   // Ref to the latest statuses so the polling interval can adapt without
@@ -344,7 +345,7 @@ export default function McpServersPanel() {
   }
 
   const handleDisconnect = async (id: string) => {
-    setConnectingIds((prev) => {
+    setDisconnectingIds((prev) => {
       const copy = new Set(prev)
       copy.add(id)
       return copy
@@ -360,7 +361,7 @@ export default function McpServersPanel() {
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect server')
     } finally {
-      setConnectingIds((prev) => {
+      setDisconnectingIds((prev) => {
         const copy = new Set(prev)
         copy.delete(id)
         return copy
@@ -507,7 +508,11 @@ export default function McpServersPanel() {
                     <span className="rounded-carbon bg-layer px-1.5 py-0.5 text-[10px] text-text-helper">
                       {server.transport}
                     </span>
-                    {isConnecting ? (
+                    {disconnectingIds.has(server.id) ? (
+                      <span className="flex items-center gap-1 text-[10px] text-support-warning">
+                        <RefreshCw className="h-3 w-3 animate-spin" /> disconnecting
+                      </span>
+                    ) : isConnecting ? (
                       <span className="flex items-center gap-1 text-[10px] text-support-warning">
                         <RefreshCw className="h-3 w-3 animate-spin" /> connecting
                       </span>
