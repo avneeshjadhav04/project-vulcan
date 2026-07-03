@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
     url TEXT,                  -- sse: endpoint URL
     env TEXT,                  -- encrypted JSON object of environment variables
     headers TEXT,              -- encrypted JSON object of HTTP headers (SSE)
-    default_permission_level TEXT NOT NULL DEFAULT 'ask' CHECK(default_permission_level IN ('auto','ask','deny')),
+    default_permission_level TEXT NOT NULL DEFAULT 'auto' CHECK(default_permission_level IN ('auto','ask','deny')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, name)
