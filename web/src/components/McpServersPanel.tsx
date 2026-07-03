@@ -109,44 +109,66 @@ export default function McpServersPanel() {
     loadServers()
   }, [loadServers])
 
-  const updateStatusFromTest = (
-    id: string,
-    res: { data?: Record<string, unknown> } | null,
-    err: any,
-  ) => {
-    setStatuses((prev) => {
-      if (err) {
-        return {
-          ...prev,
-          [id]: {
-            connected: false,
-            tools: 0,
-            last_error: err.response?.data || err.message,
-          },
+  // Read-only liveness check. This never manipulates connectingIds/disconnectingIds
+  // so the periodic poll and the Test button are silent.
+  const doTest = async (id: string, signal?: AbortSignal) => {
+    try {
+      const res = await apiShort.post(`/mcp/servers/${id}/test`, undefined, {
+        signal,
+      })
+      const next: ConnectionStatus = {
+        connected: !!res.data?.connected,
+        tools: Number(res.data?.tools ?? 0),
+      }
+      setStatuses((prev) => {
+        const prevStatus = prev[id]
+        if (
+          prevStatus &&
+          prevStatus.connected === next.connected &&
+          prevStatus.tools === next.tools &&
+          !prevStatus.last_error
+        ) {
+          return prev
         }
+        return { ...prev, [id]: next }
+      })
+      return true
+    } catch (err: any) {
+      const next: ConnectionStatus = {
+        connected: false,
+        tools: 0,
+        last_error: err.response?.data || err.message,
       }
-      return {
-        ...prev,
-        [id]: { connected: true, tools: 0, ...(res?.data || {}) },
-      }
-    })
+      setStatuses((prev) => {
+        const prevStatus = prev[id]
+        if (
+          prevStatus &&
+          prevStatus.connected === next.connected &&
+          prevStatus.tools === next.tools &&
+          prevStatus.last_error === next.last_error
+        ) {
+          return prev
+        }
+        return { ...prev, [id]: next }
+      })
+      return false
+    }
   }
 
-  const fetchServerStatus = async (id: string, signal?: AbortSignal) => {
+  // Explicit connect flow. Keeps the user in the "connecting" badge through
+  // both the connect POST and the confirming liveness check.
+  const doConnect = async (id: string) => {
     setConnectingIds((prev) => {
       const copy = new Set(prev)
       copy.add(id)
       return copy
     })
     try {
-      const res = await apiShort.post(`/mcp/servers/${id}/test`, undefined, {
-        signal,
-      })
-      updateStatusFromTest(id, res, null)
-      return true
+      await apiShort.post(`/mcp/servers/${id}/connect`)
+      await doTest(id)
     } catch (err: any) {
-      updateStatusFromTest(id, null, err)
-      return false
+      setError(err.response?.data?.error || 'Failed to connect server')
+      await doTest(id)
     } finally {
       setConnectingIds((prev) => {
         const copy = new Set(prev)
@@ -157,7 +179,7 @@ export default function McpServersPanel() {
   }
 
   const fetchStatuses = useCallback(async () => {
-    await Promise.all(servers.map((server) => fetchServerStatus(server.id)))
+    await Promise.all(servers.map((server) => doTest(server.id)))
   }, [servers])
 
   useEffect(() => {
@@ -277,37 +299,16 @@ export default function McpServersPanel() {
         // sees a clear "connecting" state instead of a confusing "disconnected"
         // badge while the stdio child spawns.
         if (payload.auto_start) {
-          setConnectingIds((prev) => {
-            const copy = new Set(prev)
-            copy.add(newServer.id)
-            return copy
-          })
-          try {
-            // Give the connection attempt a short leash so the UI never waits
-            // indefinitely for a slow npx/stdio spawn.
-            await apiShort.post(`/mcp/servers/${newServer.id}/connect`)
-          } catch (err: any) {
-            // Surface connection error but keep the saved server. The status
-            // poll or explicit test below will show the actual state.
-            setError(err.response?.data?.error || 'Failed to auto-connect server')
-          } finally {
-            setConnectingIds((prev) => {
-              const copy = new Set(prev)
-              copy.delete(newServer.id)
-              return copy
-            })
-          }
-
-          // Explicitly fetch status for just the new server so the badge flips
-          // to connected (or shows the real error) without waiting for the
-          // scheduled poll.
-          await fetchServerStatus(newServer.id)
+          await doConnect(newServer.id)
         }
       }
       if (editingId) {
         closeModal()
         await loadServers()
         await fetchStatuses()
+        // If the edited server is currently connected, disconnect it so it
+        // reconnects with the new configuration on the next user action.
+        // We don't auto-connect here to avoid surprising the user.
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save MCP server')
@@ -325,23 +326,7 @@ export default function McpServersPanel() {
   }
 
   const handleConnect = async (id: string) => {
-    setConnectingIds((prev) => {
-      const copy = new Set(prev)
-      copy.add(id)
-      return copy
-    })
-    try {
-      await apiShort.post(`/mcp/servers/${id}/connect`)
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to connect server')
-    } finally {
-      setConnectingIds((prev) => {
-        const copy = new Set(prev)
-        copy.delete(id)
-        return copy
-      })
-    }
-    await fetchServerStatus(id)
+    await doConnect(id)
   }
 
   const handleDisconnect = async (id: string) => {
@@ -354,10 +339,19 @@ export default function McpServersPanel() {
       await apiShort.post(`/mcp/servers/${id}/disconnect`)
       // Reflect the disconnection locally immediately so the badge flips to
       // "disconnected" without waiting for the next poll.
-      setStatuses((prev) => ({
-        ...prev,
-        [id]: { connected: false, tools: 0 },
-      }))
+      setStatuses((prev) => {
+        const next: ConnectionStatus = { connected: false, tools: 0 }
+        const prevStatus = prev[id]
+        if (
+          prevStatus &&
+          prevStatus.connected === next.connected &&
+          prevStatus.tools === next.tools &&
+          !prevStatus.last_error
+        ) {
+          return prev
+        }
+        return { ...prev, [id]: next }
+      })
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect server')
     } finally {
@@ -367,15 +361,15 @@ export default function McpServersPanel() {
         return copy
       })
     }
-    await fetchServerStatus(id)
+    // No trailing status fetch: /test is read-only and would simply confirm
+    // disconnected, but removing it avoids the "disconnecting → connecting"
+    // flash caused by doTest's network latency.
   }
 
   const handleTest = async (id: string) => {
     setTestingId(id)
     try {
-      await fetchServerStatus(id)
-    } catch {
-      // fetchServerStatus already updates status/error state.
+      await doTest(id)
     } finally {
       setTestingId(null)
     }
