@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api, apiShort } from '../lib/api'
 import {
   Plus,
@@ -79,6 +79,13 @@ export default function McpServersPanel() {
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set())
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
 
+  // Ref to the latest statuses so the polling interval can adapt without
+  // re-triggering the effect every time statuses changes.
+  const statusesRef = useRef<Record<string, ConnectionStatus>>({})
+  useEffect(() => {
+    statusesRef.current = statuses
+  }, [statuses])
+
   const loadServers = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -149,9 +156,7 @@ export default function McpServersPanel() {
   }
 
   const fetchStatuses = useCallback(async () => {
-    for (const server of servers) {
-      await fetchServerStatus(server.id)
-    }
+    await Promise.all(servers.map((server) => fetchServerStatus(server.id)))
   }, [servers])
 
   useEffect(() => {
@@ -164,7 +169,7 @@ export default function McpServersPanel() {
     const schedule = () => {
       if (interval) clearInterval(interval)
       const anyDisconnected = servers.some((s) => {
-        const st = statuses[s.id]
+        const st = statusesRef.current[s.id]
         return !st || !st.connected
       })
       interval = setInterval(fetchStatuses, anyDisconnected ? 10000 : 60000)
@@ -174,7 +179,7 @@ export default function McpServersPanel() {
       clearTimeout(initialTimeout)
       if (interval) clearInterval(interval)
     }
-  }, [servers, fetchStatuses, statuses])
+  }, [servers, fetchStatuses])
 
   const openCreate = () => {
     setEditingId(null)
