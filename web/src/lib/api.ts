@@ -26,6 +26,14 @@ export const apiShort = axios.create({
   },
 })
 
+apiShort.interceptors.request.use((config) => {
+  const csrf = getCsrfToken()
+  if (csrf && config.method && config.method !== 'get' && config.method !== 'head') {
+    config.headers['X-CSRF-Token'] = csrf
+  }
+  return config
+})
+
 api.interceptors.request.use((config) => {
   const csrf = getCsrfToken()
   if (csrf && config.method && config.method !== 'get' && config.method !== 'head') {
