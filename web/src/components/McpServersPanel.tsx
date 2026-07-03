@@ -76,6 +76,7 @@ export default function McpServersPanel() {
   const [showEnvJson, setShowEnvJson] = useState(false)
   const [showHeadersJson, setShowHeadersJson] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set())
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
 
   const loadServers = useCallback(async () => {
@@ -103,6 +104,11 @@ export default function McpServersPanel() {
   const fetchStatuses = useCallback(async () => {
     const next: Record<string, ConnectionStatus> = {}
     for (const server of servers) {
+      setConnectingIds((prev) => {
+        const copy = new Set(prev)
+        copy.add(server.id)
+        return copy
+      })
       try {
         const res = await api.post(`/mcp/servers/${server.id}/test`)
         next[server.id] = { connected: true, tools: 0, ...res.data }
@@ -112,6 +118,12 @@ export default function McpServersPanel() {
           tools: 0,
           last_error: err.response?.data || err.message,
         }
+      } finally {
+        setConnectingIds((prev) => {
+          const copy = new Set(prev)
+          copy.delete(server.id)
+          return copy
+        })
       }
     }
     setStatuses(next)
@@ -223,10 +235,35 @@ export default function McpServersPanel() {
       if (editingId) {
         await api.put(`/mcp/servers/${editingId}`, payload)
       } else {
-        await api.post('/mcp/servers', payload)
+        const res = await api.post('/mcp/servers', payload)
+        const newServer: McpServer = res.data
+        // If auto_start is enabled, immediately attempt to connect so the user
+        // sees a clear "connecting" state instead of a confusing "disconnected"
+        // badge while the stdio child spawns.
+        if (payload.auto_start) {
+          setConnectingIds((prev) => {
+            const copy = new Set(prev)
+            copy.add(newServer.id)
+            return copy
+          })
+          try {
+            await api.post(`/mcp/servers/${newServer.id}/connect`)
+          } catch (err: any) {
+            // Surface connection error but keep the saved server. The status
+            // poll will show the actual disconnected state.
+            setError(err.response?.data?.error || 'Failed to auto-connect server')
+          } finally {
+            setConnectingIds((prev) => {
+              const copy = new Set(prev)
+              copy.delete(newServer.id)
+              return copy
+            })
+          }
+        }
       }
       closeModal()
       await loadServers()
+      await fetchStatuses()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save MCP server')
     }
@@ -243,20 +280,42 @@ export default function McpServersPanel() {
   }
 
   const handleConnect = async (id: string) => {
+    setConnectingIds((prev) => {
+      const copy = new Set(prev)
+      copy.add(id)
+      return copy
+    })
     try {
       await api.post(`/mcp/servers/${id}/connect`)
       await fetchStatuses()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to connect server')
+    } finally {
+      setConnectingIds((prev) => {
+        const copy = new Set(prev)
+        copy.delete(id)
+        return copy
+      })
     }
   }
 
   const handleDisconnect = async (id: string) => {
+    setConnectingIds((prev) => {
+      const copy = new Set(prev)
+      copy.add(id)
+      return copy
+    })
     try {
       await api.post(`/mcp/servers/${id}/disconnect`)
       await fetchStatuses()
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect server')
+    } finally {
+      setConnectingIds((prev) => {
+        const copy = new Set(prev)
+        copy.delete(id)
+        return copy
+      })
     }
   }
 
@@ -382,6 +441,7 @@ export default function McpServersPanel() {
         <div className="space-y-2">
           {servers.map((server) => {
             const status = statuses[server.id]
+            const isConnecting = connectingIds.has(server.id)
             return (
               <div
                 key={server.id}
@@ -398,7 +458,11 @@ export default function McpServersPanel() {
                     <span className="rounded-carbon bg-layer px-1.5 py-0.5 text-[10px] text-text-helper">
                       {server.transport}
                     </span>
-                    {status?.connected ? (
+                    {isConnecting ? (
+                      <span className="flex items-center gap-1 text-[10px] text-support-warning">
+                        <RefreshCw className="h-3 w-3 animate-spin" /> connecting
+                      </span>
+                    ) : status?.connected ? (
                       <span className="flex items-center gap-1 text-[10px] text-support-success">
                         <CheckCircle2 className="h-3 w-3" /> connected
                       </span>
