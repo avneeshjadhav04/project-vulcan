@@ -62,7 +62,7 @@ const EMPTY_FORM: FormData = {
   url: '',
   env: {},
   headers: {},
-  default_permission_level: 'ask',
+  default_permission_level: 'auto',
 }
 
 export default function McpServersPanel() {
@@ -578,8 +578,8 @@ export default function McpServersPanel() {
                     }
                     className="w-full rounded-carbon border border-border-subtle bg-background px-2.5 py-1.5 text-text-primary outline-none focus:border-text-helper"
                   >
-                    <option value="ask">ask</option>
                     <option value="auto">auto</option>
+                    <option value="ask">ask</option>
                     <option value="deny">deny</option>
                   </select>
                 </div>
