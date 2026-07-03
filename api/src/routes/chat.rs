@@ -222,6 +222,7 @@ fn build_tools_def() -> Vec<serde_json::Value> {
 /// tools from `mcp_tools`. Only tools whose MCP server is currently connected
 /// are included.
 async fn build_mcp_tools_def(
+    state: &AppState,
     db: &sqlx::SqlitePool,
     user_id: &str,
 ) -> anyhow::Result<Vec<serde_json::Value>> {
@@ -238,7 +239,13 @@ async fn build_mcp_tools_def(
     .await?;
 
     let mut defs = Vec::with_capacity(rows.len());
-    for (_id, _server_id, original_name, namespaced_name, schema_str) in rows {
+    for (_id, server_id, original_name, namespaced_name, schema_str) in rows {
+        // Skip tools whose server is not currently connected; advertising
+        // disconnected tools leads to "Unknown tool" errors.
+        if !state.mcp_manager.is_connected(user_id, &server_id).await {
+            continue;
+        }
+
         let schema: serde_json::Value = match serde_json::from_str(&schema_str) {
             Ok(v) => v,
             Err(_) => serde_json::json!({}),
@@ -255,17 +262,53 @@ async fn build_mcp_tools_def(
             })
         };
 
+        // Explicitly tell the LLM to use the exact namespaced name. Some models
+        // ignore the function name field and use the original tool name from
+        // the description or from a previous turn.
         defs.push(serde_json::json!({
             "type": "function",
             "function": {
                 "name": namespaced_name,
-                "description": format!("MCP tool '{}'.", original_name),
+                "description": format!(
+                    "MCP tool '{}'. You MUST call this tool using the exact name '{}'.",
+                    original_name, namespaced_name
+                ),
                 "parameters": parameters
             }
         }));
     }
 
     Ok(defs)
+}
+
+/// Resolve a non-namespaced MCP tool name to the namespaced name of a
+/// currently connected server, if any. This handles LLMs that call tools by
+/// their original name instead of the Vulcan namespaced name.
+async fn resolve_mcp_tool_name(
+    state: &AppState,
+    user_id: &str,
+    original_name: &str,
+) -> Option<String> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT mt.server_id, mt.namespaced_name
+        FROM mcp_tools mt
+        JOIN mcp_servers ms ON ms.id = mt.server_id
+        WHERE mt.user_id = ?1 AND mt.tool_name = ?2 AND ms.enabled = 1
+        "#,
+    )
+    .bind(user_id)
+    .bind(original_name)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    for (server_id, namespaced_name) in rows {
+        if state.mcp_manager.is_connected(user_id, &server_id).await {
+            return Some(namespaced_name);
+        }
+    }
+    None
 }
 
 /// Call an MCP tool with up to 3 retries on transient failures.
@@ -614,13 +657,28 @@ async fn execute_tool(
                 })),
             }
         }
-        _ if state.mcp_manager.is_mcp_tool(user_id, name).await => {
-            match call_mcp_tool_with_retry(state, user_id, name, args_str).await {
-                Ok(result) => Ok(result),
-                Err(e) => Ok(json!({"error": e})),
+        _ => {
+            // The LLM may use either the namespaced name (filesystem__list_directory)
+            // or the original tool name (list_directory). Resolve non-namespaced
+            // names to the connected server's namespaced name when unique.
+            let effective_name = if name.contains("__") {
+                name.to_string()
+            } else {
+                match resolve_mcp_tool_name(state, user_id, name).await {
+                    Some(namespaced) => namespaced,
+                    None => return Err(format!("Unknown tool: {}", name)),
+                }
+            };
+
+            if state.mcp_manager.is_mcp_tool(user_id, &effective_name).await {
+                match call_mcp_tool_with_retry(state, user_id, &effective_name, args_str).await {
+                    Ok(result) => Ok(result),
+                    Err(e) => Ok(json!({"error": e})),
+                }
+            } else {
+                Err(format!("Unknown tool: {}", name))
             }
         }
-        _ => Err(format!("Unknown tool: {}", name)),
     }
 }
 
@@ -2094,7 +2152,7 @@ async fn send_message(
         // Discover and append MCP tools for this user. Connect auto-start servers lazily.
         match state_clone.mcp_manager.load_user_servers(&db, &user_id).await {
             Ok(_) => {
-                match build_mcp_tools_def(&db, &user_id).await {
+                match build_mcp_tools_def(&state_clone, &db, &user_id).await {
                     Ok(mut mcp_tools) => tools.append(&mut mcp_tools),
                     Err(e) => tracing::warn!("Failed to build MCP tools def: {}", e),
                 }
