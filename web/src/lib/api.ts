@@ -14,6 +14,18 @@ export const api = axios.create({
   },
 })
 
+/// Create a short-timeout axios instance for MCP connection health checks.
+/// These requests should fail fast rather than hang the UI for minutes when a
+/// spawned stdio child is slow or unresponsive.
+export const apiShort = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 api.interceptors.request.use((config) => {
   const csrf = getCsrfToken()
   if (csrf && config.method && config.method !== 'get' && config.method !== 'head') {

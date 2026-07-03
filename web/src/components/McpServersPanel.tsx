@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { api } from '../lib/api'
+import { api, apiShort } from '../lib/api'
 import {
   Plus,
   Trash2,
@@ -101,32 +101,57 @@ export default function McpServersPanel() {
     loadServers()
   }, [loadServers])
 
-  const fetchStatuses = useCallback(async () => {
-    const next: Record<string, ConnectionStatus> = {}
-    for (const server of servers) {
+  const updateStatusFromTest = (
+    id: string,
+    res: { data?: Record<string, unknown> } | null,
+    err: any,
+  ) => {
+    setStatuses((prev) => {
+      if (err) {
+        return {
+          ...prev,
+          [id]: {
+            connected: false,
+            tools: 0,
+            last_error: err.response?.data || err.message,
+          },
+        }
+      }
+      return {
+        ...prev,
+        [id]: { connected: true, tools: 0, ...(res?.data || {}) },
+      }
+    })
+  }
+
+  const fetchServerStatus = async (id: string, signal?: AbortSignal) => {
+    setConnectingIds((prev) => {
+      const copy = new Set(prev)
+      copy.add(id)
+      return copy
+    })
+    try {
+      const res = await apiShort.post(`/mcp/servers/${id}/test`, undefined, {
+        signal,
+      })
+      updateStatusFromTest(id, res, null)
+      return true
+    } catch (err: any) {
+      updateStatusFromTest(id, null, err)
+      return false
+    } finally {
       setConnectingIds((prev) => {
         const copy = new Set(prev)
-        copy.add(server.id)
+        copy.delete(id)
         return copy
       })
-      try {
-        const res = await api.post(`/mcp/servers/${server.id}/test`)
-        next[server.id] = { connected: true, tools: 0, ...res.data }
-      } catch (err: any) {
-        next[server.id] = {
-          connected: false,
-          tools: 0,
-          last_error: err.response?.data || err.message,
-        }
-      } finally {
-        setConnectingIds((prev) => {
-          const copy = new Set(prev)
-          copy.delete(server.id)
-          return copy
-        })
-      }
     }
-    setStatuses(next)
+  }
+
+  const fetchStatuses = useCallback(async () => {
+    for (const server of servers) {
+      await fetchServerStatus(server.id)
+    }
   }, [servers])
 
   useEffect(() => {
@@ -237,6 +262,11 @@ export default function McpServersPanel() {
       } else {
         const res = await api.post('/mcp/servers', payload)
         const newServer: McpServer = res.data
+
+        // Close modal and refresh list first so the user sees the new server.
+        closeModal()
+        await loadServers()
+
         // If auto_start is enabled, immediately attempt to connect so the user
         // sees a clear "connecting" state instead of a confusing "disconnected"
         // badge while the stdio child spawns.
@@ -247,10 +277,12 @@ export default function McpServersPanel() {
             return copy
           })
           try {
-            await api.post(`/mcp/servers/${newServer.id}/connect`)
+            // Give the connection attempt a short leash so the UI never waits
+            // indefinitely for a slow npx/stdio spawn.
+            await apiShort.post(`/mcp/servers/${newServer.id}/connect`)
           } catch (err: any) {
             // Surface connection error but keep the saved server. The status
-            // poll will show the actual disconnected state.
+            // poll or explicit test below will show the actual state.
             setError(err.response?.data?.error || 'Failed to auto-connect server')
           } finally {
             setConnectingIds((prev) => {
@@ -259,11 +291,18 @@ export default function McpServersPanel() {
               return copy
             })
           }
+
+          // Explicitly fetch status for just the new server so the badge flips
+          // to connected (or shows the real error) without waiting for the
+          // scheduled poll.
+          await fetchServerStatus(newServer.id)
         }
       }
-      closeModal()
-      await loadServers()
-      await fetchStatuses()
+      if (editingId) {
+        closeModal()
+        await loadServers()
+        await fetchStatuses()
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save MCP server')
     }
@@ -286,8 +325,7 @@ export default function McpServersPanel() {
       return copy
     })
     try {
-      await api.post(`/mcp/servers/${id}/connect`)
-      await fetchStatuses()
+      await apiShort.post(`/mcp/servers/${id}/connect`)
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to connect server')
     } finally {
@@ -297,6 +335,7 @@ export default function McpServersPanel() {
         return copy
       })
     }
+    await fetchServerStatus(id)
   }
 
   const handleDisconnect = async (id: string) => {
@@ -306,8 +345,7 @@ export default function McpServersPanel() {
       return copy
     })
     try {
-      await api.post(`/mcp/servers/${id}/disconnect`)
-      await fetchStatuses()
+      await apiShort.post(`/mcp/servers/${id}/disconnect`)
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to disconnect server')
     } finally {
@@ -317,15 +355,15 @@ export default function McpServersPanel() {
         return copy
       })
     }
+    await fetchServerStatus(id)
   }
 
   const handleTest = async (id: string) => {
     setTestingId(id)
     try {
-      await api.post(`/mcp/servers/${id}/test`)
-      await fetchStatuses()
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Server test failed')
+      await fetchServerStatus(id)
+    } catch {
+      // fetchServerStatus already updates status/error state.
     } finally {
       setTestingId(null)
     }

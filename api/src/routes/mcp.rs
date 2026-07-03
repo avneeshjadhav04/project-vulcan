@@ -367,13 +367,26 @@ async fn connect_server(
     let config =
         config.ok_or((StatusCode::NOT_FOUND, "Server not found or disabled".to_string()))?;
 
-    match state.mcp_manager.connect(&state.db, config).await {
-        Ok(_) => Ok(Json(json!({ "status": "connected" }))),
-        Err(e) => {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        state.mcp_manager.connect(&state.db, config),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(_)) => Ok(Json(json!({ "status": "connected" }))),
+        Ok(Err(e)) => {
             tracing::warn!("MCP server {} connect failed: {}", id, e);
             Err((
                 StatusCode::BAD_GATEWAY,
                 format!("Failed to connect MCP server: {}", e),
+            ))
+        }
+        Err(_) => {
+            tracing::warn!("MCP server {} connect timed out after 60s", id);
+            Err((
+                StatusCode::GATEWAY_TIMEOUT,
+                "MCP server connection timed out".to_string(),
             ))
         }
     }
@@ -426,8 +439,14 @@ async fn test_server(
     let config =
         config.ok_or((StatusCode::NOT_FOUND, "Server not found or disabled".to_string()))?;
 
-    match state.mcp_manager.connect(&state.db, config).await {
-        Ok(handle) => {
+    let connect_result = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        state.mcp_manager.connect(&state.db, config),
+    )
+    .await;
+
+    match connect_result {
+        Ok(Ok(handle)) => {
             let info = handle
                 .with_client(|client| {
                     Box::pin(async move {
@@ -454,13 +473,20 @@ async fn test_server(
                 "server_info": info,
             })))
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::warn!("MCP server {} test failed: {}", id, e);
             Err((
                 StatusCode::BAD_GATEWAY,
                 format!("Failed to connect MCP server: {}", e),
             ))
-        },
+        }
+        Err(_) => {
+            tracing::warn!("MCP server {} test timed out after 60s", id);
+            Err((
+                StatusCode::GATEWAY_TIMEOUT,
+                "MCP server connection timed out".to_string(),
+            ))
+        }
     }
 }
 
