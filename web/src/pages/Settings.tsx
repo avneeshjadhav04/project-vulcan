@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bar,
-  Line,
   ComposedChart,
   PieChart,
   Pie,
@@ -167,6 +166,32 @@ export default function Settings() {
   // Theme
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
+
+  const dateInputTheme = theme === 'system'
+    ? (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const handleUsageTimeFrom = (value: string) => {
+    setUsageTimeFrom(value)
+    if (usageTimeTo && value && value > usageTimeTo) setUsageTimeTo(value)
+  }
+
+  const handleUsageTimeTo = (value: string) => {
+    setUsageTimeTo(value)
+    if (usageTimeFrom && value && value < usageTimeFrom) setUsageTimeFrom(value)
+  }
+
+  const handleProviderFrom = (value: string) => {
+    setProviderFrom(value)
+    if (providerTo && value && value > providerTo) setProviderTo(value)
+  }
+
+  const handleProviderTo = (value: string) => {
+    setProviderTo(value)
+    if (providerFrom && value && value < providerFrom) setProviderFrom(value)
+  }
 
   // Admin user management
   const [showUserModal, setShowUserModal] = useState(false)
@@ -1221,14 +1246,18 @@ export default function Settings() {
                                 <input
                                   type="date"
                                   value={usageTimeFrom}
-                                  onChange={(e) => setUsageTimeFrom(e.target.value)}
+                                  max={today}
+                                  onChange={(e) => handleUsageTimeFrom(e.target.value)}
+                                  style={{ colorScheme: dateInputTheme }}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                                 <span className="text-xs text-text-helper">to</span>
                                 <input
                                   type="date"
                                   value={usageTimeTo}
-                                  onChange={(e) => setUsageTimeTo(e.target.value)}
+                                  max={today}
+                                  onChange={(e) => handleUsageTimeTo(e.target.value)}
+                                  style={{ colorScheme: dateInputTheme }}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                               </div>
@@ -1241,7 +1270,7 @@ export default function Settings() {
                         ) : (
                           <div className="h-72 w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={usage.daily} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                              <ComposedChart data={usage.daily} barSize={18} barGap={6} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
                                 <XAxis
                                   dataKey="date"
@@ -1253,12 +1282,14 @@ export default function Settings() {
                                   yAxisId="left"
                                   tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
                                   axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                  label={{ value: 'Messages', angle: -90, position: 'insideLeft', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
                                 />
                                 <YAxis
                                   yAxisId="right"
                                   orientation="right"
                                   tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
                                   axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                  label={{ value: 'Tokens', angle: 90, position: 'insideRight', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
                                 />
                                 <Tooltip
                                   contentStyle={{
@@ -1269,15 +1300,7 @@ export default function Settings() {
                                 />
                                 <Legend wrapperStyle={{ fontSize: 11 }} />
                                 <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                <Line
-                                  yAxisId="right"
-                                  type="monotone"
-                                  dataKey="tokens"
-                                  name="Tokens"
-                                  stroke="#10b981"
-                                  strokeWidth={2}
-                                  dot={false}
-                                />
+                                <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
                               </ComposedChart>
                             </ResponsiveContainer>
                           </div>
@@ -1314,14 +1337,18 @@ export default function Settings() {
                                 <input
                                   type="date"
                                   value={providerFrom}
-                                  onChange={(e) => setProviderFrom(e.target.value)}
+                                  max={today}
+                                  onChange={(e) => handleProviderFrom(e.target.value)}
+                                  style={{ colorScheme: dateInputTheme }}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                                 <span className="text-xs text-text-helper">to</span>
                                 <input
                                   type="date"
                                   value={providerTo}
-                                  onChange={(e) => setProviderTo(e.target.value)}
+                                  max={today}
+                                  onChange={(e) => handleProviderTo(e.target.value)}
+                                  style={{ colorScheme: dateInputTheme }}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                               </div>
