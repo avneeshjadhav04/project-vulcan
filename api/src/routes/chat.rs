@@ -2616,7 +2616,7 @@ async fn get_usage(
     let daily: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
         "SELECT date(m.created_at) as day, COUNT(*), SUM(m.tokens_used)
          FROM messages m JOIN chats c ON m.chat_id = c.id
-         WHERE c.user_id = ?1 AND m.role = 'assistant' AND date(m.created_at) >= date('now', '-6 days')
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
          GROUP BY day ORDER BY day"
     )
     .bind(&claims.sub)
@@ -2628,9 +2628,63 @@ async fn get_usage(
         json!({ "date": day, "messages": count, "tokens": tokens.unwrap_or(0) })
     }).collect();
 
+    let monthly: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT strftime('%Y-%m', m.created_at) as month, COUNT(*), SUM(m.tokens_used)
+         FROM messages m JOIN chats c ON m.chat_id = c.id
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         GROUP BY month ORDER BY month"
+    )
+    .bind(&claims.sub)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let monthly_stats: Vec<_> = monthly.into_iter().map(|(month, count, tokens)| {
+        json!({ "month": month, "messages": count, "tokens": tokens.unwrap_or(0) })
+    }).collect();
+
+    let yearly: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT strftime('%Y', m.created_at) as year, COUNT(*), SUM(m.tokens_used)
+         FROM messages m JOIN chats c ON m.chat_id = c.id
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         GROUP BY year ORDER BY year"
+    )
+    .bind(&claims.sub)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let yearly_stats: Vec<_> = yearly.into_iter().map(|(year, count, tokens)| {
+        json!({ "year": year, "messages": count, "tokens": tokens.unwrap_or(0) })
+    }).collect();
+
+    let providers: Vec<(Option<String>, Option<String>, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT m.provider_id, p.name, COUNT(*), SUM(m.tokens_used)
+         FROM messages m
+         JOIN chats c ON m.chat_id = c.id
+         LEFT JOIN providers p ON m.provider_id = p.id AND p.user_id = c.user_id
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         GROUP BY m.provider_id ORDER BY SUM(m.tokens_used) DESC"
+    )
+    .bind(&claims.sub)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let provider_stats: Vec<_> = providers.into_iter().map(|(provider_id, provider_name, count, tokens)| {
+        let id = provider_id.unwrap_or_default();
+        let name = provider_name.filter(|n| !n.is_empty()).unwrap_or_else(|| if id.is_empty() { "Unknown provider".to_string() } else { id.clone() });
+        json!({ "provider_id": id, "provider_name": name, "messages": count, "tokens": tokens.unwrap_or(0) })
+    }).collect();
+
     Ok(Json(json!({
-        "total_messages": totals.0,
-        "total_tokens": totals.1.unwrap_or(0),
+        "totals": {
+            "messages": totals.0,
+            "tokens": totals.1.unwrap_or(0),
+        },
         "daily": daily_stats,
+        "monthly": monthly_stats,
+        "yearly": yearly_stats,
+        "providers": provider_stats,
     })))
 }
