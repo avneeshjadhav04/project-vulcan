@@ -2603,12 +2603,21 @@ async fn search_chats(
 async fn get_usage(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    let from = params.get("from").cloned().unwrap_or_default();
+    let to = params.get("to").cloned().unwrap_or_default();
+
     let totals: (i64, Option<i64>) = sqlx::query_as(
         "SELECT COUNT(*), SUM(tokens_used) FROM messages m 
-         JOIN chats c ON m.chat_id = c.id WHERE c.user_id = ?1 AND m.role = 'assistant'",
+         JOIN chats c ON m.chat_id = c.id 
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)",
     )
     .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
     .fetch_one(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -2617,9 +2626,13 @@ async fn get_usage(
         "SELECT date(m.created_at) as day, COUNT(*), SUM(m.tokens_used)
          FROM messages m JOIN chats c ON m.chat_id = c.id
          WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)
          GROUP BY day ORDER BY day"
     )
     .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -2628,45 +2641,19 @@ async fn get_usage(
         json!({ "date": day, "messages": count, "tokens": tokens.unwrap_or(0) })
     }).collect();
 
-    let monthly: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT strftime('%Y-%m', m.created_at) as month, COUNT(*), SUM(m.tokens_used)
-         FROM messages m JOIN chats c ON m.chat_id = c.id
-         WHERE c.user_id = ?1 AND m.role = 'assistant'
-         GROUP BY month ORDER BY month"
-    )
-    .bind(&claims.sub)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let monthly_stats: Vec<_> = monthly.into_iter().map(|(month, count, tokens)| {
-        json!({ "month": month, "messages": count, "tokens": tokens.unwrap_or(0) })
-    }).collect();
-
-    let yearly: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
-        "SELECT strftime('%Y', m.created_at) as year, COUNT(*), SUM(m.tokens_used)
-         FROM messages m JOIN chats c ON m.chat_id = c.id
-         WHERE c.user_id = ?1 AND m.role = 'assistant'
-         GROUP BY year ORDER BY year"
-    )
-    .bind(&claims.sub)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let yearly_stats: Vec<_> = yearly.into_iter().map(|(year, count, tokens)| {
-        json!({ "year": year, "messages": count, "tokens": tokens.unwrap_or(0) })
-    }).collect();
-
     let providers: Vec<(Option<String>, Option<String>, i64, Option<i64>)> = sqlx::query_as(
         "SELECT m.provider_id, p.name, COUNT(*), SUM(m.tokens_used)
          FROM messages m
          JOIN chats c ON m.chat_id = c.id
          LEFT JOIN providers p ON m.provider_id = p.id AND p.user_id = c.user_id
          WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)
          GROUP BY m.provider_id ORDER BY SUM(m.tokens_used) DESC"
     )
     .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -2683,8 +2670,6 @@ async fn get_usage(
             "tokens": totals.1.unwrap_or(0),
         },
         "daily": daily_stats,
-        "monthly": monthly_stats,
-        "yearly": yearly_stats,
         "providers": provider_stats,
     })))
 }

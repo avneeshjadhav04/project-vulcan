@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BarChart,
   Bar,
   Line,
   ComposedChart,
@@ -55,7 +54,6 @@ import {
   Hash,
   Clock,
   TrendingUp,
-  Calendar,
   PieChart as PieChartIcon,
 } from 'lucide-react'
 
@@ -87,14 +85,6 @@ interface UsageDay extends UsagePoint {
   date: string
 }
 
-interface UsageMonth extends UsagePoint {
-  month: string
-}
-
-interface UsageYear extends UsagePoint {
-  year: string
-}
-
 interface UsageProvider extends UsagePoint {
   provider_id: string
   provider_name: string
@@ -103,8 +93,6 @@ interface UsageProvider extends UsagePoint {
 interface UsageData {
   totals: UsagePoint
   daily: UsageDay[]
-  monthly: UsageMonth[]
-  yearly: UsageYear[]
   providers: UsageProvider[]
 }
 
@@ -141,10 +129,15 @@ export default function Settings() {
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
   const [usageError, setUsageError] = useState('')
-  const [usageRange, setUsageRange] = useState<'1D' | '7D' | '30D' | 'all' | 'custom'>('7D')
-  const [customFrom, setCustomFrom] = useState('')
-  const [customTo, setCustomTo] = useState('')
-  const [usageView, setUsageView] = useState<'daily' | 'monthly' | 'yearly' | 'providers'>('daily')
+  const [usageTimeRange, setUsageTimeRange] = useState<'1D' | '7D' | '30D' | 'all' | 'custom'>('7D')
+  const [usageTimeFrom, setUsageTimeFrom] = useState('')
+  const [usageTimeTo, setUsageTimeTo] = useState('')
+  const [providerRange, setProviderRange] = useState<'1D' | '7D' | '30D' | 'all' | 'custom'>('7D')
+  const [providerFrom, setProviderFrom] = useState('')
+  const [providerTo, setProviderTo] = useState('')
+  const [providerUsageData, setProviderUsageData] = useState<UsageData | null>(null)
+  const [providerUsageLoading, setProviderUsageLoading] = useState(false)
+  const [providerUsageError, setProviderUsageError] = useState('')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const validTabs: SettingsTab[] = ['profile', 'providers', 'tools', 'memory', 'integrations', 'signout']
@@ -218,8 +211,19 @@ export default function Settings() {
   useEffect(() => {
     if (activeTab === 'usage') {
       loadUsage()
+      loadProvidersUsage()
     }
   }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'usage') return
+    loadUsage()
+  }, [usageTimeRange, usageTimeFrom, usageTimeTo, activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'usage') return
+    loadProvidersUsage()
+  }, [providerRange, providerFrom, providerTo, activeTab])
 
   // Sync active tab to URL
   useEffect(() => {
@@ -228,11 +232,32 @@ export default function Settings() {
     }
   }, [activeTab])
 
+  const rangeParams = (range: '1D' | '7D' | '30D' | 'all' | 'custom', from: string, to: string) => {
+    if (range === 'all') return {}
+    const now = new Date()
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+    const today = fmt(now)
+
+    if (range === '1D') return { from: today, to: today }
+    if (range === '7D') {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 6)
+      return { from: fmt(start), to: today }
+    }
+    if (range === '30D') {
+      const start = new Date(now)
+      start.setDate(start.getDate() - 29)
+      return { from: fmt(start), to: today }
+    }
+    if (range === 'custom' && from && to) return { from, to }
+    return {}
+  }
+
   const loadUsage = async () => {
     setUsageLoading(true)
     setUsageError('')
     try {
-      const res = await api.get('/usage')
+      const res = await api.get('/usage', { params: rangeParams(usageTimeRange, usageTimeFrom, usageTimeTo) })
       setUsage(res.data || null)
     } catch (err: any) {
       setUsageError(err.response?.data?.error || 'Failed to load usage data')
@@ -241,35 +266,22 @@ export default function Settings() {
     }
   }
 
-  const filteredDaily = (): UsageDay[] => {
-    if (!usage?.daily) return []
-    const now = new Date()
-    const fmt = (d: Date) => d.toISOString().split('T')[0]
-    const today = fmt(now)
-
-    if (usageRange === '1D') {
-      return usage.daily.filter((d) => d.date === today)
+  const loadProvidersUsage = async () => {
+    setProviderUsageLoading(true)
+    setProviderUsageError('')
+    try {
+      const res = await api.get('/usage', { params: rangeParams(providerRange, providerFrom, providerTo) })
+      setProviderUsageData(res.data || null)
+    } catch (err: any) {
+      setProviderUsageError(err.response?.data?.error || 'Failed to load provider usage data')
+    } finally {
+      setProviderUsageLoading(false)
     }
-    if (usageRange === '7D') {
-      const start = new Date(now)
-      start.setDate(start.getDate() - 6)
-      return usage.daily.filter((d) => d.date >= fmt(start))
-    }
-    if (usageRange === '30D') {
-      const start = new Date(now)
-      start.setDate(start.getDate() - 29)
-      return usage.daily.filter((d) => d.date >= fmt(start))
-    }
-    if (usageRange === 'custom' && customFrom && customTo) {
-      return usage.daily.filter((d) => d.date >= customFrom && d.date <= customTo)
-    }
-    return usage.daily
   }
 
   const dailyAverage = (): number => {
-    const data = filteredDaily()
-    if (data.length === 0) return 0
-    return Math.round(data.reduce((sum, d) => sum + d.messages, 0) / data.length)
+    if (!usage?.daily || usage.daily.length === 0) return 0
+    return Math.round(usage.daily.reduce((sum, d) => sum + d.messages, 0) / usage.daily.length)
   }
 
   const loadProviders = async () => {
@@ -1147,7 +1159,7 @@ export default function Settings() {
                       Usage Dashboard
                     </h2>
                     <p className="mt-1 text-xs text-text-helper">
-                      Track your message and token usage across time and providers.
+                      Track your messages, tokens, and provider usage over time.
                     </p>
                   </div>
 
@@ -1179,18 +1191,22 @@ export default function Settings() {
                         />
                       </div>
 
-                      {usage.daily.length === 0 && usage.providers.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-text-helper">No usage data yet</div>
-                      ) : (
-                        <>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      {/* Messages & Tokens panel */}
+                      <div className="border border-border-subtle bg-background p-4">
+                        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                            <Clock className="h-4 w-4" />
+                            Messages & Tokens
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-2">
                             <div className="flex flex-wrap gap-1">
                               {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
                                 <button
                                   key={r}
-                                  onClick={() => setUsageRange(r)}
+                                  onClick={() => setUsageTimeRange(r)}
                                   className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
-                                    usageRange === r
+                                    usageTimeRange === r
                                       ? 'bg-interactive text-on-interactive'
                                       : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
                                   }`}
@@ -1200,256 +1216,183 @@ export default function Settings() {
                               ))}
                             </div>
 
-                            {usageRange === 'custom' && (
+                            {usageTimeRange === 'custom' && (
                               <div className="flex items-center gap-2">
                                 <input
                                   type="date"
-                                  value={customFrom}
-                                  onChange={(e) => setCustomFrom(e.target.value)}
+                                  value={usageTimeFrom}
+                                  onChange={(e) => setUsageTimeFrom(e.target.value)}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                                 <span className="text-xs text-text-helper">to</span>
                                 <input
                                   type="date"
-                                  value={customTo}
-                                  onChange={(e) => setCustomTo(e.target.value)}
+                                  value={usageTimeTo}
+                                  onChange={(e) => setUsageTimeTo(e.target.value)}
                                   className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
                                 />
                               </div>
                             )}
                           </div>
+                        </div>
 
-                          <div className="flex flex-wrap gap-1 border-b border-border-subtle pb-1">
-                            {([
-                              { id: 'daily', label: 'Daily', icon: Clock },
-                              { id: 'monthly', label: 'Monthly', icon: Calendar },
-                              { id: 'yearly', label: 'Yearly', icon: Calendar },
-                              { id: 'providers', label: 'Providers', icon: PieChartIcon },
-                            ] as const).map((v) => {
-                              const Icon = v.icon
-                              return (
+                        {usage.daily.length === 0 ? (
+                          <div className="py-8 text-center text-sm text-text-helper">No usage data for the selected range</div>
+                        ) : (
+                          <div className="h-72 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={usage.daily} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
+                                <XAxis
+                                  dataKey="date"
+                                  tickFormatter={(v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                />
+                                <YAxis
+                                  yAxisId="left"
+                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                />
+                                <YAxis
+                                  yAxisId="right"
+                                  orientation="right"
+                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                />
+                                <Tooltip
+                                  contentStyle={{
+                                    backgroundColor: 'var(--color-layer, #ffffff)',
+                                    border: '1px solid var(--color-border-subtle, #e5e7eb)',
+                                  }}
+                                  labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
+                                />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                                <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Line
+                                  yAxisId="right"
+                                  type="monotone"
+                                  dataKey="tokens"
+                                  name="Tokens"
+                                  stroke="#10b981"
+                                  strokeWidth={2}
+                                  dot={false}
+                                />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Providers panel */}
+                      <div className="border border-border-subtle bg-background p-4">
+                        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+                            <PieChartIcon className="h-4 w-4" />
+                            Provider Usage
+                          </h3>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap gap-1">
+                              {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
                                 <button
-                                  key={v.id}
-                                  onClick={() => setUsageView(v.id)}
-                                  className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium uppercase transition-colors ${
-                                    usageView === v.id
-                                      ? 'border-b-2 border-interactive text-interactive'
-                                      : 'text-text-secondary hover:text-text-primary'
+                                  key={r}
+                                  onClick={() => setProviderRange(r)}
+                                  className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
+                                    providerRange === r
+                                      ? 'bg-interactive text-on-interactive'
+                                      : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
                                   }`}
                                 >
-                                  <Icon className="h-3.5 w-3.5" />
-                                  {v.label}
+                                  {r === 'all' ? 'All Time' : r === 'custom' ? 'Custom' : r}
                                 </button>
-                              )
-                            })}
+                              ))}
+                            </div>
+
+                            {providerRange === 'custom' && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="date"
+                                  value={providerFrom}
+                                  onChange={(e) => setProviderFrom(e.target.value)}
+                                  className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
+                                />
+                                <span className="text-xs text-text-helper">to</span>
+                                <input
+                                  type="date"
+                                  value={providerTo}
+                                  onChange={(e) => setProviderTo(e.target.value)}
+                                  className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
+                                />
+                              </div>
+                            )}
                           </div>
+                        </div>
 
-                          {usageView === 'daily' && (
-                            <div className="border border-border-subtle bg-background p-4">
-                              <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                                <Clock className="h-4 w-4" />
-                                Daily Usage
-                              </h3>
-                              {filteredDaily().length === 0 ? (
-                                <div className="py-8 text-center text-sm text-text-helper">No data for the selected range</div>
-                              ) : (
-                                <div className="h-72 w-full">
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={filteredDaily()} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
-                                      <XAxis
-                                        dataKey="date"
-                                        tickFormatter={(v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <YAxis
-                                        yAxisId="left"
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <YAxis
-                                        yAxisId="right"
-                                        orientation="right"
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <Tooltip
-                                        contentStyle={{
-                                          backgroundColor: 'var(--color-layer, #ffffff)',
-                                          border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                                        }}
-                                        labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
-                                      />
-                                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                                      <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                      <Line
-                                        yAxisId="right"
-                                        type="monotone"
-                                        dataKey="tokens"
-                                        name="Tokens"
-                                        stroke="#10b981"
-                                        strokeWidth={2}
-                                        dot={false}
-                                      />
-                                    </ComposedChart>
-                                  </ResponsiveContainer>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {usageView === 'monthly' && (
-                            <div className="border border-border-subtle bg-background p-4">
-                              <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                                <Calendar className="h-4 w-4" />
-                                Monthly Usage
-                              </h3>
-                              {usage.monthly.length === 0 ? (
-                                <div className="py-8 text-center text-sm text-text-helper">No monthly data yet</div>
-                              ) : (
-                                <div className="h-72 w-full">
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={usage.monthly} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
-                                      <XAxis
-                                        dataKey="month"
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <YAxis
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <Tooltip
-                                        contentStyle={{
-                                          backgroundColor: 'var(--color-layer, #ffffff)',
-                                          border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                                        }}
-                                      />
-                                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                                      <Bar dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                      <Bar dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
-                                  </ResponsiveContainer>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {usageView === 'yearly' && (
-                            <div className="border border-border-subtle bg-background p-4">
-                              <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                                <Calendar className="h-4 w-4" />
-                                Yearly Usage
-                              </h3>
-                              {usage.yearly.length === 0 ? (
-                                <div className="py-8 text-center text-sm text-text-helper">No yearly data yet</div>
-                              ) : (
-                                <div className="h-72 w-full">
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={usage.yearly} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
-                                      <XAxis
-                                        dataKey="year"
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <YAxis
-                                        tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                        axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                      />
-                                      <Tooltip
-                                        contentStyle={{
-                                          backgroundColor: 'var(--color-layer, #ffffff)',
-                                          border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                                        }}
-                                      />
-                                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                                      <Bar dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                      <Bar dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
-                                  </ResponsiveContainer>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {usageView === 'providers' && (
-                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                              <div className="border border-border-subtle bg-background p-4">
-                                <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                                  <PieChartIcon className="h-4 w-4" />
-                                  Token Share by Provider
-                                </h3>
-                                {usage.providers.length === 0 ? (
-                                  <div className="py-8 text-center text-sm text-text-helper">No provider data yet</div>
-                                ) : (
-                                  <div className="h-64 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                      <PieChart>
-                                        <Pie
-                                          data={usage.providers}
-                                          dataKey="tokens"
-                                          nameKey="provider_name"
-                                          cx="50%"
-                                          cy="50%"
-                                          innerRadius={60}
-                                          outerRadius={80}
-                                          paddingAngle={2}
-                                        >
-                                          {usage.providers.map((_, i) => (
-                                            <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                          ))}
-                                        </Pie>
-                                        <Tooltip
-                                          contentStyle={{
-                                            backgroundColor: 'var(--color-layer, #ffffff)',
-                                            border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                                          }}
-                                          formatter={(value) => [`${Number(value).toLocaleString()} tokens`, '']}
-                                        />
-                                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                                      </PieChart>
-                                    </ResponsiveContainer>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="border border-border-subtle bg-background p-4">
-                                <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-                                  <Server className="h-4 w-4" />
-                                  Provider Breakdown
-                                </h3>
-                                {usage.providers.length === 0 ? (
-                                  <div className="py-8 text-center text-sm text-text-helper">No provider data yet</div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {usage.providers.map((p, i) => (
-                                      <div
-                                        key={p.provider_id}
-                                        className="flex items-center justify-between border border-border-subtle bg-layer px-3 py-2"
-                                      >
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <div
-                                            className="h-3 w-3 shrink-0 rounded-full"
-                                            style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                                          />
-                                          <span className="truncate text-sm text-text-primary">{p.provider_name}</span>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-sm font-medium text-text-primary">{p.tokens.toLocaleString()} tokens</p>
-                                          <p className="text-[10px] text-text-helper">{p.messages.toLocaleString()} messages</p>
-                                        </div>
-                                      </div>
+                        {providerUsageError ? (
+                          <div className="border border-support-error/30 bg-support-error/10 px-4 py-3 text-sm text-support-error">
+                            {providerUsageError}
+                          </div>
+                        ) : providerUsageLoading ? (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                          </div>
+                        ) : providerUsageData?.providers.length === 0 ? (
+                          <div className="py-8 text-center text-sm text-text-helper">No provider data for the selected range</div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                            <div className="h-64 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie
+                                    data={providerUsageData?.providers || []}
+                                    dataKey="tokens"
+                                    nameKey="provider_name"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={80}
+                                    paddingAngle={2}
+                                  >
+                                    {(providerUsageData?.providers || []).map((_, i) => (
+                                      <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                                     ))}
-                                  </div>
-                                )}
-                              </div>
+                                  </Pie>
+                                  <Tooltip
+                                    contentStyle={{
+                                      backgroundColor: 'var(--color-layer, #ffffff)',
+                                      border: '1px solid var(--color-border-subtle, #e5e7eb)',
+                                    }}
+                                    formatter={(value) => [`${Number(value).toLocaleString()} tokens`, '']}
+                                  />
+                                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                                </PieChart>
+                              </ResponsiveContainer>
                             </div>
-                          )}
-                        </>
-                      )}
+
+                            <div className="space-y-2">
+                              {(providerUsageData?.providers || []).map((p, i) => (
+                                <div
+                                  key={p.provider_id}
+                                  className="flex items-center justify-between border border-border-subtle bg-layer px-3 py-2"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div
+                                      className="h-3 w-3 shrink-0 rounded-full"
+                                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                                    />
+                                    <span className="truncate text-sm text-text-primary">{p.provider_name}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium text-text-primary">{p.tokens.toLocaleString()} tokens</p>
+                                    <p className="text-[10px] text-text-helper">{p.messages.toLocaleString()} messages</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : null}
                 </div>
