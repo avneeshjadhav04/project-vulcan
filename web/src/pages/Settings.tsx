@@ -1225,7 +1225,7 @@ export default function Settings() {
                           </h3>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
                               {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
                                 <button
                                   key={r}
@@ -1239,6 +1239,7 @@ export default function Settings() {
                                   {r === 'all' ? 'All Time' : r === 'custom' ? 'Custom' : r}
                                 </button>
                               ))}
+                              {usageLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-interactive" />}
                             </div>
 
                             {usageTimeRange === 'custom' && (
@@ -1265,54 +1266,46 @@ export default function Settings() {
                           </div>
                         </div>
 
-                        {usage ? (
-                          <div className="relative h-72 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={usage.daily} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
-                                <XAxis
-                                  dataKey="date"
-                                  tick={false}
-                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                />
-                                <YAxis
-                                  yAxisId="left"
-                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                  label={{ value: 'Messages', angle: -90, position: 'insideLeft', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                />
-                                <YAxis
-                                  yAxisId="right"
-                                  orientation="right"
-                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                  axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                  label={{ value: 'Tokens', angle: 90, position: 'insideRight', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                                />
-                                <Tooltip
-                                  contentStyle={{
-                                    backgroundColor: 'var(--color-layer, #ffffff)',
-                                    border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                                  }}
-                                  labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
-                                />
-                                <Legend wrapperStyle={{ fontSize: 11 }} />
-                                <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                                <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
-                              </ComposedChart>
-                            </ResponsiveContainer>
-                            {usageLoading && (
-                              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-                                <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                              </div>
-                            )}
-                          </div>
-                        ) : usageLoading ? (
-                          <div className="flex h-72 items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                          </div>
-                        ) : (
-                          <div className="flex h-72 items-center justify-center text-sm text-text-helper">No usage data for the selected range</div>
-                        )}
+                            <div className="h-72 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart data={usage?.daily || []} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
+                              <XAxis
+                                dataKey="date"
+                                tick={false}
+                                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                              />
+                              <YAxis
+                                yAxisId="left"
+                                tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                label={{ value: 'Messages', angle: -90, position: 'insideLeft', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                              />
+                              <YAxis
+                                yAxisId="right"
+                                orientation="right"
+                                tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                label={{ value: 'Tokens', angle: 90, position: 'insideRight', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: 'var(--color-layer, #ffffff)',
+                                  border: '1px solid var(--color-border-subtle, #e5e7eb)',
+                                }}
+                                labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                              <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                              <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            </ComposedChart>
+                          </ResponsiveContainer>
+                          {usageLoading && !usage && (
+                            <div className="flex h-0 -translate-y-36 items-center justify-center">
+                              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Providers panel */}
@@ -1324,7 +1317,7 @@ export default function Settings() {
                           </h3>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
                               {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
                                 <button
                                   key={r}
@@ -1338,6 +1331,7 @@ export default function Settings() {
                                   {r === 'all' ? 'All Time' : r === 'custom' ? 'Custom' : r}
                                 </button>
                               ))}
+                              {providerUsageLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-interactive" />}
                             </div>
 
                             {providerRange === 'custom' && (
@@ -1368,13 +1362,13 @@ export default function Settings() {
                           <div className="border border-support-error/30 bg-support-error/10 px-4 py-3 text-sm text-support-error">
                             {providerUsageError}
                           </div>
-                        ) : providerUsageData ? (
-                          <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        ) : (
+                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                             <div className="h-64 w-full">
                               <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                   <Pie
-                                    data={providerUsageData.providers || []}
+                                    data={(providerUsageData?.providers || []).map((p, i) => ({ ...p, fill: CHART_COLORS[i % CHART_COLORS.length] }))}
                                     dataKey="tokens"
                                     nameKey="provider_name"
                                     cx="50%"
@@ -1383,7 +1377,7 @@ export default function Settings() {
                                     outerRadius={80}
                                     paddingAngle={2}
                                   >
-                                    {(providerUsageData.providers || []).map((_, i) => (
+                                    {(providerUsageData?.providers || []).map((_, i) => (
                                       <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                                     ))}
                                   </Pie>
@@ -1397,40 +1391,38 @@ export default function Settings() {
                                   <Legend wrapperStyle={{ fontSize: 11 }} />
                                 </PieChart>
                               </ResponsiveContainer>
+                              {providerUsageLoading && !providerUsageData && (
+                                <div className="flex h-0 -translate-y-32 items-center justify-center">
+                                  <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                                </div>
+                              )}
                             </div>
 
                             <div className="space-y-2">
-                              {(providerUsageData.providers || []).map((p, i) => (
-                                <div
-                                  key={p.provider_id}
-                                  className="flex items-center justify-between border border-border-subtle bg-layer px-3 py-2"
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div
-                                      className="h-3 w-3 shrink-0 rounded-full"
-                                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                                    />
-                                    <span className="truncate text-sm text-text-primary">{p.provider_name}</span>
+                              {(providerUsageData?.providers || []).length === 0 ? (
+                                <div className="flex h-64 items-center justify-center text-sm text-text-helper">No provider data for the selected range</div>
+                              ) : (
+                                (providerUsageData?.providers || []).map((p, i) => (
+                                  <div
+                                    key={p.provider_id}
+                                    className="flex items-center justify-between border border-border-subtle bg-layer px-3 py-2"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div
+                                        className="h-3 w-3 shrink-0 rounded-full"
+                                        style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                                      />
+                                      <span className="truncate text-sm text-text-primary">{p.provider_name}</span>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-sm font-medium text-text-primary">{p.tokens.toLocaleString()} tokens</p>
+                                      <p className="text-[10px] text-text-helper">{p.messages.toLocaleString()} messages</p>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="text-sm font-medium text-text-primary">{p.tokens.toLocaleString()} tokens</p>
-                                    <p className="text-[10px] text-text-helper">{p.messages.toLocaleString()} messages</p>
-                                  </div>
-                                </div>
-                              ))}
+                                ))
+                              )}
                             </div>
-                            {providerUsageLoading && (
-                              <div className="absolute inset-0 z-10 col-span-full flex items-center justify-center bg-background/60">
-                                <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                              </div>
-                            )}
                           </div>
-                        ) : providerUsageLoading ? (
-                          <div className="flex h-64 items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                          </div>
-                        ) : (
-                          <div className="flex h-64 items-center justify-center text-sm text-text-helper">No provider data for the selected range</div>
                         )}
                       </div>
                     </div>
