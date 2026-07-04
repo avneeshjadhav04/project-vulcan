@@ -309,21 +309,6 @@ export default function Settings() {
     return Math.round(usage.daily.reduce((sum, d) => sum + d.messages, 0) / usage.daily.length)
   }
 
-  const usageTimeLabel = (): string => {
-    if (usageTimeRange === '1D') return '1D'
-    if (usageTimeRange === '7D') return '7D'
-    if (usageTimeRange === '30D') return '30D'
-    if (usageTimeRange === 'all') return 'All Time'
-    if (usageTimeRange === 'custom' && usageTimeFrom && usageTimeTo) {
-      const fmt = (d: string) => {
-        const [y, m, day] = d.split('-')
-        return `${day}-${m}-${y}`
-      }
-      return `${fmt(usageTimeFrom)} to ${fmt(usageTimeTo)}`
-    }
-    return 'Custom'
-  }
-
   const loadProviders = async () => {
     setProvidersLoading(true)
     try {
@@ -1280,10 +1265,8 @@ export default function Settings() {
                           </div>
                         </div>
 
-                        {usage.daily.length === 0 ? (
-                          <div className="py-8 text-center text-sm text-text-helper">No usage data for the selected range</div>
-                        ) : (
-                          <div className="h-72 w-full">
+                        {usage ? (
+                          <div className="relative h-72 w-full">
                             <ResponsiveContainer width="100%" height="100%">
                               <ComposedChart data={usage.daily} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
@@ -1291,13 +1274,6 @@ export default function Settings() {
                                   dataKey="date"
                                   tick={false}
                                   axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                                  label={{
-                                    value: usageTimeLabel(),
-                                    position: 'insideBottom',
-                                    offset: -10,
-                                    fill: 'var(--color-text-helper, #6b7280)',
-                                    fontSize: 11,
-                                  }}
                                 />
                                 <YAxis
                                   yAxisId="left"
@@ -1324,7 +1300,18 @@ export default function Settings() {
                                 <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
                               </ComposedChart>
                             </ResponsiveContainer>
+                            {usageLoading && (
+                              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+                                <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                              </div>
+                            )}
                           </div>
+                        ) : usageLoading ? (
+                          <div className="flex h-72 items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                          </div>
+                        ) : (
+                          <div className="flex h-72 items-center justify-center text-sm text-text-helper">No usage data for the selected range</div>
                         )}
                       </div>
 
@@ -1381,19 +1368,13 @@ export default function Settings() {
                           <div className="border border-support-error/30 bg-support-error/10 px-4 py-3 text-sm text-support-error">
                             {providerUsageError}
                           </div>
-                        ) : providerUsageLoading ? (
-                          <div className="flex items-center justify-center py-6">
-                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-                          </div>
-                        ) : providerUsageData?.providers.length === 0 ? (
-                          <div className="py-8 text-center text-sm text-text-helper">No provider data for the selected range</div>
-                        ) : (
-                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        ) : providerUsageData ? (
+                          <div className="relative grid grid-cols-1 gap-4 lg:grid-cols-2">
                             <div className="h-64 w-full">
                               <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                   <Pie
-                                    data={providerUsageData?.providers || []}
+                                    data={providerUsageData.providers || []}
                                     dataKey="tokens"
                                     nameKey="provider_name"
                                     cx="50%"
@@ -1402,7 +1383,7 @@ export default function Settings() {
                                     outerRadius={80}
                                     paddingAngle={2}
                                   >
-                                    {(providerUsageData?.providers || []).map((_, i) => (
+                                    {(providerUsageData.providers || []).map((_, i) => (
                                       <Cell key={`cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                                     ))}
                                   </Pie>
@@ -1419,7 +1400,7 @@ export default function Settings() {
                             </div>
 
                             <div className="space-y-2">
-                              {(providerUsageData?.providers || []).map((p, i) => (
+                              {(providerUsageData.providers || []).map((p, i) => (
                                 <div
                                   key={p.provider_id}
                                   className="flex items-center justify-between border border-border-subtle bg-layer px-3 py-2"
@@ -1438,7 +1419,18 @@ export default function Settings() {
                                 </div>
                               ))}
                             </div>
+                            {providerUsageLoading && (
+                              <div className="absolute inset-0 z-10 col-span-full flex items-center justify-center bg-background/60">
+                                <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                              </div>
+                            )}
                           </div>
+                        ) : providerUsageLoading ? (
+                          <div className="flex h-64 items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
+                          </div>
+                        ) : (
+                          <div className="flex h-64 items-center justify-center text-sm text-text-helper">No provider data for the selected range</div>
                         )}
                       </div>
                     </div>
