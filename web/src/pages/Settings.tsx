@@ -1285,12 +1285,11 @@ export default function Settings() {
                         ) : (
                           <div className="h-72 w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={usage.daily} barSize={28} barGap={12} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                              <ComposedChart data={usage.daily} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
                                 <XAxis
                                   dataKey="date"
-                                  tickFormatter={(v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                                  tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+                                  tick={false}
                                   axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
                                   label={{
                                     value: usageTimeLabel(),
