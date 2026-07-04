@@ -309,6 +309,21 @@ export default function Settings() {
     return Math.round(usage.daily.reduce((sum, d) => sum + d.messages, 0) / usage.daily.length)
   }
 
+  const usageTimeLabel = (): string => {
+    if (usageTimeRange === '1D') return '1D'
+    if (usageTimeRange === '7D') return '7D'
+    if (usageTimeRange === '30D') return '30D'
+    if (usageTimeRange === 'all') return 'All Time'
+    if (usageTimeRange === 'custom' && usageTimeFrom && usageTimeTo) {
+      const fmt = (d: string) => {
+        const [y, m, day] = d.split('-')
+        return `${day}-${m}-${y}`
+      }
+      return `${fmt(usageTimeFrom)} to ${fmt(usageTimeTo)}`
+    }
+    return 'Custom'
+  }
+
   const loadProviders = async () => {
     setProvidersLoading(true)
     try {
@@ -1270,13 +1285,20 @@ export default function Settings() {
                         ) : (
                           <div className="h-72 w-full">
                             <ResponsiveContainer width="100%" height="100%">
-                              <ComposedChart data={usage.daily} barSize={18} barGap={6} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                              <ComposedChart data={usage.daily} barSize={28} barGap={12} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
                                 <XAxis
                                   dataKey="date"
                                   tickFormatter={(v) => new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                   tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
                                   axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+                                  label={{
+                                    value: usageTimeLabel(),
+                                    position: 'insideBottom',
+                                    offset: -10,
+                                    fill: 'var(--color-text-helper, #6b7280)',
+                                    fontSize: 11,
+                                  }}
                                 />
                                 <YAxis
                                   yAxisId="left"
