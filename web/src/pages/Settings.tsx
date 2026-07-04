@@ -1082,6 +1082,7 @@ export default function Settings() {
                   </div>
 
                   <div className="space-y-5">
+                    <UsageTotalsPanel />
                     <UsageMessagesPanel />
                     <UsageProvidersPanel />
                   </div>
@@ -1398,6 +1399,59 @@ const rangeParams = (range: '1D' | '7D' | '30D' | 'all' | 'custom', from: string
   return {}
 }
 
+function UsageTotalsPanel() {
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const loadUsage = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.get('/usage')
+      setUsage(res.data || null)
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load usage totals')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadUsage()
+  }, [])
+
+  const dailyAverage = (): number => {
+    if (!usage?.daily || usage.daily.length === 0) return 0
+    return Math.round(usage.daily.reduce((sum, d) => sum + d.messages, 0) / usage.daily.length)
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <UsageSummaryCard
+        icon={<MessageSquare className="h-4 w-4 text-interactive" />}
+        label="Total Messages"
+        value={loading ? '—' : (usage?.totals.messages.toLocaleString() || '0')}
+      />
+      <UsageSummaryCard
+        icon={<Hash className="h-4 w-4 text-support-success" />}
+        label="Total Tokens"
+        value={loading ? '—' : (usage?.totals.tokens.toLocaleString() || '0')}
+      />
+      <UsageSummaryCard
+        icon={<TrendingUp className="h-4 w-4 text-support-warning" />}
+        label="Daily Average"
+        value={loading ? '—' : dailyAverage()}
+      />
+      {error && (
+        <div className="col-span-full border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+          {error}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function UsageMessagesPanel() {
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [usageLoading, setUsageLoading] = useState(false)
@@ -1439,130 +1493,105 @@ function UsageMessagesPanel() {
     loadUsage()
   }, [usageTimeRange, usageTimeFrom, usageTimeTo])
 
-  const dailyAverage = (): number => {
-    if (!usage?.daily || usage.daily.length === 0) return 0
-    return Math.round(usage.daily.reduce((sum, d) => sum + d.messages, 0) / usage.daily.length)
-  }
-
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <UsageSummaryCard
-          icon={<MessageSquare className="h-4 w-4 text-interactive" />}
-          label="Total Messages"
-          value={usage?.totals.messages.toLocaleString() || '0'}
-        />
-        <UsageSummaryCard
-          icon={<Hash className="h-4 w-4 text-support-success" />}
-          label="Total Tokens"
-          value={usage?.totals.tokens.toLocaleString() || '0'}
-        />
-        <UsageSummaryCard
-          icon={<TrendingUp className="h-4 w-4 text-support-warning" />}
-          label="Daily Average"
-          value={dailyAverage()}
-        />
+    <div className="border border-border-subtle bg-background p-4">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
+          <Clock className="h-4 w-4" />
+          Messages & Tokens
+        </h3>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1">
+            {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setUsageTimeRange(r)}
+                className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
+                  usageTimeRange === r
+                    ? 'bg-interactive text-on-interactive'
+                    : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
+                }`}
+              >
+                {r === 'all' ? 'All Time' : r === 'custom' ? 'Custom' : r}
+              </button>
+            ))}
+          </div>
+
+          {usageTimeRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={usageTimeFrom}
+                max={today}
+                onChange={(e) => handleUsageTimeFrom(e.target.value)}
+                style={{ colorScheme: dateInputTheme }}
+                className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
+              />
+              <span className="text-xs text-text-helper">to</span>
+              <input
+                type="date"
+                value={usageTimeTo}
+                max={today}
+                onChange={(e) => handleUsageTimeTo(e.target.value)}
+                style={{ colorScheme: dateInputTheme }}
+                className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="border border-border-subtle bg-background p-4">
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-helper">
-            <Clock className="h-4 w-4" />
-            Messages & Tokens
-          </h3>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-1">
-              {(['1D', '7D', '30D', 'all', 'custom'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setUsageTimeRange(r)}
-                  className={`px-3 py-1 text-[11px] font-medium uppercase transition-colors ${
-                    usageTimeRange === r
-                      ? 'bg-interactive text-on-interactive'
-                      : 'text-text-secondary hover:bg-layer-hover hover:text-text-primary'
-                  }`}
-                >
-                  {r === 'all' ? 'All Time' : r === 'custom' ? 'Custom' : r}
-                </button>
-              ))}
-            </div>
-
-            {usageTimeRange === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={usageTimeFrom}
-                  max={today}
-                  onChange={(e) => handleUsageTimeFrom(e.target.value)}
-                  style={{ colorScheme: dateInputTheme }}
-                  className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
-                />
-                <span className="text-xs text-text-helper">to</span>
-                <input
-                  type="date"
-                  value={usageTimeTo}
-                  max={today}
-                  onChange={(e) => handleUsageTimeTo(e.target.value)}
-                  style={{ colorScheme: dateInputTheme }}
-                  className="border border-border-subtle bg-background px-2 py-1 text-xs text-text-primary outline-none focus:border-focus"
-                />
-              </div>
-            )}
-          </div>
+      {usageError && (
+        <div className="mb-3 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
+          {usageError}
         </div>
+      )}
 
-        {usageError && (
-          <div className="mb-3 border border-support-error/30 bg-support-error/10 px-3 py-2 text-xs text-support-error">
-            {usageError}
+      <div className="relative h-72 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={usage?.daily || []} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
+            <XAxis
+              dataKey="date"
+              tick={false}
+              axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+            />
+            <YAxis
+              yAxisId="left"
+              tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+              axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+              label={{ value: 'Messages', angle: -90, position: 'insideLeft', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+              axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
+              label={{ value: 'Tokens', angle: 90, position: 'insideRight', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'var(--color-layer, #ffffff)',
+                border: '1px solid var(--color-border-subtle, #e5e7eb)',
+              }}
+              labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+            <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
+          </ComposedChart>
+        </ResponsiveContainer>
+        {usageLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
+            <Loader2 className="h-5 w-5 animate-spin text-interactive" />
           </div>
         )}
-
-        <div className="relative h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={usage?.daily || []} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
-              <XAxis
-                dataKey="date"
-                tick={false}
-                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-              />
-              <YAxis
-                yAxisId="left"
-                tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                label={{ value: 'Messages', angle: -90, position: 'insideLeft', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-                axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
-                label={{ value: 'Tokens', angle: 90, position: 'insideRight', fill: 'var(--color-text-helper, #6b7280)', fontSize: 11 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--color-layer, #ffffff)',
-                  border: '1px solid var(--color-border-subtle, #e5e7eb)',
-                }}
-                labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="right" dataKey="tokens" name="Tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
-            </ComposedChart>
-          </ResponsiveContainer>
-          {usageLoading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40">
-              <Loader2 className="h-5 w-5 animate-spin text-interactive" />
-            </div>
-          )}
-          {!usageLoading && !usage && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-sm text-text-helper">
-              No usage data for the selected range
-            </div>
-          )}
-        </div>
+        {!usageLoading && !usage && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 text-sm text-text-helper">
+            No usage data for the selected range
+          </div>
+        )}
       </div>
     </div>
   )
