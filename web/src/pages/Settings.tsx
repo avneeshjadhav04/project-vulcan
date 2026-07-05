@@ -1493,6 +1493,10 @@ function UsageMessagesPanel() {
     loadUsage()
   }, [usageTimeRange, usageTimeFrom, usageTimeTo])
 
+  const chartData = usage
+    ? [{ name: 'Selected Range', messages: usage.totals.messages, tokens: usage.totals.tokens }]
+    : []
+
   return (
     <div className="border border-border-subtle bg-background p-4">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1550,10 +1554,10 @@ function UsageMessagesPanel() {
 
       <div className="relative h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={usage?.daily || []} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+          <ComposedChart data={chartData} barSize={84} barGap={60} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #e5e7eb)" />
             <XAxis
-              dataKey="date"
+              dataKey="name"
               tick={false}
               axisLine={{ stroke: 'var(--color-border-subtle, #e5e7eb)' }}
             />
@@ -1575,7 +1579,7 @@ function UsageMessagesPanel() {
                 backgroundColor: 'var(--color-layer, #ffffff)',
                 border: '1px solid var(--color-border-subtle, #e5e7eb)',
               }}
-              labelFormatter={(v) => new Date(v as string).toLocaleDateString()}
+              labelFormatter={() => 'Selected Range'}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar yAxisId="left" dataKey="messages" name="Messages" fill="#3b82f6" radius={[4, 4, 0, 0]} />
