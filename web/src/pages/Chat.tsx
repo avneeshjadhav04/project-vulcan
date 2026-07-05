@@ -337,16 +337,16 @@ export default function Chat() {
 
               <div className="space-y-px">
                 <SidebarButton
-                  icon={<TerminalIcon className="h-4 w-4" />}
-                  label={showTerminal ? 'Hide Terminal' : 'Open Terminal'}
-                  onClick={() => setShowTerminal(!showTerminal)}
-                  active={showTerminal}
-                />
-                <SidebarButton
                   icon={<FolderIcon className="h-4 w-4" />}
                   label={showWorkspace ? 'Hide Workspace' : 'Workspace Files'}
                   onClick={() => setShowWorkspace(!showWorkspace)}
                   active={showWorkspace}
+                />
+                <SidebarButton
+                  icon={<TerminalIcon className="h-4 w-4" />}
+                  label={showTerminal ? 'Hide Terminal' : 'Open Terminal'}
+                  onClick={() => setShowTerminal(!showTerminal)}
+                  active={showTerminal}
                 />
                 <SidebarButton
                   icon={<Settings className="h-4 w-4" />}
