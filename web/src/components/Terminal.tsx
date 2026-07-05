@@ -384,7 +384,7 @@ export default function Terminal({
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border-subtle bg-layer/50 px-2 py-1">
+      <div className="flex items-center border-b border-border-subtle bg-layer/50 px-2 py-1">
         <div
           className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden py-0.5"
           onWheel={(e) => {
@@ -426,14 +426,14 @@ export default function Terminal({
               )}
             </div>
           ))}
+          <button
+            onClick={addTab}
+            className="sticky right-0 z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-layer/95 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+            title="New tab"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          onClick={addTab}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
-          title="New tab"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       {/* Terminal Areas */}
