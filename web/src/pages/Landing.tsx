@@ -192,14 +192,10 @@ function HeroTerminal() {
   const lines: BootLine[] = [
     { text: '$ vulcan --start', color: 'text-text-disabled', speed: 28 },
     { text: '[ OK ] Loading configuration...', color: 'text-text-secondary', speed: 22 },
-    { text: '[ OK ] Initializing SQLite database', color: 'text-text-secondary', speed: 22 },
     { text: '[ OK ] Connected to AI providers', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] Sandboxed terminal initialized', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] AES-256-GCM encryption active', color: 'text-support-success', speed: 24 },
     { text: 'Loading available models...', color: 'text-interactive', speed: 30 },
-    { text: '  nvidia/llama-3.1-8b-instruct      ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  openai/gpt-4o-mini                ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  groq/llama-3.3-70b-versatile      ready', color: 'text-text-secondary', speed: 18 },
     { text: '', color: 'text-text-secondary', speed: 10 },
     { text: 'Project Vulcan is ready.', color: 'text-support-success', speed: 26 },
   ]
@@ -216,7 +212,7 @@ function HeroTerminal() {
 
   return (
     <TerminalWindow title="vulcan — bash">
-      <div className="h-[240px] overflow-y-auto p-5 font-mono text-left text-[13px] leading-relaxed">
+      <div className="h-[210px] overflow-y-auto p-5 font-mono text-left text-[13px] leading-relaxed">
         {lines.slice(0, visibleCount + 1).map((line, i) => (
           <div key={i} className={`mb-0.5 ${line.color}`}>
             {i === visibleCount ? (
@@ -259,15 +255,15 @@ function Hero() {
         >
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-layer/50 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-layer-hover">
             <Sparkles className="h-3.5 w-3.5 text-interactive" />
-            <span className="text-interactive">Multi-Provider AI Platform</span>
+            <span className="text-interactive">Multiple Providers Supported</span>
           </div>
 
           <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
             Your Personal{' '}
-            <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Assistant</span>
+            <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Platform</span>
           </h1>
 
-          <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-text-secondary">
+          <p className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-text-secondary">
             A secure, self-hosted AI platform. Chat with the latest models from
             NVIDIA NIM, OpenAI, Groq, and more. Execute terminal commands safely,
             generate full codebases, and instantly preview web apps in a built-in interactive workspace.
@@ -497,8 +493,8 @@ function TerminalDemo() {
                 {[
                   'Filesystem isolation via proot',
                   'Ubuntu 24.04 LTS base environment',
-                  '60-second timeout per command',
-                  '4 concurrent command limit',
+                  'Interactive terminal sessions',
+                  'Secure by default',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-text-secondary">
                     <div className="flex h-5 w-5 shrink-0 items-center justify-center border border-border-subtle bg-layer">
@@ -662,7 +658,7 @@ function Footer() {
             View on GitHub
           </a>
           <p className="text-xs text-text-disabled">
-            Built with Rust, React, and multi-provider AI.
+            Built with Rust and React.
           </p>
         </div>
       </div>
