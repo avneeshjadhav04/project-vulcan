@@ -264,7 +264,7 @@ function Hero() {
 
           <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
             Your Personal{' '}
-            <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Assistant</span>
+            <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Platform</span>
           </h1>
 
           <p className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-text-secondary">
