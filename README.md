@@ -9,11 +9,11 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 - **AI Chat**: Real-time streaming responses with Markdown rendering, Shiki syntax highlighting, message editing, regeneration, reactions, and file attachments
 - **Multi-Provider Models**: Bring your own keys for NVIDIA NIM, OpenAI, Groq, Anthropic, Ollama, OpenRouter, Together AI, or any OpenAI-compatible provider
-- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad, and Google Calendar/Gmail/Todoist integrations — with per-tool permissions (auto/ask/deny)
+- **AI Agent & Tools**: Sandboxed terminal, file create/read/modify, Python execution, web search/fetch, scratchpad — with per-tool permissions (auto/ask/deny) plus user-configured MCP servers
 - **Memory & Context**: Conversation summarization, opt-in cross-chat memory, and a persistent scratchpad the AI can read and update
 - **Workspace & Files**: User workspace file tree with upload/download, AI-generated artifact previews, and chat export to Markdown or JSON
 - **Sandboxed Terminal**: WebSocket terminal running commands inside an isolated Ubuntu/proot environment
-- **Integrations**: OAuth connections to Google (Calendar + Gmail) and Todoist
+- **Integrations**: User-configured MCP servers (stdio and SSE) expose external tools to the AI; secrets encrypted at rest
 - **Organization**: Pin, archive, folder, and tag chats; command palette; global chat search; and a usage dashboard
 - **Voice Input**: Browser microphone transcription via Vosk
 - **Accessible & Themed**: Dark/light/system theme, resizable panels, keyboard shortcuts (`Ctrl + `` for terminal), ARIA labels, and focus rings
@@ -39,28 +39,6 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 | `DISABLE_TOOLS` | No | - | Set to `1` to disable AI tool execution |
 
 > **Security Warning:** Never share or commit your `MASTER_KEY`. It is used to encrypt all stored API keys and credentials.
-
-## Development
-
-### Option A: Docker Compose (from source)
-
-```bash
-git clone https://github.com/avneeshjadhav04/project-vulcan.git
-cd project-vulcan
-cp .env.example .env
-# Edit .env with a secure MASTER_KEY
-docker compose -f docker-compose.dev.yml up --build
-```
-
-### Option B: Without Docker
-
-```bash
-# Terminal 1: API
-cd api && cargo run
-
-# Terminal 2: Frontend
-cd web && npm install && npm run dev
-```
 
 ## Security
 

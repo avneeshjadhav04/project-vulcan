@@ -33,12 +33,16 @@ RUN if [ "$TARGETARCH" = "amd64" ] || [ -z "$TARGETARCH" ]; then \
     fi
 
 # Ensure linker can find libvosk during compilation
-ENV LIBRARY_PATH=/usr/local/lib:$LIBRARY_PATH
+ENV LIBRARY_PATH=/usr/local/lib
 
 WORKDIR /app/api
 COPY api/Cargo.toml api/Cargo.lock ./
 COPY api/src ./src
 COPY db/migrations /app/db/migrations
+# Retry crate downloads up to 5 times and allow 120s per request so transient
+# crates.io edge timeouts (Varnish cache 503s) don't fail the build.
+ENV CARGO_NET_RETRY=5
+ENV CARGO_HTTP_TIMEOUT=120
 RUN cargo build --release
 
 # Stage 3: Build proot v5.4.0 from source
@@ -55,15 +59,27 @@ RUN LDFLAGS="-static" make -C src proot GIT=false
 
 # Stage 4: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22 LTS (NodeSource) so MCP stdio servers spawned by the API
+# host (e.g. `npx -y @modelcontextprotocol/server-*`) can run. Version matches
+# the web-builder stage for parity.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install proot v5.4.0 (built from source in proot-builder stage)
 COPY --from=proot-builder /proot-src/src/proot /usr/local/bin/proot
 
 WORKDIR /app
 
-# Create data directory with open permissions for SQLite
+# Create data directory with open permissions for SQLite and npm cache
 RUN mkdir -p /data && chmod 777 /data
+
+# Persist the npm/npx cache alongside the SQLite DB on the /data volume so
+# `npx -y <pkg>` downloads survive container restarts on any deployment.
+ENV npm_config_cache=/data/.npm
+RUN mkdir -p /data/.npm && chmod 777 /data/.npm
 
 # Create workspace directory for sandbox bind-mount
 RUN mkdir -p /app/workspace && chmod 755 /app/workspace
@@ -104,9 +120,34 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         nodejs npm \
         git curl wget ca-certificates \
         build-essential gcc g++ make \
+        sudo \
         libffi-dev libssl-dev python3-dev zlib1g-dev \
         file unzip xz-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
+
+# Vulcan shell prompt.
+# The API spawns bash with --norc -i so no rootfs rc files are sourced; the
+# prompt and OSC cwd reporting are driven entirely by PS1/PROMPT_COMMAND
+# environment variables set by the Rust code. This avoids fighting Ubuntu's
+# default rc files and any BuildKit/heredoc compatibility issues.
+
+# Create a real 'vulcan' user in the rootfs. The sandbox shell will run as this
+# user instead of root so the prompt prefix reflects the actual identity, and it
+# still has passwordless sudo for operations that need elevated privileges.
+RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bash -c '\
+    useradd -m -s /bin/bash -G sudo vulcan && \
+    echo "vulcan ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vulcan && \
+    chmod 0440 /etc/sudoers.d/vulcan'
+
+# Install a minimal Vulcan shell configuration for the vulcan user. The API spawns
+# bash with --rcfile pointing at this file, so it runs instead of any default
+# Ubuntu bashrc. This sets the prompt, OSC cwd reporting, and basic readline
+# behavior without fighting login-shell environment resets from /bin/su.
+COPY scripts/vulcan_bashrc /tmp/vulcan_bashrc
+RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bash -c '\
+    cp /tmp/vulcan_bashrc /home/vulcan/.vulcan_bashrc && \
+    chown vulcan:vulcan /home/vulcan/.vulcan_bashrc && \
+    chmod 644 /home/vulcan/.vulcan_bashrc'
 
 # Download Vosk model (40MB small English model)
 RUN mkdir -p /models/vosk \

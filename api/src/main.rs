@@ -16,16 +16,15 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod auth;
 pub mod config;
 pub mod db;
-pub mod integrations;
 pub mod middleware;
+pub mod mcp;
 pub mod models;
-pub mod oauth;
 pub mod providers;
 pub mod routes;
 pub mod sandbox_engine;
 pub mod tools;
 
-use middleware::{auth_middleware, csrf_middleware, AppState};
+use middleware::{auth_middleware, csrf_middleware, require_admin_middleware, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -100,11 +99,12 @@ async fn run() -> anyhow::Result<()> {
 
     let state = AppState {
         config: config.clone(),
-        db: db_pool,
-        http_client,
+        db: db_pool.clone(),
+        http_client: http_client.clone(),
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
         vosk_model,
+        mcp_manager: mcp::McpManager::new(http_client.clone(), config.master_key),
     };
     let bg_state = state.clone();
 
@@ -158,20 +158,21 @@ async fn run() -> anyhow::Result<()> {
         .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
-            routes::templates::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::integrations::router()
-                .layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
             routes::automations::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::mcp::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .merge(
-            routes::transcribe::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
+            routes::admin::router()
+                .layer(from_fn_with_state(state.clone(), require_admin_middleware))
+                .layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
         .layer(DefaultBodyLimit::max(55 * 1024 * 1024)) // 55MB body limit for file uploads
         .layer(from_fn(csrf_middleware))
@@ -182,10 +183,11 @@ async fn run() -> anyhow::Result<()> {
     // Serve static files if dist/ exists (production mode)
     let app = if std::path::Path::new("./dist").exists() {
         println!("[INIT] Serving static frontend from ./dist");
-        Router::new().nest("/api", api_routes).nest_service(
-            "/",
-            ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
-        )
+        Router::new()
+            .nest("/api", api_routes)
+            .fallback_service(
+                ServeDir::new("./dist").fallback(ServeFile::new("./dist/index.html")),
+            )
     } else {
         println!("[INIT] Running in API-only mode (no dist/ found)");
         api_routes

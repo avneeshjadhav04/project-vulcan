@@ -11,17 +11,17 @@ use crate::{middleware::AppState, models::Claims};
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/chats/:chat_id/files", post(upload_file).get(list_files))
+        .route("/chats/{chat_id}/files", post(upload_file).get(list_files))
         .route(
-            "/chats/:chat_id/files/:file_id",
+            "/chats/{chat_id}/files/{file_id}",
             delete(delete_file).get(download_file),
         )
         .route(
-            "/chats/:chat_id/workspace",
+            "/chats/{chat_id}/workspace",
             get(list_workspace_files),
         )
         .route(
-            "/chats/:chat_id/workspace/*filename",
+            "/chats/{chat_id}/workspace/{*filename}",
             get(download_workspace_file),
         )
         .route("/workspace", get(list_user_workspace))
@@ -29,7 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/workspace/file", post(create_file))
         .route("/workspace/upload", post(upload_workspace_files))
         .route(
-            "/workspace/*filename",
+            "/workspace/{*filename}",
             get(download_user_workspace)
                 .put(save_user_workspace)
                 .delete(delete_user_workspace)

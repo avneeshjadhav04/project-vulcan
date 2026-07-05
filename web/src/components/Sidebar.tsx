@@ -176,7 +176,8 @@ export default function Sidebar({
 
   const parseTags = (tagsJson: string): string[] => {
     try {
-      return JSON.parse(tagsJson)
+      const parsed = JSON.parse(tagsJson)
+      return Array.isArray(parsed) ? parsed : []
     } catch {
       return []
     }

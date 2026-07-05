@@ -164,20 +164,12 @@ function Nav() {
               Go to Chat
             </button>
           ) : (
-            <>
-              <button
-                onClick={() => navigate('/login')}
-                className="px-3 py-2 text-sm text-text-secondary transition-colors hover:text-text-primary"
-              >
-                Sign in
-              </button>
-              <button
-                onClick={() => navigate('/login?signup=1')}
-                className="ml-2 carbon-btn-primary"
-              >
-                Get Started
-              </button>
-            </>
+            <button
+              onClick={() => navigate('/login?signup=1')}
+              className="ml-2 carbon-btn-primary"
+            >
+              Get Started
+            </button>
           )}
         </div>
       </div>

@@ -42,8 +42,7 @@ async fn handle_stream(mut socket: WebSocket, state: AppState) {
         Some(m) => m,
         None => {
             let msg = serde_json::json!({"type": "error", "error": "Vosk model not loaded" }).to_string();
-            let _ = socket.send(Message::Text(msg)).await;
-            let _ = socket.close().await;
+            let _ = socket.send(Message::text(msg)).await;
             return;
         }
     };
@@ -143,7 +142,7 @@ async fn handle_stream(mut socket: WebSocket, state: AppState) {
                 match result {
                     Some(StreamResult::Partial(text)) => {
                         let msg = serde_json::json!({"type": "partial", "text": text}).to_string();
-                        if socket.send(Message::Text(msg)).await.is_err() {
+                        if socket.send(Message::text(msg)).await.is_err() {
                             running = false;
                         }
                     }
@@ -153,12 +152,12 @@ async fn handle_stream(mut socket: WebSocket, state: AppState) {
                             "text": text,
                             "confidence": confidence
                         }).to_string();
-                        let _ = socket.send(Message::Text(msg)).await;
+                        let _ = socket.send(Message::text(msg)).await;
                         running = false;
                     }
                     Some(StreamResult::Error(error)) => {
                         let msg = serde_json::json!({"type": "error", "error": error}).to_string();
-                        let _ = socket.send(Message::Text(msg)).await;
+                        let _ = socket.send(Message::text(msg)).await;
                         running = false;
                     }
                     None => {
@@ -173,7 +172,6 @@ async fn handle_stream(mut socket: WebSocket, state: AppState) {
     // Make sure audio channel is dropped so Vosk thread exits
     drop(audio_tx);
     let _ = vosk_handle.await;
-    let _ = socket.close().await;
 }
 
 async fn transcribe_audio(

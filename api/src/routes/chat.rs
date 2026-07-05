@@ -64,9 +64,9 @@ const MAX_TITLE_LENGTH: usize = 255;
 const MEMORY_SUMMARIZE_THRESHOLD: usize = 20; // Summarize when >20 messages
 const MEMORY_RECENT_WINDOW: usize = 6; // Always keep last 6 messages
 
-/// Build the tools definition array for LLM requests, filtered by connected integrations.
-fn build_tools_def(has_google: bool, has_todoist: bool) -> Vec<serde_json::Value> {
-    let mut tools = vec![
+/// Build the tools definition array for LLM requests.
+fn build_tools_def() -> Vec<serde_json::Value> {
+    vec![
         json!({
             "type": "function",
             "function": {
@@ -215,170 +215,136 @@ fn build_tools_def(has_google: bool, has_todoist: bool) -> Vec<serde_json::Value
                 }
             }
         }),
-    ];
-    
-    if has_google {
-        tools.push(json!({
+    ]
+}
+
+/// Build the MCP tools definition array for LLM requests by reading discovered
+/// tools from `mcp_tools`. Only tools whose MCP server is currently connected
+/// are included.
+async fn build_mcp_tools_def(
+    state: &AppState,
+    db: &sqlx::SqlitePool,
+    user_id: &str,
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let rows: Vec<(String, String, String, String, String)> = sqlx::query_as(
+        r#"
+        SELECT mt.id, mt.server_id, mt.tool_name, mt.namespaced_name, mt.schema
+        FROM mcp_tools mt
+        JOIN mcp_servers ms ON ms.id = mt.server_id
+        WHERE mt.user_id = ?1 AND ms.enabled = 1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut defs = Vec::with_capacity(rows.len());
+    for (_id, server_id, original_name, namespaced_name, schema_str) in rows {
+        // Skip tools whose server is not currently connected; advertising
+        // disconnected tools leads to "Unknown tool" errors.
+        if !state.mcp_manager.is_connected(user_id, &server_id).await {
+            continue;
+        }
+
+        let schema: serde_json::Value = match serde_json::from_str(&schema_str) {
+            Ok(v) => v,
+            Err(_) => serde_json::json!({}),
+        };
+
+        // Normalize schema into OpenAI function parameters shape.
+        let parameters = if schema.get("type").is_some() {
+            schema
+        } else {
+            serde_json::json!({
+                "type": "object",
+                "properties": schema.get("properties").cloned().unwrap_or_else(|| serde_json::json!({})),
+                "required": schema.get("required").cloned().unwrap_or_else(|| serde_json::json!([]))
+            })
+        };
+
+        // Explicitly tell the LLM to use the exact namespaced name. Some models
+        // ignore the function name field and use the original tool name from
+        // the description or from a previous turn.
+        defs.push(serde_json::json!({
             "type": "function",
             "function": {
-                "name": "calendar_list_events",
-                "description": "List upcoming calendar events. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "time_min": {"type": "string", "description": "Start time in ISO 8601 (default: now)"},
-                        "time_max": {"type": "string", "description": "End time in ISO 8601 (default: 7 days from now)"},
-                        "max_results": {"type": "integer", "description": "Max events to return (default: 10)"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_create_event",
-                "description": "Create a new calendar event. Requires Google Calendar connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string", "description": "Event title/summary"},
-                        "start_time": {"type": "string", "description": "Start time in ISO 8601 format"},
-                        "end_time": {"type": "string", "description": "End time in ISO 8601 format"},
-                        "description": {"type": "string", "description": "Event description"},
-                        "location": {"type": "string", "description": "Event location"},
-                        "timezone": {"type": "string", "description": "Timezone (default: UTC)"}
-                    },
-                    "required": ["summary", "start_time", "end_time"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "calendar_delete_event",
-                "description": "Delete a calendar event by ID. Requires Google Calendar connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "event_id": {"type": "string", "description": "ID of the event to delete"}
-                    },
-                    "required": ["event_id"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_send",
-                "description": "Send an email. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "to": {"type": "string", "description": "Recipient email address"},
-                        "subject": {"type": "string", "description": "Email subject"},
-                        "body": {"type": "string", "description": "Email body text"}
-                    },
-                    "required": ["to", "subject", "body"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_list",
-                "description": "List recent emails from inbox. Requires Gmail connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "max_results": {"type": "integer", "description": "Max emails to return (default: 5)"},
-                        "query": {"type": "string", "description": "Search query for emails"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "email_read",
-                "description": "Read a specific email by ID. Requires Gmail connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "email_id": {"type": "string", "description": "ID of the email to read"}
-                    },
-                    "required": ["email_id"]
-                }
+                "name": namespaced_name,
+                "description": format!(
+                    "MCP tool '{}'. You MUST call this tool using the exact name '{}'.",
+                    original_name, namespaced_name
+                ),
+                "parameters": parameters
             }
         }));
     }
-    
-    if has_todoist {
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_list",
-                "description": "List tasks from Todoist. Requires Todoist connected in Settings.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "filter": {"type": "string", "description": "Filter query (e.g., 'today', 'overdue', 'p1')"}
-                    },
-                    "required": []
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_create",
-                "description": "Create a new task in Todoist. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "content": {"type": "string", "description": "Task content/name"},
-                        "description": {"type": "string", "description": "Task description"},
-                        "due_string": {"type": "string", "description": "Due date in natural language (e.g., 'tomorrow', 'next Monday')"},
-                        "priority": {"type": "integer", "description": "Priority 1-4 (1=normal, 4=urgent)"}
-                    },
-                    "required": ["content"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_update",
-                "description": "Update an existing Todoist task. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to update"},
-                        "content": {"type": "string", "description": "New task content"},
-                        "due_string": {"type": "string", "description": "New due date"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }));
-        tools.push(json!({
-            "type": "function",
-            "function": {
-                "name": "tasks_complete",
-                "description": "Mark a Todoist task as complete. Requires Todoist connected.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string", "description": "ID of the task to complete"}
-                    },
-                    "required": ["task_id"]
-                }
-            }
-        }));
+
+    Ok(defs)
+}
+
+/// Resolve a non-namespaced MCP tool name to the namespaced name of a
+/// currently connected server, if any. This handles LLMs that call tools by
+/// their original name instead of the Vulcan namespaced name.
+async fn resolve_mcp_tool_name(
+    state: &AppState,
+    user_id: &str,
+    original_name: &str,
+) -> Option<String> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT mt.server_id, mt.namespaced_name
+        FROM mcp_tools mt
+        JOIN mcp_servers ms ON ms.id = mt.server_id
+        WHERE mt.user_id = ?1 AND mt.tool_name = ?2 AND ms.enabled = 1
+        "#,
+    )
+    .bind(user_id)
+    .bind(original_name)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    for (server_id, namespaced_name) in rows {
+        if state.mcp_manager.is_connected(user_id, &server_id).await {
+            return Some(namespaced_name);
+        }
     }
-    
-    tools
+    None
+}
+
+/// Call an MCP tool with up to 3 retries on transient failures.
+async fn call_mcp_tool_with_retry(
+    state: &AppState,
+    user_id: &str,
+    namespaced_tool: &str,
+    args_str: &str,
+) -> Result<serde_json::Value, String> {
+    let args: serde_json::Value =
+        serde_json::from_str(args_str).map_err(|e| format!("Invalid args: {}", e))?;
+
+    let mut last_error = String::new();
+    for attempt in 0..3 {
+        match state
+            .mcp_manager
+            .call_tool(user_id, namespaced_tool, args.clone())
+            .await
+        {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                last_error = e.to_string();
+                tracing::warn!(
+                    "MCP tool call {} attempt {} failed: {}",
+                    namespaced_tool,
+                    attempt + 1,
+                    e
+                );
+                if attempt < 2 {
+                    tokio::time::sleep(std::time::Duration::from_millis(300 * (attempt + 1) as u64))
+                        .await;
+                }
+            }
+        }
+    }
+    Err(format!("MCP tool call failed after 3 attempts: {}", last_error))
 }
 
 /// Execute a single tool call and return the result JSON.
@@ -563,42 +529,6 @@ async fn execute_tool(
                 Ok(json!({"status": "success", "content": "Scratchpad is empty."}))
             }
         }
-        "calendar_list_events" => {
-            crate::integrations::google::list_calendar_events(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "calendar_create_event" => {
-            crate::integrations::google::create_calendar_event(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "calendar_delete_event" => {
-            crate::integrations::google::delete_calendar_event(state, user_id, &args)
-                .await
-                .map_err(|e| e.to_string())
-        }
-        "email_send" => crate::integrations::google::send_email(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "email_list" => crate::integrations::google::list_emails(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "email_read" => crate::integrations::google::read_email(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_list" => crate::integrations::todoist::list_tasks(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_create" => crate::integrations::todoist::create_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_update" => crate::integrations::todoist::update_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
-        "tasks_complete" => crate::integrations::todoist::complete_task(state, user_id, &args)
-            .await
-            .map_err(|e| e.to_string()),
         "fetch_webpage" => {
             let url = args["url"].as_str().ok_or("Missing url")?;
             let extract_mode = args["extract_mode"].as_str().unwrap_or("text");
@@ -727,7 +657,28 @@ async fn execute_tool(
                 })),
             }
         }
-        _ => Err(format!("Unknown tool: {}", name)),
+        _ => {
+            // The LLM may use either the namespaced name (filesystem__list_directory)
+            // or the original tool name (list_directory). Resolve non-namespaced
+            // names to the connected server's namespaced name when unique.
+            let effective_name = if name.contains("__") {
+                name.to_string()
+            } else {
+                match resolve_mcp_tool_name(state, user_id, name).await {
+                    Some(namespaced) => namespaced,
+                    None => return Err(format!("Unknown tool: {}", name)),
+                }
+            };
+
+            if state.mcp_manager.is_mcp_tool(user_id, &effective_name).await {
+                match call_mcp_tool_with_retry(state, user_id, &effective_name, args_str).await {
+                    Ok(result) => Ok(result),
+                    Err(e) => Ok(json!({"error": e})),
+                }
+            } else {
+                Err(format!("Unknown tool: {}", name))
+            }
+        }
     }
 }
 
@@ -807,33 +758,17 @@ async fn persist_tool_message(
     }
 }
 
-/// Build a dynamic system prompt based on available integrations and current context.
-fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
-    let mut prompt = String::from(
+/// Build the dynamic system prompt based on current context.
+fn build_dynamic_system_prompt() -> String {
+    String::from(
         "You are a helpful AI assistant running on Project Vulcan, a personal SaaS platform.\n\n\
          You have access to the following capabilities:\n\
          - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
          - File operations: Create, read, and modify files in the workspace.\n\
          - Web search: Search the web for current information.\n\
          - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
-           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n",
-    );
-
-    if has_google {
-        prompt.push_str(
-            "- Google Calendar: You can list, create, and manage calendar events on the user's behalf.\n\
-             - Gmail: You can read, search, and send emails for the user.\n\n"
-        );
-    }
-
-    if has_todoist {
-        prompt.push_str(
-            "- Todoist: You can list, create, update, and complete tasks on the user's behalf.\n\n",
-        );
-    }
-
-    prompt.push_str(
-        "When the user asks you to do something that requires these tools, use them proactively. \
+           Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n\
+         When the user asks you to do something that requires these tools, use them proactively. \
          If you need multiple tools, call them in sequence. \
          Always explain what you're doing when using tools. \
          **Self-Healing execution:** If a tool execution fails (e.g. returns an error or non-zero exit code), \
@@ -842,9 +777,7 @@ fn build_dynamic_system_prompt(has_google: bool, has_todoist: bool) -> String {
          **Artifacts:** When generating complex HTML, CSS, SVG, React, or Mermaid diagrams, wrap the code block in an artifact tag to render it visually for the user. \
          Syntax: ```html artifact=\"Title of Artifact\"\n...code...\n```. \
          Be concise and helpful.",
-    );
-
-    prompt
+    )
 }
 
 async fn get_scratchpad(
@@ -884,31 +817,31 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/chats", post(create_chat).get(list_chats))
         .route(
-            "/chats/:id",
+            "/chats/{id}",
             get(get_chat).patch(rename_chat).delete(delete_chat),
         )
-        .route("/chats/:id/message", post(send_message))
+        .route("/chats/{id}/message", post(send_message))
         .route(
-            "/chats/:id/messages/:msg_id/edit-replace",
+            "/chats/{id}/messages/{msg_id}/edit-replace",
             post(edit_message_replace),
         )
         .route(
-            "/chats/:id/messages/:msg_id/after",
+            "/chats/{id}/messages/{msg_id}/after",
             delete(delete_messages_after),
         )
         .route(
-            "/chats/:id/messages/:msg_id/siblings",
+            "/chats/{id}/messages/{msg_id}/siblings",
             get(get_message_siblings),
         )
         .route(
-            "/chats/:id/messages/:msg_id/activate",
+            "/chats/{id}/messages/{msg_id}/activate",
             post(activate_message_variant),
         )
         .route(
-            "/chats/:id/messages/:msg_id/react",
+            "/chats/{id}/messages/{msg_id}/react",
             post(add_reaction).delete(remove_reaction),
         )
-        .route("/chats/:id/export", get(export_chat))
+        .route("/chats/{id}/export", get(export_chat))
         .route("/search", get(search_chats))
         .route("/usage", get(get_usage))
         .route("/me", get(get_me))
@@ -939,9 +872,12 @@ async fn get_me(
     let has_provider = provider_count > 0;
 
     Ok(Json(json!({
+        "id": user.id,
         "email": user.email,
         "role": user.role,
+        "is_active": user.is_active == 1,
         "has_provider": has_provider,
+        "provider_count": provider_count,
         "tools_enabled": user.tools_enabled == 1,
         "memory_enabled": user.memory_enabled == 1,
         "summarization_enabled": user.summarization_enabled == 1,
@@ -1999,20 +1935,7 @@ async fn send_message(
     // Resolve file attachments for AI context
     resolve_message_attachments(&state.db, &mut history).await;
 
-    let connected_integrations: Vec<(String,)> = sqlx::query_as(
-        "SELECT provider FROM integration_credentials WHERE user_id = ?1 AND provider IN ('google', 'todoist')"
-    )
-    .bind(&claims.sub)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-    let has_google = connected_integrations
-        .iter()
-        .any(|(provider,)| provider == "google");
-    let has_todoist = connected_integrations
-        .iter()
-        .any(|(provider,)| provider == "todoist");
-    let mut system_prompt = build_dynamic_system_prompt(has_google, has_todoist);
+    let mut system_prompt = build_dynamic_system_prompt();
 
     // ─── Scratchpad Memory (always available if enabled) ───
     let scratchpad_enabled = user.memory_enabled == 1;
@@ -2225,7 +2148,17 @@ async fn send_message(
         }
 
         let mut current_messages = messages_payload;
-        let tools = build_tools_def(has_google, has_todoist);
+        let mut tools = build_tools_def();
+        // Discover and append MCP tools for this user. Connect auto-start servers lazily.
+        match state_clone.mcp_manager.load_user_servers(&db, &user_id).await {
+            Ok(_) => {
+                match build_mcp_tools_def(&state_clone, &db, &user_id).await {
+                    Ok(mut mcp_tools) => tools.append(&mut mcp_tools),
+                    Err(e) => tracing::warn!("Failed to build MCP tools def: {}", e),
+                }
+            }
+            Err(e) => tracing::warn!("Failed to load user MCP servers: {}", e),
+        }
         let mut total_steps = 0;
 
         loop {
@@ -2670,12 +2603,21 @@ async fn search_chats(
 async fn get_usage(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    let from = params.get("from").cloned().unwrap_or_default();
+    let to = params.get("to").cloned().unwrap_or_default();
+
     let totals: (i64, Option<i64>) = sqlx::query_as(
         "SELECT COUNT(*), SUM(tokens_used) FROM messages m 
-         JOIN chats c ON m.chat_id = c.id WHERE c.user_id = ?1 AND m.role = 'assistant'",
+         JOIN chats c ON m.chat_id = c.id 
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)",
     )
     .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
     .fetch_one(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -2683,10 +2625,14 @@ async fn get_usage(
     let daily: Vec<(String, i64, Option<i64>)> = sqlx::query_as(
         "SELECT date(m.created_at) as day, COUNT(*), SUM(m.tokens_used)
          FROM messages m JOIN chats c ON m.chat_id = c.id
-         WHERE c.user_id = ?1 AND m.role = 'assistant' AND date(m.created_at) >= date('now', '-6 days')
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)
          GROUP BY day ORDER BY day"
     )
     .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
     .fetch_all(&state.db)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -2695,9 +2641,35 @@ async fn get_usage(
         json!({ "date": day, "messages": count, "tokens": tokens.unwrap_or(0) })
     }).collect();
 
+    let providers: Vec<(Option<String>, Option<String>, i64, Option<i64>)> = sqlx::query_as(
+        "SELECT m.provider_id, p.name, COUNT(*), SUM(m.tokens_used)
+         FROM messages m
+         JOIN chats c ON m.chat_id = c.id
+         LEFT JOIN providers p ON m.provider_id = p.id AND p.user_id = c.user_id
+         WHERE c.user_id = ?1 AND m.role = 'assistant'
+         AND (?2 = '' OR date(m.created_at) >= ?2)
+         AND (?3 = '' OR date(m.created_at) <= ?3)
+         GROUP BY m.provider_id ORDER BY SUM(m.tokens_used) DESC"
+    )
+    .bind(&claims.sub)
+    .bind(&from)
+    .bind(&to)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let provider_stats: Vec<_> = providers.into_iter().map(|(provider_id, provider_name, count, tokens)| {
+        let id = provider_id.unwrap_or_default();
+        let name = provider_name.filter(|n| !n.is_empty()).unwrap_or_else(|| if id.is_empty() { "Unknown provider".to_string() } else { id.clone() });
+        json!({ "provider_id": id, "provider_name": name, "messages": count, "tokens": tokens.unwrap_or(0) })
+    }).collect();
+
     Ok(Json(json!({
-        "total_messages": totals.0,
-        "total_tokens": totals.1.unwrap_or(0),
+        "totals": {
+            "messages": totals.0,
+            "tokens": totals.1.unwrap_or(0),
+        },
         "daily": daily_stats,
+        "providers": provider_stats,
     })))
 }

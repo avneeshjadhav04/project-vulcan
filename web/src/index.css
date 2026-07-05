@@ -193,4 +193,39 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Terminal cursor blink is functional, not decorative motion. Keep it
+     blinking so users can see the insertion point in the sandbox shell. */
+  .xterm .xterm-cursor-block,
+  .xterm .xterm-cursor {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* ─── xterm cursor tweaks ─── */
+/* Use a standard terminal block cursor for the focused cursor.
+   xterm.js handles the unfocused hollow outline automatically. The cursor is
+   IBM blue (#0f62fe) to match the primary interactive color / send button. */
+.xterm .xterm-cursor-block {
+  background-color: #0f62fe !important;
+  color: #161616 !important;
+  border: none !important;
+  animation: vulcan-cursor-blink 1.06s step-end infinite !important;
+}
+
+@keyframes vulcan-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Hide the hidden textarea used by xterm for input capture so it doesn't
+   create a visible text caret outside the terminal canvas. */
+.xterm-helper-textarea {
+  opacity: 0;
+}
+
+/* Show the text caret when hovering over the terminal canvas. */
+.xterm-screen {
+  cursor: text;
 }

@@ -1,0 +1,44 @@
+# Vulcan interactive shell configuration
+
+# Always start in the sandbox workspace.
+cd /workspace
+
+# Build the Vulcan prompt on every command. The colored escape sequences must
+# live directly in PS1 (not in a printf) so bash hides them and computes line
+# widths correctly. The same hook also emits the OSC cwd event for the frontend.
+__vulcan_set_prompt() {
+    local BLUE='\[\033[38;2;15;98;254m\]'        # IBM blue #0f62fe
+    local LIGHT_BLUE='\[\033[38;2;120;180;255m\]' # light blue
+    local RED='\[\033[38;5;196m\]'              # red
+    local RESET='\[\033[0m\]'                     # reset
+    local dir=$(pwd)
+    local branch=""
+    if branch=$(git symbolic-ref --short HEAD 2>/dev/null) || branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); then
+        PS1="${BLUE}${USER}${RESET} → ${LIGHT_BLUE}${dir}${RESET} (${RED}${branch}${RESET}) $ "
+    else
+        PS1="${BLUE}${USER}${RESET} → ${LIGHT_BLUE}${dir}${RESET} $ "
+    fi
+    printf "\033]51;CWD;%s\007" "$dir"
+}
+
+# Emit an OSC sequence before a command starts so the frontend can show a
+# "Running…" indicator only while a command is actually executing.
+__vulcan_cmd_start() {
+    printf "\033]51;CMD;start\007"
+}
+
+# Emit an OSC sequence after a command finishes (prompt is about to print).
+__vulcan_cmd_end() {
+    printf "\033]51;CMD;end\007"
+}
+
+PS0='$(__vulcan_cmd_start)'
+PROMPT_COMMAND='__vulcan_cmd_end; __vulcan_set_prompt'
+
+# Basic readline / history defaults for the sandbox.
+HISTSIZE=1000
+HISTFILE="$HOME/.bash_history"
+set -o history
+
+# Colorize ls output by file type (directories, executables, symlinks, etc.).
+alias ls='ls --color=auto'

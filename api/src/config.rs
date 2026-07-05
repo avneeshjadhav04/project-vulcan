@@ -12,10 +12,6 @@ pub struct Config {
     pub cookie_secure: bool,
     pub cors_origin: Option<String>,
     pub app_base_url: String,
-    pub google_client_id: Option<String>,
-    pub google_client_secret: Option<String>,
-    pub todoist_client_id: Option<String>,
-    pub todoist_client_secret: Option<String>,
     pub vosk_model_dir: String,
 }
 
@@ -157,10 +153,6 @@ impl Config {
             cors_origin,
             app_base_url: env::var("APP_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:8765".to_string()),
-            google_client_id: env::var("GOOGLE_CLIENT_ID").ok(),
-            google_client_secret: env::var("GOOGLE_CLIENT_SECRET").ok(),
-            todoist_client_id: env::var("TODOIST_CLIENT_ID").ok(),
-            todoist_client_secret: env::var("TODOIST_CLIENT_SECRET").ok(),
             vosk_model_dir,
         })
     }

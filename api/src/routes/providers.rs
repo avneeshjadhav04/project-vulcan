@@ -18,10 +18,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/providers", get(list_providers).post(create_provider))
         .route(
-            "/providers/:id",
+            "/providers/{id}",
             delete(delete_provider).patch(update_provider),
         )
-        .route("/providers/:id/validate", post(validate_provider))
+        .route("/providers/{id}/validate", post(validate_provider))
 }
 
 async fn list_providers(

@@ -9,6 +9,7 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub role: String,
+    pub is_active: i32,
     pub memory_enabled: i32,
     pub summarization_enabled: i32,
     pub cross_chat_memory_enabled: i32,
@@ -191,47 +192,6 @@ pub struct UpdateToolsConfigRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateAgentStepsRequest {
     pub max_agent_steps: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct IntegrationCredential {
-    pub id: String,
-    pub user_id: String,
-    pub provider: String,
-    #[serde(skip_serializing)]
-    pub encrypted_access_token: String,
-    #[serde(skip_serializing)]
-    pub encrypted_refresh_token: Option<String>,
-    pub expires_at: Option<String>,
-    pub scopes: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct IntegrationInfo {
-    pub provider: String,
-    pub connected: bool,
-    pub scopes: Option<String>,
-    pub expires_at: Option<String>,
-    pub is_configured: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SaveIntegrationConfigRequest {
-    pub client_id: String,
-    pub client_secret: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, FromRow)]
-pub struct IntegrationConfig {
-    pub id: String,
-    pub user_id: String,
-    pub provider: String,
-    pub encrypted_client_id: String,
-    pub encrypted_client_secret: String,
-    pub created_at: String,
-    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

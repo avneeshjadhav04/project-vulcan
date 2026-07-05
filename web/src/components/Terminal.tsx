@@ -1,41 +1,71 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal as XTerm, type ITheme } from 'xterm'
-import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
+  Plus,
   RefreshCw,
   Terminal as TerminalIcon,
   Trash2,
   WifiOff,
   Wifi,
-  Shield,
-  AlertTriangle,
   ChevronUp,
   ChevronDown,
   ArrowUpToLine,
   ArrowDownToLine,
   Maximize2,
   Minimize2,
+  X,
+  Loader2,
 } from 'lucide-react'
 import { useThemeStore } from '../stores/themeStore'
+import { ShellClient } from '../lib/shellClient'
+import type { ITheme } from 'xterm'
 
-export default function Terminal({ 
+interface TerminalTab {
+  id: string
+  name: string
+  shell?: ShellClient
+  connected: boolean
+  connecting: boolean
+  running: boolean
+  cwd: string
+  pid: number
+}
+
+export default function Terminal({
   isMaximized = false,
   onToggleMaximize,
 }: {
   isMaximized?: boolean
   onToggleMaximize?: () => void
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [connected, setConnected] = useState(false)
-  const [connecting, setConnecting] = useState(false)
-  const [commandCount, setCommandCount] = useState(0)
-  const xtermRef = useRef<XTerm | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
-  const wsRef = useRef<WebSocket | null>(null)
-  const [reconnectKey, setReconnectKey] = useState(0)
-  const [lastError, setLastError] = useState('')
+  const [tabs, setTabs] = useState<TerminalTab[]>(() => {
+    const saved = localStorage.getItem('terminalTabs')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((id: string, idx: number) => ({
+            id,
+            name: `bash ${idx + 1}`,
+            connected: false,
+            connecting: false,
+            running: false,
+            cwd: '/workspace',
+            pid: 0,
+          }))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return [{ id: crypto.randomUUID(), name: 'bash 1', connected: false, connecting: false, running: false, cwd: '/workspace', pid: 0 }]
+  })
+
+  const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '')
+  const [tabCounter, setTabCounter] = useState(() => tabs.length + 1)
+  const [pendingAttachIds, setPendingAttachIds] = useState<Set<string>>(new Set())
+  const containerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
 
   const darkTheme: ITheme = {
@@ -84,182 +114,156 @@ export default function Terminal({
     brightWhite: '#f7f8f9',
   }
 
-  const initTerminal = useCallback(() => {
-    if (!containerRef.current) return () => {}
+  const theme = resolvedTheme === 'light' ? lightTheme : darkTheme
 
-    containerRef.current.innerHTML = ''
-    setConnecting(true)
-    setLastError('')
+  // Persist tab IDs.
+  useEffect(() => {
+    localStorage.setItem('terminalTabs', JSON.stringify(tabs.map((t) => t.id)))
+  }, [tabs])
 
-    const term = new XTerm({
-      theme: resolvedTheme === 'light' ? lightTheme : darkTheme,
-      fontFamily: '"IBM Plex Mono", "JetBrains Mono", "Fira Code", monospace',
-      fontSize: 13,
-      lineHeight: 1.5,
-      cursorBlink: true,
-      cursorStyle: 'bar',
-      scrollback: 5000,
-    })
+  const updateTab = useCallback((tabId: string, updates: Partial<TerminalTab>) => {
+    setTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, ...updates } : t)))
+  }, [])
 
-    const fitAddon = new FitAddon()
-    term.loadAddon(fitAddon)
-    term.open(containerRef.current)
-    fitAddon.fit()
-    term.focus()
+  const attachShell = useCallback(
+    (tabId: string) => {
+      const container = containerRefs.current[tabId]
+      if (!container) return
 
-    xtermRef.current = term
-    fitAddonRef.current = fitAddon
+      setTabs((prev) => {
+        const tab = prev.find((t) => t.id === tabId)
+        if (!tab || tab.shell) return prev
 
-    const resizeObserver = new ResizeObserver(() => {
-      try {
-        fitAddon.fit()
-      } catch {}
-    })
-    resizeObserver.observe(containerRef.current)
+        const shell = new ShellClient({
+          tabId: tab.id,
+          container,
+          theme,
+          onStateChange: ({ connected, connecting }) => {
+            updateTab(tab.id, { connected, connecting })
+          },
+          onRunningChange: (running) => updateTab(tab.id, { running }),
+          onCwdChange: (cwd) => updateTab(tab.id, { cwd }),
+        })
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${protocol}://${window.location.host}/api/terminal`)
-    wsRef.current = ws
+        shell.connect()
+        return prev.map((t) => (t.id === tabId ? { ...t, shell } : t))
+      })
+    },
+    [theme, updateTab]
+  )
 
-    ws.onopen = () => {
-      setConnected(true)
-      setConnecting(false)
-      setLastError('')
-      term.writeln('')
-      term.writeln('\x1b[1;34m  Project Vulcan Sandbox Terminal\x1b[0m')
-      term.writeln('\x1b[90m  ──────────────────────────────\x1b[0m')
-      term.writeln('\x1b[32m  Connected to sandboxed environment.\x1b[0m')
-      term.writeln('\x1b[90m  Type commands and press Enter to execute.\x1b[0m')
-      term.writeln('\x1b[90m  Commands run in an isolated Ubuntu container.\x1b[0m')
-      term.writeln('')
-      term.write('\x1b[36m\u276f \x1b[0m')
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        if (msg.type === 'stdout') {
-          term.writeln(msg.data)
-        } else if (msg.type === 'stderr') {
-          term.writeln(`\x1b[31m${msg.data}\x1b[0m`)
-        } else if (msg.status) {
-          const color = msg.status === 'success' ? '\x1b[32m' : '\x1b[31m'
-          const icon = msg.status === 'success' ? '\u2713' : '\u2717'
-          term.writeln(`  ${color}${icon} ${msg.status.toUpperCase()}${msg.code !== undefined ? ` (exit ${msg.code})` : ''}\x1b[0m`)
-          term.writeln('')
-          term.write('\x1b[36m\u276f \x1b[0m')
-          if (msg.status === 'success' || msg.status === 'error') {
-            setCommandCount((c) => c + 1)
-          }
+  // Initialize shells for visible tabs after first render, sequentially to reduce backend contention.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      for (const tab of tabs) {
+        if (cancelled) return
+        if (!tab.shell) {
+          setPendingAttachIds((prev) => new Set(prev).add(tab.id))
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          attachShell(tab.id)
+          // Small spacing between tabs so the backend's 4-shell permit pool is not overwhelmed.
+          await new Promise((resolve) => setTimeout(resolve, 150))
         }
-      } catch {
-        term.writeln(event.data)
       }
-    }
-
-    ws.onclose = () => {
-      setConnected(false)
-      setConnecting(false)
-      term.writeln('')
-      term.writeln('\x1b[31m  Connection closed.\x1b[0m')
-    }
-
-    ws.onerror = () => {
-      setConnected(false)
-      setConnecting(false)
-      setLastError('Could not connect to sandbox. Make sure the sandbox service is running.')
-      term.writeln('')
-      term.writeln('\x1b[31m  \u26a0 Terminal connection error.\x1b[0m')
-      term.writeln('\x1b[90m  The sandbox service may not be available.\x1b[0m')
-    }
-
-    let currentLine = ''
-    const history: string[] = []
-    let historyIndex = -1
-
-    term.onData((data) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return
-
-      const code = data.charCodeAt(0)
-
-      if (data === '\r' || data === '\n') {
-        if (currentLine.trim().length > 0) {
-          history.push(currentLine)
-          if (history.length > 100) history.shift()
-          ws.send(JSON.stringify({ command: currentLine.trim() }))
-          term.writeln('')
-        } else {
-          term.writeln('')
-        }
-        currentLine = ''
-        historyIndex = history.length
-        term.write('\x1b[36m\u276f \x1b[0m')
-      } else if (code === 127 || code === 8) {
-        if (currentLine.length > 0) {
-          currentLine = currentLine.slice(0, -1)
-          term.write('\b \b')
-        }
-      } else if (data === '\x1b[A') {
-        if (historyIndex > 0) {
-          historyIndex--
-          currentLine = history[historyIndex] || ''
-          term.write(`\x1b[2K\r\x1b[36m\u276f \x1b[0m${currentLine}`)
-        }
-      } else if (data === '\x1b[B') {
-        if (historyIndex < history.length - 1) {
-          historyIndex++
-          currentLine = history[historyIndex] || ''
-          term.write(`\x1b[2K\r\x1b[36m\u276f \x1b[0m${currentLine}`)
-        } else {
-          historyIndex = history.length
-          currentLine = ''
-          term.write(`\x1b[2K\r\x1b[36m\u276f \x1b[0m`)
-        }
-      } else if (code < 32) {
-        // Ignore other control characters
-      } else {
-        currentLine += data
-        term.write(data)
-      }
-    })
-
-    const handleWindowResize = () => {
-      try {
-        fitAddon.fit()
-      } catch {}
-    }
-    window.addEventListener('resize', handleWindowResize)
-
+      setPendingAttachIds(new Set())
+    })()
     return () => {
-      window.removeEventListener('resize', handleWindowResize)
-      resizeObserver.disconnect()
-      ws.close()
-      term.dispose()
-      xtermRef.current = null
-      fitAddonRef.current = null
+      cancelled = true
     }
-  }, [reconnectKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  // Re-attach any tab that became visible but has no shell (e.g. restored from localStorage after a later mount).
   useEffect(() => {
-    const cleanup = initTerminal()
-    return cleanup
-  }, [initTerminal])
+    tabs.forEach((tab) => {
+      if (!tab.shell && !pendingAttachIds.has(tab.id) && containerRefs.current[tab.id]) {
+        attachShell(tab.id)
+      }
+    })
+  }, [tabs, pendingAttachIds, attachShell])
 
-  // Update terminal theme at runtime when the app theme changes.
+  // Re-attach shell when theme changes for all tabs.
   useEffect(() => {
-    const term = xtermRef.current
-    if (!term) return
-    term.options.theme = resolvedTheme === 'light' ? { ...lightTheme } : { ...darkTheme }
-  }, [resolvedTheme])
+    tabs.forEach((tab) => tab.shell?.updateTheme(theme))
+  }, [theme, tabs])
+
+  // Focus active tab's terminal when switching.
+  useEffect(() => {
+    const activeTab = tabs.find((t) => t.id === activeTabId)
+    if (activeTab?.shell) {
+      setTimeout(() => {
+        activeTab.shell?.fit()
+        activeTab.shell?.focus()
+      }, 50)
+    }
+  }, [activeTabId, tabs])
+
+  const addTab = useCallback(() => {
+    const newTab: TerminalTab = {
+      id: crypto.randomUUID(),
+      name: `bash ${tabCounter}`,
+      connected: false,
+      connecting: false,
+      running: false,
+      cwd: '/workspace',
+      pid: 0,
+    }
+    setTabCounter((c) => c + 1)
+    setTabs((prev) => [...prev, newTab])
+    setActiveTabId(newTab.id)
+    setPendingAttachIds((prev) => new Set(prev).add(newTab.id))
+    setTimeout(() => attachShell(newTab.id), 0)
+  }, [tabCounter, attachShell])
+
+  const closeTab = useCallback(
+    (tabId: string, e?: React.MouseEvent) => {
+      e?.stopPropagation()
+      const tab = tabs.find((t) => t.id === tabId)
+      tab?.shell?.sendClose()
+      tab?.shell?.disconnect()
+
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== tabId)
+        if (next.length === 0) {
+          // Always keep at least one tab.
+          const fresh: TerminalTab = {
+            id: crypto.randomUUID(),
+            name: 'bash 1',
+            connected: false,
+            connecting: false,
+            running: false,
+            cwd: '/workspace',
+            pid: 0,
+          }
+          setTabCounter(2)
+          setActiveTabId(fresh.id)
+          setPendingAttachIds((prevSet) => new Set(prevSet).add(fresh.id))
+          setTimeout(() => attachShell(fresh.id), 0)
+          return [fresh]
+        }
+        if (activeTabId === tabId) {
+          setActiveTabId(next[0].id)
+        }
+        return next
+      })
+    },
+    [tabs, activeTabId, attachShell]
+  )
+
+  const activeTab = tabs.find((t) => t.id === activeTabId)
 
   const handleClear = () => {
-    xtermRef.current?.clear()
-    if (connected) {
-      xtermRef.current?.writeln('\x1b[32m  Terminal cleared.\x1b[0m')
-      xtermRef.current?.writeln('')
-      xtermRef.current?.write('\x1b[36m\u276f \x1b[0m')
-    }
+    activeTab?.shell?.clear()
   }
+
+  const handleReconnect = useCallback(() => {
+    if (!activeTab) return
+    activeTab.shell?.disconnect()
+    updateTab(activeTab.id, { shell: undefined, connected: false, connecting: true })
+    setPendingAttachIds((prev) => new Set(prev).add(activeTab.id))
+    setTimeout(() => attachShell(activeTab.id), 0)
+  }, [activeTab, attachShell, updateTab])
 
   return (
     <div className="flex h-full flex-col border border-border-subtle bg-background">
@@ -273,7 +277,7 @@ export default function Terminal({
             <span className="text-xs font-semibold text-text-primary">Sandbox Terminal</span>
             <div className="flex items-center gap-2">
               <AnimatePresence mode="wait">
-                {connected ? (
+                {activeTab?.connected ? (
                   <motion.div
                     key="connected"
                     initial={{ opacity: 0 }}
@@ -284,7 +288,7 @@ export default function Terminal({
                     <Wifi className="h-2.5 w-2.5 text-support-success" />
                     <span className="text-[10px] text-support-success">Connected</span>
                   </motion.div>
-                ) : connecting ? (
+                ) : activeTab?.connecting ? (
                   <motion.div
                     key="connecting"
                     initial={{ opacity: 0 }}
@@ -292,8 +296,8 @@ export default function Terminal({
                     exit={{ opacity: 0 }}
                     className="flex items-center gap-1"
                   >
-                    <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
-                    <span className="text-[10px] text-support-warning">Connecting...</span>
+                    <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+                    <span className="text-[10px] text-support-warning">Connecting…</span>
                   </motion.div>
                 ) : (
                   <motion.div
@@ -308,9 +312,12 @@ export default function Terminal({
                   </motion.div>
                 )}
               </AnimatePresence>
-              {commandCount > 0 && (
-                <span className="text-[10px] text-text-helper">
-                  {commandCount} command{commandCount !== 1 ? 's' : ''}
+              {activeTab?.running && (
+                <span className="text-[10px] text-support-warning">Running…</span>
+              )}
+              {activeTab && activeTab.cwd !== '/workspace' && (
+                <span className="max-w-[160px] truncate text-[10px] text-text-helper">
+                  {activeTab.cwd}
                 </span>
               )}
             </div>
@@ -319,28 +326,28 @@ export default function Terminal({
 
         <div className="flex items-center gap-0.5">
           <button
-            onClick={() => xtermRef.current?.scrollToTop()}
+            onClick={() => activeTab?.shell?.scrollToTop()}
             className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll to top"
           >
             <ArrowUpToLine className="h-3 w-3" />
           </button>
           <button
-            onClick={() => xtermRef.current?.scrollLines(-5)}
+            onClick={() => activeTab?.shell?.scrollLines(-5)}
             className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll up"
           >
             <ChevronUp className="h-3 w-3" />
           </button>
           <button
-            onClick={() => xtermRef.current?.scrollLines(5)}
+            onClick={() => activeTab?.shell?.scrollLines(5)}
             className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll down"
           >
             <ChevronDown className="h-3 w-3" />
           </button>
           <button
-            onClick={() => xtermRef.current?.scrollToBottom()}
+            onClick={() => activeTab?.shell?.scrollToBottom()}
             className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
             title="Scroll to bottom"
           >
@@ -364,12 +371,9 @@ export default function Terminal({
             <Trash2 className="h-3 w-3" />
             Clear
           </button>
-          {!connected && (
+          {(!activeTab?.connected || activeTab?.connecting) && (
             <button
-              onClick={() => {
-                setReconnectKey((k) => k + 1)
-                setConnecting(true)
-              }}
+              onClick={handleReconnect}
               className="ml-1 flex items-center gap-1 border border-interactive/30 bg-interactive/10 px-2 py-1 text-[11px] text-interactive transition-colors hover:bg-interactive/20"
             >
               <RefreshCw className="h-3 w-3" />
@@ -379,37 +383,71 @@ export default function Terminal({
         </div>
       </div>
 
-      {/* Error banner */}
-      <AnimatePresence>
-        {lastError && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="flex items-center gap-2 border-b border-border-subtle bg-support-error/10 px-4 py-1.5 text-[11px] text-support-error">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {lastError}
+      {/* Tabs */}
+      <div className="flex items-center border-b border-border-subtle bg-layer/50 px-2 py-1">
+        <div
+          className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden py-0.5"
+          onWheel={(e) => {
+            e.currentTarget.scrollLeft += e.deltaY
+            e.preventDefault()
+          }}
+        >
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              onClick={() => {
+                setActiveTabId(tab.id)
+                if (!tab.shell && containerRefs.current[tab.id]) {
+                  attachShell(tab.id)
+                }
+              }}
+              title={tab.pid > 0 ? `PID: ${tab.pid}` : `Shell ${tab.name}`}
+              className={`group flex shrink-0 cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors ${
+                tab.id === activeTabId
+                  ? 'bg-background text-text-primary'
+                  : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
+              }`}
+            >
+              <span className="truncate">{tab.name}</span>
+              {tab.connecting && (
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+              )}
+              {tab.running && (
+                <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
+              )}
+              {tabs.length > 1 && (
+                <button
+                  onClick={(e) => closeTab(tab.id, e)}
+                  className="ml-1 rounded p-0.5 text-text-helper opacity-0 transition-opacity hover:bg-support-error/10 hover:text-support-error group-hover:opacity-100"
+                  title="Close tab"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Info banner */}
-      <div className="flex items-center gap-2 border-b border-border-subtle bg-layer/50 px-4 py-1">
-        <Shield className="h-2.5 w-2.5 text-text-helper" />
-        <span className="text-[10px] text-text-helper">
-          Commands run in an isolated Ubuntu environment via proot.
-        </span>
+          ))}
+          <button
+            onClick={addTab}
+            className="sticky right-0 z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-layer text-text-helper transition-colors hover:text-text-primary"
+            title="New tab"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* Terminal Area */}
-      <div
-        ref={containerRef}
-        className="relative flex-1"
-        style={{ minHeight: 0 }}
-      />
+      {/* Terminal Areas */}
+      <div className="relative flex-1 overflow-hidden">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            ref={(el) => (containerRefs.current[tab.id] = el)}
+            onClick={() => tab.shell?.focus()}
+            className={`absolute inset-0 ${tab.id === activeTabId ? 'z-10' : 'z-0 opacity-0 pointer-events-none'}`}
+            style={{ minHeight: 0 }}
+          />
+        ))}
+      </div>
     </div>
   )
 }
