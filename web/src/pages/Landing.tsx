@@ -267,7 +267,7 @@ function Hero() {
             <span className="bg-vibrant-gradient bg-clip-text text-transparent">AI Assistant</span>
           </h1>
 
-          <p className="mx-auto mb-8 max-w-xl text-base leading-relaxed text-text-secondary">
+          <p className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-text-secondary">
             A secure, self-hosted AI platform. Chat with the latest models from
             NVIDIA NIM, OpenAI, Groq, and more. Execute terminal commands safely,
             generate full codebases, and instantly preview web apps in a built-in interactive workspace.
