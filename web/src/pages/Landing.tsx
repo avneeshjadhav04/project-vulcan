@@ -192,7 +192,6 @@ function HeroTerminal() {
   const lines: BootLine[] = [
     { text: '$ vulcan --start', color: 'text-text-disabled', speed: 28 },
     { text: '[ OK ] Loading configuration...', color: 'text-text-secondary', speed: 22 },
-    { text: '[ OK ] Initializing SQLite database', color: 'text-text-secondary', speed: 22 },
     { text: '[ OK ] Connected to AI providers', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] Sandboxed terminal initialized', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] AES-256-GCM encryption active', color: 'text-support-success', speed: 24 },
