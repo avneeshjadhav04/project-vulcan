@@ -197,9 +197,6 @@ function HeroTerminal() {
     { text: '[ OK ] Sandboxed terminal initialized', color: 'text-support-success', speed: 24 },
     { text: '[ OK ] AES-256-GCM encryption active', color: 'text-support-success', speed: 24 },
     { text: 'Loading available models...', color: 'text-interactive', speed: 30 },
-    { text: '  nvidia/llama-3.1-8b-instruct      ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  openai/gpt-4o-mini                ready', color: 'text-text-secondary', speed: 18 },
-    { text: '  groq/llama-3.3-70b-versatile      ready', color: 'text-text-secondary', speed: 18 },
     { text: '', color: 'text-text-secondary', speed: 10 },
     { text: 'Project Vulcan is ready.', color: 'text-support-success', speed: 26 },
   ]
