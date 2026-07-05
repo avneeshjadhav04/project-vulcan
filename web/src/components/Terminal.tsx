@@ -385,43 +385,51 @@ export default function Terminal({
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-border-subtle bg-layer/50 px-2 py-1">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            onClick={() => {
-              setActiveTabId(tab.id)
-              if (!tab.shell && containerRefs.current[tab.id]) {
-                attachShell(tab.id)
-              }
-            }}
-            title={tab.pid > 0 ? `PID: ${tab.pid}` : `Shell ${tab.name}`}
-            className={`group flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors ${
-              tab.id === activeTabId
-                ? 'bg-background text-text-primary'
-                : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
-            }`}
-          >
-            <span className="truncate">{tab.name}</span>
-            {tab.connecting && (
-              <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
-            )}
-            {tab.running && (
-              <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
-            )}
-            {tabs.length > 1 && (
-              <button
-                onClick={(e) => closeTab(tab.id, e)}
-                className="ml-1 rounded p-0.5 text-text-helper opacity-0 transition-opacity hover:bg-support-error/10 hover:text-support-error group-hover:opacity-100"
-                title="Close tab"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        ))}
+        <div
+          className="flex flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden py-0.5"
+          onWheel={(e) => {
+            e.currentTarget.scrollLeft += e.deltaY
+            e.preventDefault()
+          }}
+        >
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              onClick={() => {
+                setActiveTabId(tab.id)
+                if (!tab.shell && containerRefs.current[tab.id]) {
+                  attachShell(tab.id)
+                }
+              }}
+              title={tab.pid > 0 ? `PID: ${tab.pid}` : `Shell ${tab.name}`}
+              className={`group flex shrink-0 cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] transition-colors ${
+                tab.id === activeTabId
+                  ? 'bg-background text-text-primary'
+                  : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
+              }`}
+            >
+              <span className="truncate">{tab.name}</span>
+              {tab.connecting && (
+                <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+              )}
+              {tab.running && (
+                <RefreshCw className="h-2.5 w-2.5 animate-spin text-support-warning" />
+              )}
+              {tabs.length > 1 && (
+                <button
+                  onClick={(e) => closeTab(tab.id, e)}
+                  className="ml-1 rounded p-0.5 text-text-helper opacity-0 transition-opacity hover:bg-support-error/10 hover:text-support-error group-hover:opacity-100"
+                  title="Close tab"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
         <button
           onClick={addTab}
-          className="flex h-6 w-6 items-center justify-center rounded text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
           title="New tab"
         >
           <Plus className="h-3.5 w-3.5" />
