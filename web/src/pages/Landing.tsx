@@ -255,7 +255,7 @@ function Hero() {
         >
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-border-subtle bg-layer/50 px-4 py-2 text-xs font-medium text-text-secondary backdrop-blur-md transition-colors hover:bg-layer-hover">
             <Sparkles className="h-3.5 w-3.5 text-interactive" />
-            <span className="text-interactive">Multi-Provider AI Platform</span>
+            <span className="text-interactive">Multiple Providers Supported</span>
           </div>
 
           <h1 className="mb-6 text-5xl font-bold leading-tight tracking-tight text-text-primary md:text-7xl">
