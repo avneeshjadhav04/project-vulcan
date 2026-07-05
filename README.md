@@ -40,28 +40,6 @@ A personal, secure AI assistant platform built with Rust, React, and multi-provi
 
 > **Security Warning:** Never share or commit your `MASTER_KEY`. It is used to encrypt all stored API keys and credentials.
 
-## Development
-
-### Option A: Docker Compose (from source)
-
-```bash
-git clone https://github.com/avneeshjadhav04/project-vulcan.git
-cd project-vulcan
-cp .env.example .env
-# Edit .env with a secure MASTER_KEY
-docker compose -f docker-compose.dev.yml up --build
-```
-
-### Option B: Without Docker
-
-```bash
-# Terminal 1: API
-cd api && cargo run
-
-# Terminal 2: Frontend
-cd web && npm install && npm run dev
-```
-
 ## Security
 
 - **Passwords**: Argon2id hashing
