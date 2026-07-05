@@ -428,7 +428,7 @@ export default function Terminal({
           ))}
           <button
             onClick={addTab}
-            className="sticky right-0 z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-layer/95 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+            className="sticky right-0 z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-layer text-text-helper transition-colors hover:text-text-primary"
             title="New tab"
           >
             <Plus className="h-3.5 w-3.5" />
