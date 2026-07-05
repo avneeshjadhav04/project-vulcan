@@ -62,20 +62,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String, tab_
 
     let shell_pid = session.shell_pid;
 
-    // Send initial connection messages only after the session is ready.
-    let init_msgs = [
-        r#"{"type":"stdout","data":""}"#,
-        r#"{"type":"stdout","data":"  Project Vulcan Sandbox Terminal"}"#,
-        r#"{"type":"stdout","data":"  ───────────────────────────"}"#,
-        r#"{"type":"stdout","data":"  Connected to sandboxed environment."}"#,
-        r#"{"type":"stdout","data":"  Type commands and press Enter to execute."}"#,
-        r#"{"type":"stdout","data":"  Commands run in an isolated container with limited resources.\r\n"}"#,
-        r#"{"type":"stdout","data":""}"#,
-    ];
-    for msg in &init_msgs {
-        let _ = sender.send(WsMessage::text(*msg)).await;
-    }
-
     // Forward output messages to the WebSocket client.
     let forward_task = tokio::spawn(async move {
         while let Some(msg) = out_rx.recv().await {
