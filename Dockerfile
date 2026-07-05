@@ -123,6 +123,7 @@ RUN proot -0 -R /app/ubuntu-rootfs -b /etc/resolv.conf:/etc/resolv.conf /bin/bas
         sudo \
         libffi-dev libssl-dev python3-dev zlib1g-dev \
         file unzip xz-utils \
+    && rm -f /etc/update-motd.d/* \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*'
 
 # Vulcan shell prompt.
