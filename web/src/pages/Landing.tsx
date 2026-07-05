@@ -658,7 +658,7 @@ function Footer() {
             View on GitHub
           </a>
           <p className="text-xs text-text-disabled">
-            Built with Rust, React, and multi-provider AI.
+            Built with Rust and React.
           </p>
         </div>
       </div>
