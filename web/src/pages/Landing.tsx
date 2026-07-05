@@ -493,8 +493,8 @@ function TerminalDemo() {
                 {[
                   'Filesystem isolation via proot',
                   'Ubuntu 24.04 LTS base environment',
-                  '60-second timeout per command',
-                  '4 concurrent command limit',
+                  'Interactive terminal sessions',
+                  'Secure by default',
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-text-secondary">
                     <div className="flex h-5 w-5 shrink-0 items-center justify-center border border-border-subtle bg-layer">
