@@ -305,7 +305,7 @@ export default function Chat() {
                 <ThemeLogo className="h-10 w-10 drop-shadow-sm" alt="" />
                 <div>
                   <span className="text-sm font-semibold text-text-primary">Project Vulcan</span>
-                  <p className="text-[10px] text-text-secondary">Personal AI Assistant</p>
+                  <p className="text-[10px] text-text-secondary">Personal AI Platform</p>
                 </div>
               </button>
               <button
