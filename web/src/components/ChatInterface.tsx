@@ -76,7 +76,7 @@ export default function ChatInterface({
   const queryClient = useQueryClient()
 
   const [streamState, streamActions] = useChatStream(effectiveChatId)
-  const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
+  const { streaming, reconnecting, streamedContent, sendError, toolExecutions, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
@@ -538,6 +538,7 @@ export default function ChatInterface({
         messages={messages}
         variants={chatData?.variants || []}
         streaming={streaming}
+        reconnecting={reconnecting}
         streamedContent={streamedContent}
         toolExecutions={toolExecutions}
         creatingChat={creatingChat}
@@ -561,6 +562,7 @@ export default function ChatInterface({
         onSend={(text) => handleSend(text)}
         onStop={stopStream}
         streaming={streaming}
+        reconnecting={reconnecting}
         effectiveChatId={effectiveChatId}
         getChatId={async () => {
           if (effectiveChatId) return effectiveChatId

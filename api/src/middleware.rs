@@ -4,12 +4,16 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::{
     auth::build_cookie,
     config::Config,
     models::Claims,
     mcp::McpManager,
+    routes::chat::ActiveStream,
     sandbox_engine::SandboxState,
 };
 
@@ -22,6 +26,7 @@ pub struct AppState {
     pub sandbox: SandboxState,
     pub vosk_model: Option<std::sync::Arc<std::sync::Mutex<vosk::Model>>>,
     pub mcp_manager: McpManager,
+    pub active_streams: Arc<RwLock<HashMap<String, Arc<ActiveStream>>>>,
 }
 
 pub async fn auth_middleware(

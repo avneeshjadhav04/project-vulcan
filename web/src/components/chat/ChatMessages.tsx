@@ -33,6 +33,7 @@ interface ChatMessagesProps {
   messages: MessageItem[]
   variants: VariantInfo[]
   streaming: boolean
+  reconnecting?: boolean
   streamedContent: string
   toolExecutions: ToolExecution[]
   creatingChat: boolean
@@ -54,6 +55,7 @@ function ChatMessagesInner({
   messages,
   variants,
   streaming,
+  reconnecting,
   streamedContent,
   toolExecutions,
   creatingChat,
@@ -323,6 +325,13 @@ function ChatMessagesInner({
 
             {streamedContent && (
               <StreamingMessage content={streamedContent} isStreaming={streaming} />
+            )}
+
+            {reconnecting && (
+              <div className="flex items-center gap-2 py-2 text-xs text-text-helper" aria-live="polite">
+                <div className="h-3 w-3 animate-spin border-2 border-border-subtle border-t-interactive" />
+                Reconnecting to stream…
+              </div>
             )}
 
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}

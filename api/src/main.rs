@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -105,8 +108,10 @@ async fn run() -> anyhow::Result<()> {
         sandbox: sandbox_engine::SandboxState::new(),
         vosk_model,
         mcp_manager: mcp::McpManager::new(http_client.clone(), config.master_key),
+        active_streams: Arc::new(RwLock::new(HashMap::new())),
     };
     let bg_state = state.clone();
+    let stream_cleanup_state = state.clone();
 
     let cors = if let Some(ref origin) = config.cors_origin {
         CorsLayer::new()
@@ -205,6 +210,19 @@ async fn run() -> anyhow::Result<()> {
         loop {
             interval.tick().await;
             routes::automations::run_due_automations(&bg_state).await;
+        }
+    });
+
+    // Start background task to clean up old completed chat streams
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            routes::chat::cleanup_old_streams(
+                &stream_cleanup_state,
+                std::time::Duration::from_secs(300),
+            )
+            .await;
         }
     });
 
