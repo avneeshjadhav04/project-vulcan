@@ -2732,7 +2732,13 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
         "[SNAPSHOT]{}[/SNAPSHOT]",
         serde_json::to_string(&snapshot).unwrap_or_default()
     );
-    let _ = tx.send(snapshot_frame).await;
+    if tx.send(snapshot_frame).await.is_err() {
+        tracing::info!(
+            "Client channel closed for chat {} before snapshot could be sent",
+            stream.chat_id
+        );
+        return;
+    }
 
     // If the stream has already finished, send [DONE] and exit
     let initial_status = *stream.status.read().await;
@@ -2742,40 +2748,81 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
     }
 
     // Subscribe to new events by polling the registry content and tool list.
+    // IMPORTANT: copy data out while holding the lock, then drop the locks
+    // before sending over the network. Holding a lock during a slow/blocking
+    // send starves the generation task and causes the stream to die when the
+    // client disconnects (e.g. page refresh).
     let mut last_content_len = snapshot.content.len();
     let mut last_tool_count = snapshot.tool_executions.len();
     loop {
-        let content = stream.content.read().await;
-        let tools = stream.tool_executions.read().await;
-        let status = *stream.status.read().await;
+        // Copy everything we need under the locks, then release them.
+        let (content_delta, new_tools, status) = {
+            let content = stream.content.read().await;
+            let tools = stream.tool_executions.read().await;
+            let status = *stream.status.read().await;
 
-        if content.len() > last_content_len {
-            let delta = &content[last_content_len..];
-            if !delta.starts_with("[TOOL]")
-                && !delta.starts_with("[ERR]")
-                && delta != "[DONE]"
-                && !delta.starts_with("[SNAPSHOT]")
-            {
-                let _ = tx.send(delta.to_string()).await;
-            }
-            last_content_len = content.len();
+            let delta = if content.len() > last_content_len {
+                let d = &content[last_content_len..];
+                if !d.starts_with("[TOOL]")
+                    && !d.starts_with("[ERR]")
+                    && d != "[DONE]"
+                    && !d.starts_with("[SNAPSHOT]")
+                {
+                    Some(d.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let tool_frames: Vec<String> = if tools.len() > last_tool_count {
+                tools[last_tool_count..]
+                    .iter()
+                    .map(|t| format!("[TOOL]{}[/TOOL]", t))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            (delta, tool_frames, status)
+        };
+
+        // Update bookkeeping now that we are outside the locks.
+        if content_delta.is_some() {
+            last_content_len = stream.content.read().await.len();
+        }
+        if !new_tools.is_empty() {
+            last_tool_count += new_tools.len();
         }
 
-        if tools.len() > last_tool_count {
-            for tool in &tools[last_tool_count..] {
-                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool)).await;
+        // Send frames to the client. If the channel is closed (client
+        // disconnected), stop this forwarder but do NOT remove the active
+        // stream from the registry so a reconnect can resume it.
+        if let Some(delta) = content_delta {
+            if tx.send(delta).await.is_err() {
+                tracing::info!(
+                    "Client disconnected from chat {} stream; stopping forwarder",
+                    stream.chat_id
+                );
+                break;
             }
-            last_tool_count = tools.len();
+        }
+
+        for tool_frame in new_tools {
+            if tx.send(tool_frame).await.is_err() {
+                tracing::info!(
+                    "Client disconnected from chat {} stream; stopping forwarder",
+                    stream.chat_id
+                );
+                break;
+            }
         }
 
         if status != StreamStatus::Running {
             let _ = tx.send("[DONE]".to_string()).await;
             break;
         }
-
-        // Release locks before sleeping
-        drop(content);
-        drop(tools);
 
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
