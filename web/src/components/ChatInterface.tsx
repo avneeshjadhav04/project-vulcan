@@ -122,17 +122,20 @@ export default function ChatInterface({
   const scroll = useChatScroll(effectiveChatId)
 
   const manuallyStoppedRef = useRef(false)
+  const wasDbStreamingRef = useRef(false)
 
   useEffect(() => {
     if (!effectiveChatId) return
     const dbIsStreaming = !!(chatData?.messages?.some((m) => m.streaming))
     if (dbIsStreaming && !manuallyStoppedRef.current) {
+      wasDbStreamingRef.current = true
       setStreaming(effectiveChatId, true)
-    } else if (!dbIsStreaming && streaming) {
+    } else if (!dbIsStreaming && wasDbStreamingRef.current) {
+      wasDbStreamingRef.current = false
       setStreaming(effectiveChatId, false)
       manuallyStoppedRef.current = false
     }
-  }, [chatData?.messages, effectiveChatId, setStreaming, streaming])
+  }, [chatData?.messages, effectiveChatId, setStreaming])
 
   // Model selection is global and persisted in localStorage. We no longer sync
   // the selector to each chat's stored model on load, so refreshing a chat keeps
@@ -147,6 +150,7 @@ export default function ChatInterface({
     setValidatingModel(false)
     setNavigatedData(null)
     manuallyStoppedRef.current = false
+    wasDbStreamingRef.current = false
   }, [chatId])
 
   // Removed: We no longer load all past files into the input box.
@@ -220,6 +224,7 @@ export default function ChatInterface({
     // older variant the user may be browsing in-session.
     setNavigatedData(null)
     manuallyStoppedRef.current = false
+    wasDbStreamingRef.current = false
 
     // Check if user has a provider before sending
     if (userData && !userData.has_provider) {
