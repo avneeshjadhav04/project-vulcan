@@ -77,7 +77,7 @@ export default function ChatInterface({
   const queryClient = useQueryClient()
 
   const [streamState, streamActions] = useChatStream(effectiveChatId)
-  const { streaming, reconnecting, streamedContent, sendError, toolExecutions, creatingChat } = streamState
+  const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
   const { startStream, stopStream, clearStreamedContent } = streamActions
 
   const showError = useErrorToast();
@@ -196,7 +196,7 @@ export default function ChatInterface({
 
   const handleSend = useCallback(async (textOverride?: string, isRegenerate = false, regenerateFromMsgId?: string, existingUserMsgId?: string) => {
     const text = textOverride || input.trim()
-    if (!text || streaming || reconnecting) return
+    if (!text || streaming) return
 
     // New messages/regenerations always extend the latest branch, not whatever
     // older variant the user may be browsing in-session.
@@ -539,7 +539,6 @@ export default function ChatInterface({
         messages={messages}
         variants={chatData?.variants || []}
         streaming={streaming}
-        reconnecting={reconnecting}
         streamedContent={streamedContent}
         toolExecutions={toolExecutions}
         creatingChat={creatingChat}
@@ -563,7 +562,6 @@ export default function ChatInterface({
         onSend={(text) => handleSend(text)}
         onStop={stopStream}
         streaming={streaming}
-        reconnecting={reconnecting}
         effectiveChatId={effectiveChatId}
         getChatId={async () => {
           if (effectiveChatId) return effectiveChatId
