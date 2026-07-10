@@ -16,6 +16,7 @@ interface MessageItem {
   tokens_used?: number
   tool_name?: string
   parent_id?: string
+  streaming?: boolean
 }
 
 interface VariantInfo {
@@ -303,8 +304,8 @@ function ChatMessagesInner({
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   onActivateVariant={onActivateVariant}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(isLastAssistant && !streamedContent)}
-                  isStreamingReplacement={isLastAssistant && !!streamedContent}
+                  animateMount={!(isLastAssistant && !streamedContent && !msg.streaming)}
+                  isStreamingReplacement={isLastAssistant && (!!streamedContent || !!msg.streaming)}
                   variantInfo={computedVariantInfo}
                 />
               )
