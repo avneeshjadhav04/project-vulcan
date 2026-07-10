@@ -140,7 +140,14 @@ export default function ChatInput({
               </div>
               <button
                 onClick={onCancelVoice}
-                className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/10 text-support-error hover:bg-support-error/20 transition-colors"
+                aria-label="Stop recording"
+              >
+                <StopCircle className="h-4 w-4" />
+              </button>
+              <button
+                onClick={onCancelVoice}
+                className="text-[11px] text-support-error hover:text-support-error/80 transition-colors"
               >
                 Stop
               </button>
