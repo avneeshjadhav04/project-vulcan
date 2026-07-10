@@ -168,7 +168,7 @@ export default function ChatInput({
                 </button>
                 <button
                   onClick={onCancelVoice}
-                  className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+                  className="text-[11px] text-support-error hover:text-support-error/80 transition-colors"
                 >
                   Stop
                 </button>
