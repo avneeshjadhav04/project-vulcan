@@ -2431,19 +2431,13 @@ async fn send_message(
         remove_active_stream(&state_clone, &chat_id).await;
     });
 
-    // Create a per-request channel subscribed to the active stream. The first
-    // subscriber gets the initial live events; reconnects use /chats/:id/stream.
+    // Create a per-request channel and forward the active stream to it live.
+    // The generation task writes deltas to the registry, and this forwarder
+    // ensures the initial SSE connection receives them until completion.
     let (tx, rx) = mpsc::channel::<String>(64);
-    let subscribe_tx = tx.clone();
-    let subscribe_stream = active_stream.clone();
+    let forward_stream = active_stream.clone();
     tokio::spawn(async move {
-        // Send a snapshot first so the initial request is also reconnectable if it drops immediately.
-        let snapshot = subscribe_stream.snapshot().await;
-        let snapshot_frame = format!("[SNAPSHOT]{}[/SNAPSHOT]", serde_json::to_string(&snapshot).unwrap_or_default());
-        let _ = subscribe_tx.send(snapshot_frame).await;
-        // We don't keep tx in the subscriber list for the initial request because
-        // the spawned generation task already directly emits to it. Keeping it
-        // would duplicate events.
+        forward_active_stream_to_channel(forward_stream, tx).await;
     });
 
     Ok(make_sse_stream(rx))
@@ -2713,6 +2707,64 @@ fn make_sse_stream(
     Sse::new(sse_stream)
 }
 
+/// Forward the active stream to an mpsc channel: snapshot first, then live deltas,
+/// then [DONE]. Shared between the initial POST /chats/:id/message response and the
+/// reconnect GET /chats/:id/stream endpoint.
+async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::Sender<String>) {
+    let snapshot = stream.snapshot().await;
+    let snapshot_frame = format!(
+        "[SNAPSHOT]{}[/SNAPSHOT]",
+        serde_json::to_string(&snapshot).unwrap_or_default()
+    );
+    let _ = tx.send(snapshot_frame).await;
+
+    // If the stream has already finished, send [DONE] and exit
+    let initial_status = *stream.status.read().await;
+    if initial_status != StreamStatus::Running {
+        let _ = tx.send("[DONE]".to_string()).await;
+        return;
+    }
+
+    // Subscribe to new events by polling the registry content and tool list.
+    let mut last_content_len = snapshot.content.len();
+    let mut last_tool_count = snapshot.tool_executions.len();
+    loop {
+        let content = stream.content.read().await;
+        let tools = stream.tool_executions.read().await;
+        let status = *stream.status.read().await;
+
+        if content.len() > last_content_len {
+            let delta = &content[last_content_len..];
+            if !delta.starts_with("[TOOL]")
+                && !delta.starts_with("[ERR]")
+                && delta != "[DONE]"
+                && !delta.starts_with("[SNAPSHOT]")
+            {
+                let _ = tx.send(delta.to_string()).await;
+            }
+            last_content_len = content.len();
+        }
+
+        if tools.len() > last_tool_count {
+            for tool in &tools[last_tool_count..] {
+                let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool)).await;
+            }
+            last_tool_count = tools.len();
+        }
+
+        if status != StreamStatus::Running {
+            let _ = tx.send("[DONE]".to_string()).await;
+            break;
+        }
+
+        // Release locks before sleeping
+        drop(content);
+        drop(tools);
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 async fn stream_chat(
     State(state): State<AppState>,
     claims: axum::Extension<Claims>,
@@ -2736,62 +2788,8 @@ async fn stream_chat(
     };
 
     let (tx, rx) = mpsc::channel::<String>(64);
-    let stream_clone = stream.clone();
     tokio::spawn(async move {
-        // Send snapshot of current accumulated state
-        let snapshot = stream_clone.snapshot().await;
-        let snapshot_frame = format!(
-            "[SNAPSHOT]{}[/SNAPSHOT]",
-            serde_json::to_string(&snapshot).unwrap_or_default()
-        );
-        let _ = tx.send(snapshot_frame).await;
-
-        // If the stream has already finished, send [DONE] and exit
-        let status = *stream_clone.status.read().await;
-        if status != StreamStatus::Running {
-            let _ = tx.send("[DONE]".to_string()).await;
-            return;
-        }
-
-        // Subscribe to new events. We poll the registry content and tool list
-        // for changes and send deltas.
-        let mut last_content_len = 0usize;
-        let mut last_tool_count = 0usize;
-        loop {
-            let content = stream_clone.content.read().await;
-            let tools = stream_clone.tool_executions.read().await;
-            let status = *stream_clone.status.read().await;
-
-            if content.len() > last_content_len {
-                let delta = &content[last_content_len..];
-                if !delta.starts_with("[TOOL]")
-                    && !delta.starts_with("[ERR]")
-                    && delta != "[DONE]"
-                    && !delta.starts_with("[SNAPSHOT]")
-                {
-                    let _ = tx.send(delta.to_string()).await;
-                }
-                last_content_len = content.len();
-            }
-
-            if tools.len() > last_tool_count {
-                for tool in &tools[last_tool_count..] {
-                    let _ = tx.send(format!("[TOOL]{}[/TOOL]", tool)).await;
-                }
-                last_tool_count = tools.len();
-            }
-
-            if status != StreamStatus::Running {
-                let _ = tx.send("[DONE]".to_string()).await;
-                break;
-            }
-
-            // Release locks before sleeping
-            drop(content);
-            drop(tools);
-
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        forward_active_stream_to_channel(stream, tx).await;
     });
 
     Ok(make_sse_stream(rx))
