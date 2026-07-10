@@ -114,23 +114,39 @@ pub async fn insert_active_stream(
     stream: Arc<ActiveStream>,
 ) {
     let mut streams = state.active_streams.write().await;
-    streams.insert(chat_id, stream);
+    streams.insert(chat_id.clone(), stream);
+    tracing::info!("Active stream registered for chat {}", chat_id);
 }
 
 pub async fn remove_active_stream(state: &AppState, chat_id: &str) {
     let mut streams = state.active_streams.write().await;
     streams.remove(chat_id);
+    tracing::info!("Active stream removed for chat {}", chat_id);
 }
 
 pub async fn cleanup_old_streams(state: &AppState, max_age: Duration) {
     let now = Instant::now();
-    let mut streams = state.active_streams.write().await;
-    streams.retain(|_chat_id, stream| {
-        let status = *stream.status.blocking_read();
-        let is_old = now.duration_since(stream.created_at) > max_age;
-        // Keep running streams regardless of age; remove completed/error streams older than max_age
-        !(status != StreamStatus::Running && is_old)
-    });
+    let mut to_remove = Vec::new();
+    {
+        let streams = state.active_streams.read().await;
+        for (chat_id, stream) in streams.iter() {
+            let status = *stream.status.read().await;
+            let is_old = now.duration_since(stream.created_at) > max_age;
+            if status != StreamStatus::Running && is_old {
+                to_remove.push(chat_id.clone());
+            }
+        }
+    }
+    if !to_remove.is_empty() {
+        let mut streams = state.active_streams.write().await;
+        for chat_id in &to_remove {
+            streams.remove(chat_id);
+        }
+        tracing::info!(
+            "Cleaned up {} old completed chat stream(s)",
+            to_remove.len()
+        );
+    }
 }
 
 async fn resolve_chat_provider(
@@ -2781,11 +2797,14 @@ async fn stream_chat(
     let stream = match get_active_stream(&state, &id).await {
         Some(s) => s,
         None => {
+            tracing::info!("No active stream found for chat {} on reconnect", id);
             let (tx, rx) = mpsc::channel::<String>(2);
             let _ = tx.send("[DONE]".to_string()).await;
             return Ok(make_sse_stream(rx));
         }
     };
+
+    tracing::info!("Client reconnected to active stream for chat {}", id);
 
     let (tx, rx) = mpsc::channel::<String>(64);
     tokio::spawn(async move {
@@ -2811,6 +2830,9 @@ async fn stop_stream(
     if let Some(stream) = get_active_stream(&state, &id).await {
         stream.cancel();
         remove_active_stream(&state, &id).await;
+        tracing::info!("Client cancelled active stream for chat {}", id);
+    } else {
+        tracing::info!("Client cancel requested but no active stream for chat {}", id);
     }
 
     Ok(StatusCode::NO_CONTENT)
