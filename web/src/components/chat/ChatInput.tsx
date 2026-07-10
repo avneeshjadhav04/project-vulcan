@@ -252,7 +252,7 @@ export default function ChatInput({
                 </button>
               )}
 
-              {streaming ? (
+              {streaming || reconnecting ? (
                 <button
                   onClick={onStop}
                   aria-label="Stop generating"
@@ -275,9 +275,6 @@ export default function ChatInput({
                 >
                   <ArrowUp className="h-5 w-5" aria-hidden="true" />
                 </button>
-              )}
-              {reconnecting && (
-                <span className="text-[10px] text-text-helper">Reconnecting…</span>
               )}
             </div>
           </div>

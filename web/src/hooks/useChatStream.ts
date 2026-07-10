@@ -132,7 +132,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
     currentChatId: string,
     selectedModel: SelectedModel,
     callbacks: StreamCallbacks,
-    isReconnectSnapshot = false,
+    isResume = false,
   ): boolean => {
     if (raw === '[DONE]') {
       const duration = finalizeStreamState(currentChatId, selectedModel)
@@ -226,9 +226,9 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
             streamedContent: content,
             toolExecutions: tools,
             streaming: isRunning,
-            // Only show reconnecting indicator when resuming after a page reload,
-            // not for the initial message request.
-            reconnecting: isReconnectSnapshot && isRunning,
+            // Keep the reconnecting indicator only when resuming after a page reload.
+            // The first live delta will clear it.
+            reconnecting: isResume && isRunning,
           },
         }))
       } catch (e) {
@@ -307,7 +307,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
 
           if (!raw.trim()) continue
 
-          if (handleFrame(raw, currentChatId, selectedModel, callbacks, false)) {
+          if (handleFrame(raw, currentChatId, selectedModel, callbacks, true)) {
             queryClient.invalidateQueries({ queryKey: ['chat', currentChatId] })
             delete activeControllersRef.current[currentChatId]
             return true
