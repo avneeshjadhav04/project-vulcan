@@ -32,6 +32,7 @@ export interface StreamActions {
   startStream: (text: string, options: StreamOptions) => Promise<void>
   stopStream: (chatId?: string) => void
   clearStreamedContent: (chatId?: string) => void
+  setStreaming: (chatId: string, streaming: boolean) => void
 }
 
 export interface StreamOptions {
@@ -94,6 +95,14 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
       [id]: { ...(prev[id] || defaultStreamState), streamedContent: '', toolExecutions: [] },
     }))
   }, [chatId])
+
+  const setStreaming = useCallback((targetChatId: string, isStreaming: boolean) => {
+    setStreamStates((prev) => {
+      const current = prev[targetChatId] || defaultStreamState
+      if (current.streaming === isStreaming) return prev
+      return { ...prev, [targetChatId]: { ...current, streaming: isStreaming } }
+    })
+  }, [])
 
   const startStream = useCallback(async (text: string, options: StreamOptions) => {
     const {
@@ -381,6 +390,6 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
 
   return [
     streamState,
-    { startStream, stopStream, clearStreamedContent },
+    { startStream, stopStream, clearStreamedContent, setStreaming },
   ]
 }
