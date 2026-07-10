@@ -310,7 +310,7 @@ function ChatMessagesInner({
               )
             })}
 
-            {toolExecutions.length > 0 && streaming && (
+            {toolExecutions.length > 0 && (streaming || reconnecting) && (
               <div className="space-y-2">
                 {toolExecutions.map((tool, index) => (
                   <ToolExecutionCard
@@ -323,18 +323,11 @@ function ChatMessagesInner({
               </div>
             )}
 
-            {streamedContent && (
-              <StreamingMessage content={streamedContent} isStreaming={streaming} />
+            {streamedContent && (streaming || reconnecting) && (
+              <StreamingMessage content={streamedContent} isStreaming={!!(streaming || reconnecting)} />
             )}
 
-            {reconnecting && (
-              <div className="flex items-center gap-2 py-2 text-xs text-text-helper" aria-live="polite">
-                <div className="h-3 w-3 animate-spin border-2 border-border-subtle border-t-interactive" />
-                Reconnecting to stream…
-              </div>
-            )}
-
-            {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
+            {(streaming || reconnecting) && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
           </>
         )}
       </div>

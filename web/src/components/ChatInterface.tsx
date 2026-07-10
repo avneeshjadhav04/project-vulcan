@@ -195,7 +195,7 @@ export default function ChatInterface({
 
   const handleSend = useCallback(async (textOverride?: string, isRegenerate = false, regenerateFromMsgId?: string, existingUserMsgId?: string) => {
     const text = textOverride || input.trim()
-    if (!text || streaming) return
+    if (!text || streaming || reconnecting) return
 
     // New messages/regenerations always extend the latest branch, not whatever
     // older variant the user may be browsing in-session.
