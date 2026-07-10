@@ -297,7 +297,7 @@ function ChatMessagesInner({
                 <MessageBubble
                   key={msg.id}
                   chatId={chatId}
-                  msg={msg}
+                  msg={isLastStreaming && streamedContent ? { ...msg, content: streamedContent } : msg}
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   onActivateVariant={onActivateVariant}

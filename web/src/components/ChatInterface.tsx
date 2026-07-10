@@ -78,7 +78,7 @@ export default function ChatInterface({
 
   const [streamState, streamActions] = useChatStream(effectiveChatId)
   const { streaming, streamedContent, sendError, toolExecutions, creatingChat } = streamState
-  const { startStream, stopStream, clearStreamedContent } = streamActions
+  const { startStream, stopStream, clearStreamedContent, setStreaming } = streamActions
 
   const showError = useErrorToast();
 
@@ -95,7 +95,6 @@ export default function ChatInterface({
     currentChatIdRef.current = chatId
   }, [chatId, queryClient])
 
-  // Sync selected model to chat's stored provider+model when chat loads
   const { data: chatData, refetch, isError } = useQuery({
     queryKey: ['chat', effectiveChatId],
     queryFn: async () => {
@@ -107,6 +106,10 @@ export default function ChatInterface({
       }
     },
     enabled: !!effectiveChatId,
+    refetchInterval: (query) => {
+      const msgs = query.state.data?.messages
+      return msgs?.some((m) => m.streaming) ? 200 : false
+    },
   })
 
   const { data: userData, refetch: refetchUser } = useQuery({
@@ -117,6 +120,20 @@ export default function ChatInterface({
     },
   })
   const scroll = useChatScroll(effectiveChatId)
+
+  const manuallyStoppedRef = useRef(false)
+
+  useEffect(() => {
+    if (!effectiveChatId) return
+    const dbIsStreaming = !!(chatData?.messages?.some((m) => m.streaming))
+    if (dbIsStreaming && !manuallyStoppedRef.current) {
+      setStreaming(effectiveChatId, true)
+    } else if (!dbIsStreaming && streaming) {
+      setStreaming(effectiveChatId, false)
+      manuallyStoppedRef.current = false
+    }
+  }, [chatData?.messages, effectiveChatId, setStreaming, streaming])
+
   // Model selection is global and persisted in localStorage. We no longer sync
   // the selector to each chat's stored model on load, so refreshing a chat keeps
   // the user's last globally selected model (and its providerName) instead of
@@ -129,6 +146,7 @@ export default function ChatInterface({
     setModelValidation(null)
     setValidatingModel(false)
     setNavigatedData(null)
+    manuallyStoppedRef.current = false
   }, [chatId])
 
   // Removed: We no longer load all past files into the input box.
@@ -201,6 +219,7 @@ export default function ChatInterface({
     // New messages/regenerations always extend the latest branch, not whatever
     // older variant the user may be browsing in-session.
     setNavigatedData(null)
+    manuallyStoppedRef.current = false
 
     // Check if user has a provider before sending
     if (userData && !userData.has_provider) {
@@ -560,7 +579,10 @@ export default function ChatInterface({
         input={input}
         onInputChange={setInput}
         onSend={(text) => handleSend(text)}
-        onStop={stopStream}
+        onStop={() => {
+          manuallyStoppedRef.current = true
+          stopStream()
+        }}
         streaming={streaming}
         effectiveChatId={effectiveChatId}
         getChatId={async () => {
