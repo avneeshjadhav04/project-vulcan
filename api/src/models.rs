@@ -52,6 +52,7 @@ pub struct Message {
     pub parent_id: Option<String>,
     pub attachments: Option<String>,
     pub is_active: i32,
+    pub streaming: i32,
     pub created_at: DateTime<Utc>,
 }
 

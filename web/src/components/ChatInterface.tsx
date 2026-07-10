@@ -32,6 +32,7 @@ interface MessageItem {
   tokens_used?: number
   tool_name?: string
   parent_id?: string
+  streaming?: boolean
 }
 
 interface VariantInfo {

@@ -2487,7 +2487,46 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
     } = ctx;
     let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
 
-    let provider_response = state
+    // Insert a placeholder streaming assistant message so that a page refresh
+    // can immediately show the response as it is being generated.
+    let provider_id_str = provider_id.to_string();
+    let model_id_str = model_id.to_string();
+    let chat_id_str = chat_id.to_string();
+    let parent_id_str = parent_id.map(|s| s.to_string());
+    let stream_msg_id: Option<String> = sqlx::query_scalar(
+        "INSERT INTO messages (chat_id, role, content, streaming, provider_id, model_id, parent_id) VALUES (?1, 'assistant', '', 1, ?2, ?3, ?4) RETURNING id"
+    )
+    .bind(&chat_id_str)
+    .bind(&provider_id_str)
+    .bind(&model_id_str)
+    .bind(&parent_id_str)
+    .fetch_one(db)
+    .await
+    .ok();
+
+    async fn finalize_stream_message(
+        db: &sqlx::SqlitePool,
+        msg_id: Option<&String>,
+        full_content: &str,
+        streaming: bool,
+    ) {
+        let Some(id) = msg_id else { return };
+        let streaming_flag = if streaming { 1 } else { 0 };
+        let estimated_tokens = (full_content.len() / 4) as i32;
+        if let Err(e) = sqlx::query(
+            "UPDATE messages SET content = ?1, streaming = ?2, tokens_used = ?3 WHERE id = ?4"
+        )
+        .bind(full_content)
+        .bind(streaming_flag)
+        .bind(estimated_tokens)
+        .bind(id)
+        .execute(db)
+        .await {
+            tracing::error!("Failed to update streaming assistant message: {}", e);
+        }
+    }
+
+        let provider_response = state
         .http_client
         .post(format!("{}/chat/completions", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
@@ -2497,6 +2536,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         .await;
 
     let mut stream_opt = None;
+    let mut is_error = false;
 
     match provider_response {
         Ok(res) => {
@@ -2509,6 +2549,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                     body_text,
                     model_id
                 );
+                is_error = true;
                 let user_msg = if status == 404 {
                     let models_res = state
                         .http_client
@@ -2547,14 +2588,24 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                 };
                 active_stream.append_content(&user_msg).await;
                 active_stream.set_status(StreamStatus::Error).await;
+                finalize_stream_message(
+                    db,
+                    stream_msg_id.as_ref(),
+                    &user_msg,
+                    false,
+                )
+                .await;
             } else {
                 stream_opt = Some(res.bytes_stream());
             }
         }
         Err(e) => {
             tracing::error!("Provider request error: {}", e);
-            active_stream.append_content("[ERR]Failed to connect to AI provider. Please check your internet connection and API key.[/ERR]").await;
+            let err_msg = "[ERR]Failed to connect to AI provider. Please check your internet connection and API key.[/ERR]";
+            active_stream.append_content(err_msg).await;
             active_stream.set_status(StreamStatus::Error).await;
+            is_error = true;
+            finalize_stream_message(db, stream_msg_id.as_ref(), err_msg, false).await;
         }
     }
 
@@ -2562,14 +2613,18 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         let mut buffer = String::new();
         let mut full_content = String::new();
         let chat_id = chat_id.to_string();
-        let provider_id = provider_id.to_string();
-        let model_id = model_id.to_string();
         let db = db.clone();
-        let parent_id = parent_id.map(|s| s.to_string());
 
         while let Some(chunk_result) = stream.next().await {
             if active_stream.cancel_token.is_cancelled() {
                 tracing::info!("Stream cancelled for chat {}", chat_id);
+                finalize_stream_message(
+                    &db,
+                    stream_msg_id.as_ref(),
+                    &full_content,
+                    false,
+                )
+                .await;
                 break;
             }
             match chunk_result {
@@ -2577,6 +2632,13 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                     buffer.push_str(&String::from_utf8_lossy(&bytes));
                     if buffer.len() > MAX_MESSAGE_LENGTH * 2 {
                         tracing::error!("SSE buffer exceeded max size, aborting stream");
+                        finalize_stream_message(
+                            &db,
+                            stream_msg_id.as_ref(),
+                            &full_content,
+                            false,
+                        )
+                        .await;
                         break;
                     }
                     while let Some(pos) = buffer.find("\n\n") {
@@ -2586,14 +2648,13 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                             if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
                                     active_stream.set_status(StreamStatus::Done).await;
-                                    let estimated_tokens = (full_content.len() / 4) as i32;
-                                    if !full_content.is_empty() {
-                                        if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                                            .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                                            .execute(&db).await {
-                                            tracing::error!("Failed to persist assistant message: {}", e);
-                                        }
-                                    }
+                                    finalize_stream_message(
+                                        &db,
+                                        stream_msg_id.as_ref(),
+                                        &full_content,
+                                        false,
+                                    )
+                                    .await;
                                     return;
                                 }
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data)
@@ -2603,15 +2664,25 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                                     {
                                         full_content.push_str(content);
                                         active_stream.append_content(content).await;
+                                        finalize_stream_message(
+                                            &db,
+                                            stream_msg_id.as_ref(),
+                                            &full_content,
+                                            true,
+                                        )
+                                        .await;
                                         if full_content.len() > MAX_MESSAGE_LENGTH {
                                             tracing::error!(
                                                 "Full content exceeded max size, aborting stream"
                                             );
                                             active_stream.set_status(StreamStatus::Done).await;
-                                            let estimated_tokens = (full_content.len() / 4) as i32;
-                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                                                .execute(&db).await;
+                                            finalize_stream_message(
+                                                &db,
+                                                stream_msg_id.as_ref(),
+                                                &full_content,
+                                                false,
+                                            )
+                                            .await;
                                             return;
                                         }
                                     }
@@ -2622,6 +2693,13 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                 }
                 Err(e) => {
                     tracing::error!("Stream chunk error: {}", e);
+                    finalize_stream_message(
+                        &db,
+                        stream_msg_id.as_ref(),
+                        &full_content,
+                        false,
+                    )
+                    .await;
                     break;
                 }
             }
@@ -2631,18 +2709,19 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         if status != StreamStatus::Error {
             active_stream.set_status(StreamStatus::Done).await;
         }
-        if !full_content.is_empty() {
-            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                .execute(&db).await {
-                tracing::error!("Failed to persist assistant message: {}", e);
-            }
-        }
-    } else {
+        finalize_stream_message(
+            &db,
+            stream_msg_id.as_ref(),
+            &full_content,
+            false,
+        )
+        .await;
+    } else if !is_error {
         let status = *active_stream.status.read().await;
         if status != StreamStatus::Error {
             active_stream.set_status(StreamStatus::Done).await;
         }
+        finalize_stream_message(db, stream_msg_id.as_ref(), "", false).await;
     }
 }
 
