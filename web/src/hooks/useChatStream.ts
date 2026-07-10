@@ -218,15 +218,17 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
               language: t.language,
             }))
           : []
-        const status = snapshot.status === 'running' ? true : false
+        const isRunning = snapshot.status === 'running'
         setStreamStates((prev) => ({
           ...prev,
           [currentChatId]: {
             ...(prev[currentChatId] || defaultStreamState),
             streamedContent: content,
             toolExecutions: tools,
-            streaming: status,
-            reconnecting: status,
+            streaming: isRunning,
+            // Only show reconnecting indicator when resuming after a page reload,
+            // not for the initial message request.
+            reconnecting: isReconnectSnapshot && isRunning,
           },
         }))
       } catch (e) {
@@ -241,7 +243,9 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
         ...prev,
         [currentChatId]: {
           ...current,
-          streamedContent: isReconnectSnapshot ? current.streamedContent + raw : current.streamedContent + raw,
+          streamedContent: current.streamedContent + raw,
+          // Any live frame means we are successfully connected; hide reconnecting.
+          reconnecting: false,
         },
       }
     })
@@ -432,7 +436,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
     setStreamStates((prev) => {
       const next = { ...prev }
       delete next['__new__']
-      next[currentChatId] = { ...defaultStreamState, streaming: true }
+      next[currentChatId] = { ...defaultStreamState, streaming: true, reconnecting: false }
       return next
     })
 
