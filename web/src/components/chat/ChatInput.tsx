@@ -138,19 +138,6 @@ export default function ChatInput({
                   Setting up voice transcription
                 </div>
               </div>
-              <button
-                onClick={onCancelVoice}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/10 text-support-error hover:bg-support-error/20 transition-colors"
-                aria-label="Stop recording"
-              >
-                <StopCircle className="h-4 w-4" />
-              </button>
-              <button
-                onClick={onCancelVoice}
-                className="text-[11px] text-support-error hover:text-support-error/80 transition-colors"
-              >
-                Stop
-              </button>
             </div>
           ) : voiceState === 'recording' ? (
             <div className="flex flex-col px-4 py-4">
