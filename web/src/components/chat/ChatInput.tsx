@@ -17,7 +17,6 @@ interface ChatInputProps {
   onSend: (text?: string) => void
   onStop: () => void
   streaming: boolean
-  reconnecting?: boolean
   effectiveChatId?: string
   getChatId: () => Promise<string>
   selectedModel: SelectedModel
@@ -44,7 +43,6 @@ export default function ChatInput({
   onSend,
   onStop,
   streaming,
-  reconnecting,
   effectiveChatId: _effectiveChatId,
   getChatId,
   selectedModel,
@@ -204,7 +202,7 @@ export default function ChatInput({
               }}
               placeholder="Message AI..."
               rows={1}
-              disabled={streaming || reconnecting}
+              disabled={streaming}
               aria-label="Message input"
               className="max-h-[320px] min-h-[48px] w-full resize-none bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary outline-none placeholder:text-text-placeholder disabled:opacity-50"
             />
@@ -252,7 +250,7 @@ export default function ChatInput({
                 </button>
               )}
 
-              {streaming || reconnecting ? (
+              {streaming ? (
                 <button
                   onClick={onStop}
                   aria-label="Stop generating"
@@ -269,7 +267,7 @@ export default function ChatInput({
                     onInputChange('')
                     onVoiceTranscript('')
                   }}
-                  disabled={(!input.trim() && !voiceTranscript.trim()) || reconnecting}
+                  disabled={!input.trim() && !voiceTranscript.trim()}
                   aria-label="Send message"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-vibrant-gradient text-on-interactive shadow-md transition-all hover:opacity-90 disabled:opacity-30 disabled:shadow-none"
                 >

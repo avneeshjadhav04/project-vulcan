@@ -1,6 +1,5 @@
 import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react'
 import MessageBubble from './MessageBubble'
-import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
 import ToolExecutionCard from './ToolExecutionCard'
 import EmptyState from './EmptyState'
@@ -34,7 +33,6 @@ interface ChatMessagesProps {
   messages: MessageItem[]
   variants: VariantInfo[]
   streaming: boolean
-  reconnecting?: boolean
   streamedContent: string
   toolExecutions: ToolExecution[]
   creatingChat: boolean
@@ -56,7 +54,6 @@ function ChatMessagesInner({
   messages,
   variants,
   streaming,
-  reconnecting,
   streamedContent,
   toolExecutions,
   creatingChat,
@@ -285,6 +282,7 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
+              const isLastStreaming = isLastAssistant && (msg.streaming || !!(streaming && streamedContent && index === visibleMessages.length - 1))
               const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
                 ? activeVariants.find((v) => v.message_id === msg.id)
                 : undefined
@@ -304,14 +302,15 @@ function ChatMessagesInner({
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   onActivateVariant={onActivateVariant}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(isLastAssistant && !streamedContent && !msg.streaming)}
-                  isStreamingReplacement={isLastAssistant && (!!streamedContent || !!msg.streaming)}
+                  animateMount={!isLastStreaming}
+                  isStreamingReplacement={isLastStreaming}
+                  streaming={isLastStreaming}
                   variantInfo={computedVariantInfo}
                 />
               )
             })}
 
-            {toolExecutions.length > 0 && (streaming || reconnecting) && (
+            {toolExecutions.length > 0 && streaming && (
               <div className="space-y-2">
                 {toolExecutions.map((tool, index) => (
                   <ToolExecutionCard
@@ -324,11 +323,7 @@ function ChatMessagesInner({
               </div>
             )}
 
-            {streamedContent && (streaming || reconnecting) && (
-              <StreamingMessage content={streamedContent} isStreaming={!!(streaming || reconnecting)} />
-            )}
-
-            {(streaming || reconnecting) && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
+            {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
           </>
         )}
       </div>

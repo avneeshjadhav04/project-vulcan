@@ -15,12 +15,11 @@ use axum::{
 };
 use base64::Engine;
 use futures::stream::StreamExt;
-use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -32,19 +31,11 @@ struct ResolvedProvider {
 
 // ─── Active stream registry for reconnectable chat streaming ───
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StreamStatus {
     Running,
     Done,
     Error,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ActiveStreamSnapshot {
-    pub content: String,
-    pub tool_executions: Vec<serde_json::Value>,
-    pub status: StreamStatus,
 }
 
 #[derive(Clone)]
@@ -53,7 +44,6 @@ pub struct ActiveStream {
     pub content: Arc<RwLock<String>>,
     pub tool_executions: Arc<RwLock<Vec<serde_json::Value>>>,
     pub status: Arc<RwLock<StreamStatus>>,
-    pub created_at: Instant,
     pub cancel_token: CancellationToken,
 }
 
@@ -64,7 +54,6 @@ impl ActiveStream {
             content: Arc::new(RwLock::new(String::new())),
             tool_executions: Arc::new(RwLock::new(Vec::new())),
             status: Arc::new(RwLock::new(StreamStatus::Running)),
-            created_at: Instant::now(),
             cancel_token: CancellationToken::new(),
         }
     }
@@ -82,17 +71,6 @@ impl ActiveStream {
     pub async fn set_status(&self, status: StreamStatus) {
         let mut s = self.status.write().await;
         *s = status;
-    }
-
-    pub async fn snapshot(&self) -> ActiveStreamSnapshot {
-        let content = self.content.read().await.clone();
-        let tool_executions = self.tool_executions.read().await.clone();
-        let status = *self.status.read().await;
-        ActiveStreamSnapshot {
-            content,
-            tool_executions,
-            status,
-        }
     }
 
     pub fn cancel(&self) {
@@ -124,30 +102,7 @@ pub async fn remove_active_stream(state: &AppState, chat_id: &str) {
     tracing::info!("Active stream removed for chat {}", chat_id);
 }
 
-pub async fn cleanup_old_streams(state: &AppState, max_age: Duration) {
-    let now = Instant::now();
-    let mut to_remove = Vec::new();
-    {
-        let streams = state.active_streams.read().await;
-        for (chat_id, stream) in streams.iter() {
-            let status = *stream.status.read().await;
-            let is_old = now.duration_since(stream.created_at) > max_age;
-            if status != StreamStatus::Running && is_old {
-                to_remove.push(chat_id.clone());
-            }
-        }
-    }
-    if !to_remove.is_empty() {
-        let mut streams = state.active_streams.write().await;
-        for chat_id in &to_remove {
-            streams.remove(chat_id);
-        }
-        tracing::info!(
-            "Cleaned up {} old completed chat stream(s)",
-            to_remove.len()
-        );
-    }
-}
+
 
 async fn resolve_chat_provider(
     state: &AppState,
@@ -944,7 +899,7 @@ pub fn router() -> Router<AppState> {
             get(get_chat).patch(rename_chat).delete(delete_chat),
         )
         .route("/chats/{id}/message", post(send_message))
-        .route("/chats/{id}/stream", get(stream_chat).delete(stop_stream))
+        .route("/chats/{id}/stream", delete(stop_stream))
         .route(
             "/chats/{id}/messages/{msg_id}/edit-replace",
             post(edit_message_replace),
@@ -2802,39 +2757,15 @@ fn make_sse_stream(
     Sse::new(sse_stream)
 }
 
-/// Forward the active stream to an mpsc channel: snapshot first, then live deltas,
-/// then [DONE]. Shared between the initial POST /chats/:id/message response and the
-/// reconnect GET /chats/:id/stream endpoint.
+/// Forward the active stream to an mpsc channel for the current browser tab.
+/// Stops when the client disconnects or the stream finishes.
 async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::Sender<String>) {
-    let snapshot = stream.snapshot().await;
-    let snapshot_frame = format!(
-        "[SNAPSHOT]{}[/SNAPSHOT]",
-        serde_json::to_string(&snapshot).unwrap_or_default()
-    );
-    if tx.send(snapshot_frame).await.is_err() {
-        tracing::info!(
-            "Client channel closed for chat {} before snapshot could be sent",
-            stream.chat_id
-        );
-        return;
-    }
-
-    // If the stream has already finished, send [DONE] and exit
-    let initial_status = *stream.status.read().await;
-    if initial_status != StreamStatus::Running {
-        let _ = tx.send("[DONE]".to_string()).await;
-        return;
-    }
-
-    // Subscribe to new events by polling the registry content and tool list.
-    // IMPORTANT: copy data out while holding the lock, then drop the locks
-    // before sending over the network. Holding a lock during a slow/blocking
-    // send starves the generation task and causes the stream to die when the
-    // client disconnects (e.g. page refresh).
-    let mut last_content_len = snapshot.content.len();
-    let mut last_tool_count = snapshot.tool_executions.len();
+    let mut last_content_len = 0usize;
+    let mut last_tool_count = 0usize;
     loop {
-        // Copy everything we need under the locks, then release them.
+        // Copy everything we need under the locks, then release them before
+        // sending over the network. Holding locks during a slow send starves
+        // the generation task.
         let (content_delta, new_tools, status) = {
             let content = stream.content.read().await;
             let tools = stream.tool_executions.read().await;
@@ -2845,7 +2776,6 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
                 if !d.starts_with("[TOOL]")
                     && !d.starts_with("[ERR]")
                     && d != "[DONE]"
-                    && !d.starts_with("[SNAPSHOT]")
                 {
                     Some(d.to_string())
                 } else {
@@ -2867,7 +2797,7 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
             (delta, tool_frames, status)
         };
 
-        // Update bookkeeping now that we are outside the locks.
+        // Update bookkeeping outside the locks.
         if content_delta.is_some() {
             last_content_len = stream.content.read().await.len();
         }
@@ -2875,25 +2805,15 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
             last_tool_count += new_tools.len();
         }
 
-        // Send frames to the client. If the channel is closed (client
-        // disconnected), stop this forwarder but do NOT remove the active
-        // stream from the registry so a reconnect can resume it.
+        // Send frames to the client. If the channel is closed, stop.
         if let Some(delta) = content_delta {
             if tx.send(delta).await.is_err() {
-                tracing::info!(
-                    "Client disconnected from chat {} stream; stopping forwarder",
-                    stream.chat_id
-                );
                 break;
             }
         }
 
         for tool_frame in new_tools {
             if tx.send(tool_frame).await.is_err() {
-                tracing::info!(
-                    "Client disconnected from chat {} stream; stopping forwarder",
-                    stream.chat_id
-                );
                 break;
             }
         }
@@ -2905,39 +2825,6 @@ async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::S
 
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-}
-
-async fn stream_chat(
-    State(state): State<AppState>,
-    claims: axum::Extension<Claims>,
-    Path(id): Path<String>,
-) -> Result<Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>>, StatusCode> {
-    // Verify chat ownership
-    let _: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
-        .bind(id.clone())
-        .bind(claims.sub.clone())
-        .fetch_one(&state.db)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    let stream = match get_active_stream(&state, &id).await {
-        Some(s) => s,
-        None => {
-            tracing::info!("No active stream found for chat {} on reconnect", id);
-            let (tx, rx) = mpsc::channel::<String>(2);
-            let _ = tx.send("[DONE]".to_string()).await;
-            return Ok(make_sse_stream(rx));
-        }
-    };
-
-    tracing::info!("Client reconnected to active stream for chat {}", id);
-
-    let (tx, rx) = mpsc::channel::<String>(64);
-    tokio::spawn(async move {
-        forward_active_stream_to_channel(stream, tx).await;
-    });
-
-    Ok(make_sse_stream(rx))
 }
 
 async fn stop_stream(
