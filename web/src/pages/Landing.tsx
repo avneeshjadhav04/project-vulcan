@@ -10,7 +10,7 @@ import {
   Zap,
   Sparkles,
   Lock,
-  Globe,
+  Plug,
   Cpu,
   ArrowRight,
   ChevronDown,
@@ -362,9 +362,9 @@ function Features() {
       description: 'Self-hosted with SQLite, WAL mode, CSRF protection, and JWT-based authentication.',
     },
     {
-      icon: Globe,
-      title: 'Dark Mode Aesthetic',
-      description: 'Inspired by IBM Carbon Design System. Strict dark mode, clean typography, and zero visual clutter.',
+      icon: Plug,
+      title: 'MCP Server Integration',
+      description: 'Connect external tools and data sources via the Model Context Protocol. Extend your AI with custom capabilities.',
     },
     {
       icon: LayoutTemplate,
