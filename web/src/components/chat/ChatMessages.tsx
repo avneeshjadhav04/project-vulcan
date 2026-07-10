@@ -310,6 +310,16 @@ function ChatMessagesInner({
               )
             })}
 
+            {streaming && streamedContent && !visibleMessages.some((m) => m.role === 'assistant' && m.streaming) && (
+              <MessageBubble
+                chatId={chatId}
+                msg={{ id: 'msg-streaming', role: 'assistant', content: streamedContent, created_at: new Date().toISOString() }}
+                streaming
+                isStreamingReplacement
+                animateMount={false}
+              />
+            )}
+
             {toolExecutions.length > 0 && streaming && (
               <div className="space-y-2">
                 {toolExecutions.map((tool, index) => (
