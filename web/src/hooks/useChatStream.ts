@@ -218,17 +218,17 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
               language: t.language,
             }))
           : []
-        const isRunning = snapshot.status === 'running'
         setStreamStates((prev) => ({
           ...prev,
           [currentChatId]: {
             ...(prev[currentChatId] || defaultStreamState),
             streamedContent: content,
             toolExecutions: tools,
-            streaming: isRunning,
-            // Keep the reconnecting indicator only when resuming after a page reload.
-            // The first live delta will clear it.
-            reconnecting: isResume && isRunning,
+            // The stream is considered active because we have an open SSE
+            // connection. Only [DONE] or [ERR] frames should clear streaming.
+            // Preserve the existing streaming flag, which is already true when
+            // resumeStream opens the connection.
+            reconnecting: isResume,
           },
         }))
       } catch (e) {
