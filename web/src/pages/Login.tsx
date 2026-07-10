@@ -18,7 +18,7 @@ import {
   MessageSquare,
   Terminal,
   CheckCircle2,
-  Cpu,
+  Plug,
 } from 'lucide-react'
 
 /* Feature Item */
@@ -161,7 +161,7 @@ export default function Login() {
     { icon: MessageSquare, text: 'Real-time chat with AI models' },
     { icon: Terminal, text: 'Sandboxed terminal execution' },
     { icon: Shield, text: 'AES-256 encrypted API keys' },
-    { icon: Cpu, text: 'Multiple model selection' },
+    { icon: Plug, text: 'Model Context Protocol support' },
   ]
 
   return (
