@@ -187,10 +187,6 @@ export default function Login() {
             <br />
             <span className="font-semibold text-interactive">AI Platform</span>
           </h2>
-          <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
-            A secure, self-hosted AI platform. Chat with the latest models,
-            execute terminal commands safely, and bring your own AI provider API key.
-          </p>
 
           <div className="space-y-3 pt-2">
             {features.map((f, i) => (
