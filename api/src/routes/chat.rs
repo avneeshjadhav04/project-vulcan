@@ -1144,12 +1144,29 @@ async fn get_chat(
     // Active path: root messages (parent_id IS NULL) + active variants.
     // Tool messages have parent_id set to the assistant variant that spawned
     // them, so they only show when their parent assistant is active.
-    let messages: Vec<Message> =
+    let mut messages: Vec<Message> =
         sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC")
             .bind(id.clone())
             .fetch_all(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Merge in-memory streaming content: if there is an active stream for this
+    // chat, replace the placeholder message's content with the live content
+    // from the ActiveStream registry. This avoids per-chunk DB writes while
+    // still serving up-to-date content to polling clients.
+    if let Some(active_stream) = get_active_stream(&state, &id).await {
+        let live_content = active_stream.content.read().await.clone();
+        let status = *active_stream.status.read().await;
+        for msg in &mut messages {
+            if msg.streaming == 1 {
+                msg.content = live_content.clone();
+                if status != StreamStatus::Running {
+                    msg.streaming = 0;
+                }
+            }
+        }
+    }
 
     // Build sibling counts for each message on the active path.
     // Group by (parent_id, role): count all messages sharing the same parent_id
@@ -2619,13 +2636,6 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                                     {
                                         full_content.push_str(content);
                                         active_stream.append_content(content).await;
-                                        finalize_stream_message(
-                                            &db,
-                                            stream_msg_id.as_ref(),
-                                            &full_content,
-                                            true,
-                                        )
-                                        .await;
                                         if full_content.len() > MAX_MESSAGE_LENGTH {
                                             tracing::error!(
                                                 "Full content exceeded max size, aborting stream"
