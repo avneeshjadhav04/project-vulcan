@@ -251,7 +251,7 @@ export default function ChatInput({
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
                 >
                   <div className="relative flex items-center justify-center">
-                    <Loader2 className="absolute h-8 w-8 animate-spin" aria-hidden="true" />
+                    <Loader2 className="absolute h-8 w-8 animate-spin opacity-40" aria-hidden="true" />
                     <StopCircle className="relative h-4 w-4" aria-hidden="true" />
                   </div>
                 </button>
