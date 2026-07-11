@@ -26,6 +26,7 @@ interface MessageItem {
   tool_name?: string
   tool_call_id?: string
   attachments?: string
+  streaming?: boolean
 }
 
 interface MessageBubbleProps {
@@ -37,6 +38,7 @@ interface MessageBubbleProps {
   messageMeta?: { provider: string; model: string; durationMs: number }
   animateMount?: boolean
   isStreamingReplacement?: boolean
+  streaming?: boolean
   variantInfo?: { total: number; activeIndex: number; siblingIds: string[] }
 }
 
@@ -48,6 +50,7 @@ function MessageBubble({
   messageMeta,
   animateMount = true,
   isStreamingReplacement = false,
+  streaming = false,
   variantInfo,
 }: MessageBubbleProps) {
   const isAssistant = msg.role === 'assistant'
@@ -127,6 +130,12 @@ function MessageBubble({
               : `border border-border-subtle bg-layer/60 backdrop-blur-md rounded-2xl rounded-tl-sm px-5 py-3 text-text-primary ${isStreamingReplacement ? 'opacity-60' : ''}`
           }`}
         >
+          {streaming && (
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] text-text-helper">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-interactive" />
+              Writing…
+            </div>
+          )}
           {isEditing ? (
             <div className="flex flex-col gap-2">
               <textarea

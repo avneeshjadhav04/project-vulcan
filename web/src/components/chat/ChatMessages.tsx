@@ -1,6 +1,5 @@
 import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, useImperativeHandle, useState } from 'react'
 import MessageBubble from './MessageBubble'
-import StreamingMessage from './StreamingMessage'
 import TypingIndicator from './TypingIndicator'
 import ToolExecutionCard from './ToolExecutionCard'
 import EmptyState from './EmptyState'
@@ -16,6 +15,7 @@ interface MessageItem {
   tokens_used?: number
   tool_name?: string
   parent_id?: string
+  streaming?: boolean
 }
 
 interface VariantInfo {
@@ -282,6 +282,7 @@ function ChatMessagesInner({
           <>
             {visibleMessages.map((msg, index) => {
               const isLastAssistant = msg.role === 'assistant' && index === visibleMessages.length - 1
+              const isLastStreaming = isLastAssistant && (msg.streaming || !!(streaming && streamedContent && index === visibleMessages.length - 1))
               const variantInfo = (msg.role === 'assistant' || msg.role === 'user') && msg.parent_id
                 ? activeVariants.find((v) => v.message_id === msg.id)
                 : undefined
@@ -296,17 +297,28 @@ function ChatMessagesInner({
                 <MessageBubble
                   key={msg.id}
                   chatId={chatId}
-                  msg={msg}
+                  msg={isLastStreaming && streamedContent ? { ...msg, content: streamedContent } : msg}
                   onRegenerate={index === lastAssistantIndex ? onRegenerate : undefined}
                   onEdit={msg.role === 'user' ? onEditMessage : undefined}
                   onActivateVariant={onActivateVariant}
                   messageMeta={messageMeta[msg.id]}
-                  animateMount={!(isLastAssistant && !streamedContent)}
-                  isStreamingReplacement={isLastAssistant && !!streamedContent}
+                  animateMount={!isLastStreaming}
+                  isStreamingReplacement={isLastStreaming}
+                  streaming={isLastStreaming}
                   variantInfo={computedVariantInfo}
                 />
               )
             })}
+
+            {streaming && streamedContent && !visibleMessages.some((m) => m.role === 'assistant' && m.streaming) && (
+              <MessageBubble
+                chatId={chatId}
+                msg={{ id: 'msg-streaming', role: 'assistant', content: streamedContent, created_at: new Date().toISOString() }}
+                streaming
+                isStreamingReplacement
+                animateMount={false}
+              />
+            )}
 
             {toolExecutions.length > 0 && streaming && (
               <div className="space-y-2">
@@ -319,10 +331,6 @@ function ChatMessagesInner({
                   />
                 ))}
               </div>
-            )}
-
-            {streamedContent && (
-              <StreamingMessage content={streamedContent} isStreaming={streaming} />
             )}
 
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}

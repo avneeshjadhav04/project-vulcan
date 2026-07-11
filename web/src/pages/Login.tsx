@@ -18,7 +18,7 @@ import {
   MessageSquare,
   Terminal,
   CheckCircle2,
-  Cpu,
+  Plug,
 } from 'lucide-react'
 
 /* Feature Item */
@@ -161,7 +161,7 @@ export default function Login() {
     { icon: MessageSquare, text: 'Real-time chat with AI models' },
     { icon: Terminal, text: 'Sandboxed terminal execution' },
     { icon: Shield, text: 'AES-256 encrypted API keys' },
-    { icon: Cpu, text: 'Multiple model selection' },
+    { icon: Plug, text: 'Model Context Protocol support' },
   ]
 
   return (
@@ -176,7 +176,7 @@ export default function Login() {
             <ThemeLogo className="h-16 w-16" alt="" />
             <div>
               <span className="text-sm font-semibold tracking-tight">Project Vulcan</span>
-              <p className="text-[10px] text-text-helper">Personal AI Assistant</p>
+              <p className="text-[10px] text-text-helper">Personal AI Platform</p>
             </div>
           </button>
         </div>
@@ -185,12 +185,8 @@ export default function Login() {
           <h2 className="text-2xl font-light leading-tight text-text-primary">
             Your Personal
             <br />
-            <span className="font-semibold text-interactive">AI Assistant</span>
+            <span className="font-semibold text-interactive">AI Platform</span>
           </h2>
-          <p className="max-w-xs text-sm leading-relaxed text-text-secondary">
-            A secure, self-hosted AI platform. Chat with the latest models,
-            execute terminal commands safely, and bring your own AI provider API key.
-          </p>
 
           <div className="space-y-3 pt-2">
             {features.map((f, i) => (
@@ -224,7 +220,7 @@ export default function Login() {
             <ThemeLogo className="h-20 w-20" alt="" />
             <div>
               <h1 className="text-lg font-semibold text-text-primary">Project Vulcan</h1>
-              <p className="text-xs text-text-helper">Personal AI Assistant</p>
+              <p className="text-xs text-text-helper">Personal AI Platform</p>
             </div>
           </div>
 

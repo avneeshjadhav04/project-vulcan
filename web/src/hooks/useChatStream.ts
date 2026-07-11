@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { SelectedModel } from '../components/ProviderModelSelector'
@@ -32,6 +32,7 @@ export interface StreamActions {
   startStream: (text: string, options: StreamOptions) => Promise<void>
   stopStream: (chatId?: string) => void
   clearStreamedContent: (chatId?: string) => void
+  setStreaming: (chatId: string, streaming: boolean) => void
 }
 
 export interface StreamOptions {
@@ -67,7 +68,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
     ? (streamStates[chatId] || defaultStreamState)
     : (streamStates['__new__'] || defaultStreamState)
 
-  const stopStream = useCallback((targetChatId?: string) => {
+  const stopStream = useCallback(async (targetChatId?: string) => {
     const id = targetChatId ?? chatId
     if (!id) return
     const controller = activeControllersRef.current[id]
@@ -79,14 +80,12 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
       ...prev,
       [id]: { ...defaultStreamState },
     }))
-  }, [chatId])
-
-  useEffect(() => {
-    return () => {
-      Object.values(activeControllersRef.current).forEach((c) => c.abort())
-      activeControllersRef.current = {}
+    try {
+      await api.delete(`/chats/${id}/stream`)
+    } catch (e) {
+      // Stream may have already finished
     }
-  }, [])
+  }, [chatId])
 
   const clearStreamedContent = useCallback((targetChatId?: string) => {
     const id = targetChatId ?? chatId
@@ -96,6 +95,14 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
       [id]: { ...(prev[id] || defaultStreamState), streamedContent: '', toolExecutions: [] },
     }))
   }, [chatId])
+
+  const setStreaming = useCallback((targetChatId: string, isStreaming: boolean) => {
+    setStreamStates((prev) => {
+      const current = prev[targetChatId] || defaultStreamState
+      if (current.streaming === isStreaming) return prev
+      return { ...prev, [targetChatId]: { ...current, streaming: isStreaming } }
+    })
+  }, [])
 
   const startStream = useCallback(async (text: string, options: StreamOptions) => {
     const {
@@ -115,10 +122,9 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
 
     let currentChatId = effectiveChatId
 
-    // Abort any existing stream for this chat before starting a new one
-    if (currentChatId && activeControllersRef.current[currentChatId]) {
-      activeControllersRef.current[currentChatId].abort()
-      delete activeControllersRef.current[currentChatId]
+    // Reject new sends while a stream is already running for this chat
+    if (currentChatId && streamStates[currentChatId]?.streaming) {
+      return
     }
 
     const controller = new AbortController()
@@ -194,6 +200,9 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           window.location.href = '/login'
           return
         }
+        if (res.status === 409) {
+          throw new Error('A stream is already in progress for this chat.')
+        }
         if (res.status === 412) {
           throw new Error('Add an AI provider in Settings to start chatting.')
         }
@@ -201,7 +210,6 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
         throw new Error(text || `Request failed (${res.status})`)
       }
 
-      // Invalidate the chat query so the new user message appears
       queryClient.invalidateQueries({ queryKey: ['chat', currentChatId] })
 
       const reader = res.body?.getReader()
@@ -237,7 +245,6 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
               const current = prev[currentChatId] || defaultStreamState
               return { ...prev, [currentChatId]: { ...current, streaming: false } }
             })
-            // Auto-clear streamed content for this chat after a short delay
             setTimeout(() => {
               setStreamStates((prev) => {
                 const current = prev[currentChatId]
@@ -319,6 +326,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           buffer += decoder.decode(value, { stream: true })
           if (processBuffer()) {
             queryClient.invalidateQueries({ queryKey: ['chat', currentChatId] })
+            delete activeControllersRef.current[currentChatId]
             return
           }
         }
@@ -326,16 +334,15 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
         if (controller.signal.aborted) break
       }
 
-      // Process any remaining buffer after stream ends
       if (buffer.trim()) {
-        buffer += '\n\n' // Ensure trailing events are processed
+        buffer += '\n\n'
         if (processBuffer()) {
           queryClient.invalidateQueries({ queryKey: ['chat', currentChatId] })
+          delete activeControllersRef.current[currentChatId]
           return
         }
       }
 
-      // Stream ended without [DONE] marker
       setStreamStates((prev) => {
         const current = prev[currentChatId] || defaultStreamState
         return { ...prev, [currentChatId]: { ...current, streaming: false, toolExecutions: [] } }
@@ -362,6 +369,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
       queryClient.invalidateQueries({ queryKey: ['chat', currentChatId] })
     } catch (err: any) {
       clearTimeout(timeoutId)
+      delete activeControllersRef.current[currentChatId]
       if (err.name === 'AbortError') {
         return
       }
@@ -377,13 +385,11 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
         }
       })
       onStreamError?.(err.message || 'Failed to send message', currentChatId)
-    } finally {
-      delete activeControllersRef.current[currentChatId]
     }
-  }, [queryClient])
+  }, [queryClient, streamStates])
 
   return [
     streamState,
-    { startStream, stopStream, clearStreamedContent },
+    { startStream, stopStream, clearStreamedContent, setStreaming },
   ]
 }

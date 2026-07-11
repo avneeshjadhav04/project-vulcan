@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -105,6 +108,7 @@ async fn run() -> anyhow::Result<()> {
         sandbox: sandbox_engine::SandboxState::new(),
         vosk_model,
         mcp_manager: mcp::McpManager::new(http_client.clone(), config.master_key),
+        active_streams: Arc::new(RwLock::new(HashMap::new())),
     };
     let bg_state = state.clone();
 

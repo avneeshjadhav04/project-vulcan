@@ -123,7 +123,8 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
     println!("[DB] Opening SQLite connection...");
     let opts = SqliteConnectOptions::from_str(database_url)
         .map_err(|e| anyhow::anyhow!("Invalid SQLite connection URL: {}", e))?
-        .create_if_missing(true);
+        .create_if_missing(true)
+        .busy_timeout(std::time::Duration::from_secs(5));
     let pool = SqlitePoolOptions::new()
         .after_connect(|conn, _meta| {
             Box::pin(async move {
@@ -149,5 +150,17 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     println!("[DB] Running migrations...");
     sqlx::migrate!("../db/migrations").run(pool).await?;
     println!("[DB] Migrations complete");
+
+    // Clean up orphaned streaming=1 messages from server crashes mid-stream
+    let orphaned = sqlx::query("UPDATE messages SET streaming = 0 WHERE streaming = 1")
+        .execute(pool)
+        .await?;
+    if orphaned.rows_affected() > 0 {
+        println!(
+            "[DB] Cleaned up {} orphaned streaming message(s)",
+            orphaned.rows_affected()
+        );
+    }
+
     Ok(())
 }

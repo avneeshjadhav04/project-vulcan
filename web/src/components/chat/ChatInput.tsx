@@ -138,12 +138,6 @@ export default function ChatInput({
                   Setting up voice transcription
                 </div>
               </div>
-              <button
-                onClick={onCancelVoice}
-                className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
-              >
-                Stop
-              </button>
             </div>
           ) : voiceState === 'recording' ? (
             <div className="flex flex-col px-4 py-4">
@@ -161,14 +155,14 @@ export default function ChatInput({
                 </div>
                 <button
                   onClick={onStopVoice}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-layer-hover text-text-primary hover:bg-layer-active transition-colors"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-support-error/10 text-support-error hover:bg-support-error/20 transition-colors"
                   aria-label="Stop recording"
                 >
                   <StopCircle className="h-4 w-4" />
                 </button>
                 <button
                   onClick={onCancelVoice}
-                  className="text-[11px] text-text-helper hover:text-text-primary transition-colors"
+                  className="text-[11px] text-support-error hover:text-support-error/80 transition-colors"
                 >
                   Stop
                 </button>
@@ -256,8 +250,10 @@ export default function ChatInput({
                   aria-label="Stop generating"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-support-error/10 text-support-error transition-colors hover:bg-support-error/20"
                 >
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" aria-hidden="true" />
-                  <StopCircle className="h-5 w-5" aria-hidden="true" />
+                  <div className="relative flex items-center justify-center">
+                    <Loader2 className="absolute h-8 w-8 animate-spin opacity-40" aria-hidden="true" />
+                    <StopCircle className="relative h-4 w-4" aria-hidden="true" />
+                  </div>
                 </button>
               ) : (
                 <button

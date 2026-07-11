@@ -18,13 +18,91 @@ use futures::stream::StreamExt;
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::Infallible;
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{mpsc, RwLock};
+use tokio_util::sync::CancellationToken;
 
 struct ResolvedProvider {
     id: String,
     base_url: String,
     api_key: String,
 }
+
+// ─── Active stream registry for reconnectable chat streaming ───
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StreamStatus {
+    Running,
+    Done,
+    Error,
+}
+
+#[derive(Clone)]
+pub struct ActiveStream {
+    pub chat_id: String,
+    pub content: Arc<RwLock<String>>,
+    pub tool_executions: Arc<RwLock<Vec<serde_json::Value>>>,
+    pub status: Arc<RwLock<StreamStatus>>,
+    pub cancel_token: CancellationToken,
+}
+
+impl ActiveStream {
+    pub fn new(chat_id: String) -> Self {
+        Self {
+            chat_id,
+            content: Arc::new(RwLock::new(String::new())),
+            tool_executions: Arc::new(RwLock::new(Vec::new())),
+            status: Arc::new(RwLock::new(StreamStatus::Running)),
+            cancel_token: CancellationToken::new(),
+        }
+    }
+
+    pub async fn append_content(&self, delta: &str) {
+        let mut content = self.content.write().await;
+        content.push_str(delta);
+    }
+
+    pub async fn append_tool_execution(&self, tool: serde_json::Value) {
+        let mut tools = self.tool_executions.write().await;
+        tools.push(tool);
+    }
+
+    pub async fn set_status(&self, status: StreamStatus) {
+        let mut s = self.status.write().await;
+        *s = status;
+    }
+
+    pub fn cancel(&self) {
+        self.cancel_token.cancel();
+    }
+}
+
+pub async fn get_active_stream(
+    state: &AppState,
+    chat_id: &str,
+) -> Option<Arc<ActiveStream>> {
+    let streams = state.active_streams.read().await;
+    streams.get(chat_id).cloned()
+}
+
+pub async fn insert_active_stream(
+    state: &AppState,
+    chat_id: String,
+    stream: Arc<ActiveStream>,
+) {
+    let mut streams = state.active_streams.write().await;
+    streams.insert(chat_id.clone(), stream);
+    tracing::info!("Active stream registered for chat {}", chat_id);
+}
+
+pub async fn remove_active_stream(state: &AppState, chat_id: &str) {
+    let mut streams = state.active_streams.write().await;
+    streams.remove(chat_id);
+    tracing::info!("Active stream removed for chat {}", chat_id);
+}
+
+
 
 async fn resolve_chat_provider(
     state: &AppState,
@@ -821,6 +899,7 @@ pub fn router() -> Router<AppState> {
             get(get_chat).patch(rename_chat).delete(delete_chat),
         )
         .route("/chats/{id}/message", post(send_message))
+        .route("/chats/{id}/stream", delete(stop_stream))
         .route(
             "/chats/{id}/messages/{msg_id}/edit-replace",
             post(edit_message_replace),
@@ -1065,12 +1144,29 @@ async fn get_chat(
     // Active path: root messages (parent_id IS NULL) + active variants.
     // Tool messages have parent_id set to the assistant variant that spawned
     // them, so they only show when their parent assistant is active.
-    let messages: Vec<Message> =
+    let mut messages: Vec<Message> =
         sqlx::query_as("SELECT * FROM messages WHERE chat_id = ?1 AND (parent_id IS NULL OR is_active = 1) ORDER BY created_at ASC")
             .bind(id.clone())
             .fetch_all(&state.db)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Merge in-memory streaming content: if there is an active stream for this
+    // chat, replace the placeholder message's content with the live content
+    // from the ActiveStream registry. This avoids per-chunk DB writes while
+    // still serving up-to-date content to polling clients.
+    if let Some(active_stream) = get_active_stream(&state, &id).await {
+        let live_content = active_stream.content.read().await.clone();
+        let status = *active_stream.status.read().await;
+        for msg in &mut messages {
+            if msg.streaming == 1 {
+                msg.content = live_content.clone();
+                if status != StreamStatus::Running {
+                    msg.streaming = 0;
+                }
+            }
+        }
+    }
 
     // Build sibling counts for each message on the active path.
     // Group by (parent_id, role): count all messages sharing the same parent_id
@@ -2116,7 +2212,16 @@ async fn send_message(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
 
-    let (tx, rx) = mpsc::channel::<String>(64);
+    // ─── Active stream registry for reconnectable streaming ───
+    if let Some(existing) = get_active_stream(&state, &id).await {
+        let status = *existing.status.read().await;
+        if status == StreamStatus::Running {
+            return Err(StatusCode::CONFLICT);
+        }
+    }
+
+    let active_stream = Arc::new(ActiveStream::new(id.clone()));
+    insert_active_stream(&state, id.clone(), active_stream.clone()).await;
 
     let db = state.db.clone();
     let chat_id = id.clone();
@@ -2128,8 +2233,13 @@ async fn send_message(
     let state_clone = state.clone();
     let user_id = claims.sub.clone();
     let assistant_parent_id = new_assistant_parent_id.clone();
+    let stream_arc = active_stream.clone();
 
     tokio::spawn(async move {
+        let stream_arc_for_tools = stream_arc.clone();
+        let stream_arc_for_final = stream_arc.clone();
+
+
         if !should_use_tools {
             run_llm_stream(LlmStreamContext {
                 state: &state_clone,
@@ -2140,10 +2250,11 @@ async fn send_message(
                 messages: &messages_payload,
                 chat_id: &chat_id,
                 db: &db,
-                tx: &tx,
+                active_stream: &stream_arc,
                 parent_id: assistant_parent_id.as_deref(),
             })
             .await;
+            remove_active_stream(&state_clone, &chat_id).await;
             return;
         }
 
@@ -2162,6 +2273,9 @@ async fn send_message(
         let mut total_steps = 0;
 
         loop {
+            if stream_arc_for_tools.cancel_token.is_cancelled() {
+                break;
+            }
             if total_steps >= max_steps {
                 tracing::info!(
                     "Agent max steps ({}) reached, streaming final response",
@@ -2268,12 +2382,16 @@ async fn send_message(
                 if let Some(obj) = event_obj.as_object_mut() {
                     obj.insert("tool_name".to_string(), json!(tool_name));
                     obj.insert("tool_id".to_string(), json!(tool_id));
-                    
+
                     if tool_name == "execute_terminal_command" && !obj.contains_key("command") {
                         obj.insert("command".to_string(), json!(""));
                     }
                 }
-                let _ = tx.send(format!("[TOOL]{}[/TOOL]", event_obj)).await;
+                let tool_frame = format!("[TOOL]{}[/TOOL]", event_obj);
+                stream_arc_for_tools.append_content(&tool_frame).await;
+                if let Ok(tool_val) = serde_json::from_str::<serde_json::Value>(&tool_frame[6..tool_frame.len()-7]) {
+                    stream_arc_for_tools.append_tool_execution(tool_val).await;
+                }
 
                 persist_tool_message(&db, &chat_id, tool_id, tool_name, tool_result, &tool_init_id).await;
 
@@ -2294,16 +2412,23 @@ async fn send_message(
             messages: &current_messages,
             chat_id: &chat_id,
             db: &db,
-            tx: &tx,
+            active_stream: &stream_arc_for_final,
             parent_id: assistant_parent_id.as_deref(),
         })
         .await;
+        remove_active_stream(&state_clone, &chat_id).await;
     });
 
-    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx)
-        .map(|text| Ok::<_, Infallible>(axum::response::sse::Event::default().data(text)));
+    // Create a per-request channel and forward the active stream to it live.
+    // The generation task writes deltas to the registry, and this forwarder
+    // ensures the initial SSE connection receives them until completion.
+    let (tx, rx) = mpsc::channel::<String>(64);
+    let forward_stream = active_stream.clone();
+    tokio::spawn(async move {
+        forward_active_stream_to_channel(forward_stream, tx).await;
+    });
 
-    Ok(Sse::new(sse_stream))
+    Ok(make_sse_stream(rx))
 }
 
 struct LlmStreamContext<'a> {
@@ -2315,7 +2440,7 @@ struct LlmStreamContext<'a> {
     messages: &'a [serde_json::Value],
     chat_id: &'a str,
     db: &'a sqlx::SqlitePool,
-    tx: &'a mpsc::Sender<String>,
+    active_stream: &'a Arc<ActiveStream>,
     parent_id: Option<&'a str>,
 }
 
@@ -2329,12 +2454,51 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         messages,
         chat_id,
         db,
-        tx,
+        active_stream,
         parent_id,
     } = ctx;
     let body = json!({"model": model_id, "messages": messages, "stream": true, "max_tokens": 2048});
 
-    let provider_response = state
+    // Insert a placeholder streaming assistant message so that a page refresh
+    // can immediately show the response as it is being generated.
+    let provider_id_str = provider_id.to_string();
+    let model_id_str = model_id.to_string();
+    let chat_id_str = chat_id.to_string();
+    let parent_id_str = parent_id.map(|s| s.to_string());
+    let stream_msg_id: Option<String> = sqlx::query_scalar(
+        "INSERT INTO messages (chat_id, role, content, streaming, provider_id, model_id, parent_id) VALUES (?1, 'assistant', '', 1, ?2, ?3, ?4) RETURNING id"
+    )
+    .bind(&chat_id_str)
+    .bind(&provider_id_str)
+    .bind(&model_id_str)
+    .bind(&parent_id_str)
+    .fetch_one(db)
+    .await
+    .ok();
+
+    async fn finalize_stream_message(
+        db: &sqlx::SqlitePool,
+        msg_id: Option<&String>,
+        full_content: &str,
+        streaming: bool,
+    ) {
+        let Some(id) = msg_id else { return };
+        let streaming_flag = if streaming { 1 } else { 0 };
+        let estimated_tokens = (full_content.len() / 4) as i32;
+        if let Err(e) = sqlx::query(
+            "UPDATE messages SET content = ?1, streaming = ?2, tokens_used = ?3 WHERE id = ?4"
+        )
+        .bind(full_content)
+        .bind(streaming_flag)
+        .bind(estimated_tokens)
+        .bind(id)
+        .execute(db)
+        .await {
+            tracing::error!("Failed to update streaming assistant message: {}", e);
+        }
+    }
+
+        let provider_response = state
         .http_client
         .post(format!("{}/chat/completions", base_url))
         .header("Authorization", format!("Bearer {}", api_key))
@@ -2344,6 +2508,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         .await;
 
     let mut stream_opt = None;
+    let mut is_error = false;
 
     match provider_response {
         Ok(res) => {
@@ -2356,6 +2521,7 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                     body_text,
                     model_id
                 );
+                is_error = true;
                 let user_msg = if status == 404 {
                     let models_res = state
                         .http_client
@@ -2392,16 +2558,26 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                 } else {
                     format!("[ERR]AI provider returned error {}: {}. Please check your API key and try again.[/ERR]", status, body_text.chars().take(200).collect::<String>())
                 };
-                let _ = tx.send(user_msg).await;
-                let _ = tx.send("[DONE]".to_string()).await;
+                active_stream.append_content(&user_msg).await;
+                active_stream.set_status(StreamStatus::Error).await;
+                finalize_stream_message(
+                    db,
+                    stream_msg_id.as_ref(),
+                    &user_msg,
+                    false,
+                )
+                .await;
             } else {
                 stream_opt = Some(res.bytes_stream());
             }
         }
         Err(e) => {
             tracing::error!("Provider request error: {}", e);
-            let _ = tx.send("[ERR]Failed to connect to AI provider. Please check your internet connection and API key.[/ERR]".to_string()).await;
-            let _ = tx.send("[DONE]".to_string()).await;
+            let err_msg = "[ERR]Failed to connect to AI provider. Please check your internet connection and API key.[/ERR]";
+            active_stream.append_content(err_msg).await;
+            active_stream.set_status(StreamStatus::Error).await;
+            is_error = true;
+            finalize_stream_message(db, stream_msg_id.as_ref(), err_msg, false).await;
         }
     }
 
@@ -2409,17 +2585,32 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
         let mut buffer = String::new();
         let mut full_content = String::new();
         let chat_id = chat_id.to_string();
-        let provider_id = provider_id.to_string();
-        let model_id = model_id.to_string();
         let db = db.clone();
-        let parent_id = parent_id.map(|s| s.to_string());
 
         while let Some(chunk_result) = stream.next().await {
+            if active_stream.cancel_token.is_cancelled() {
+                tracing::info!("Stream cancelled for chat {}", chat_id);
+                finalize_stream_message(
+                    &db,
+                    stream_msg_id.as_ref(),
+                    &full_content,
+                    false,
+                )
+                .await;
+                break;
+            }
             match chunk_result {
                 Ok(bytes) => {
                     buffer.push_str(&String::from_utf8_lossy(&bytes));
                     if buffer.len() > MAX_MESSAGE_LENGTH * 2 {
                         tracing::error!("SSE buffer exceeded max size, aborting stream");
+                        finalize_stream_message(
+                            &db,
+                            stream_msg_id.as_ref(),
+                            &full_content,
+                            false,
+                        )
+                        .await;
                         break;
                     }
                     while let Some(pos) = buffer.find("\n\n") {
@@ -2428,13 +2619,14 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                         for line in frame.lines() {
                             if let Some(data) = line.strip_prefix("data: ") {
                                 if data == "[DONE]" {
-                                    let _ = tx.send("[DONE]".to_string()).await;
-                                    let estimated_tokens = (full_content.len() / 4) as i32;
-                                    if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                                        .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                                        .execute(&db).await {
-                                        tracing::error!("Failed to persist assistant message: {}", e);
-                                    }
+                                    active_stream.set_status(StreamStatus::Done).await;
+                                    finalize_stream_message(
+                                        &db,
+                                        stream_msg_id.as_ref(),
+                                        &full_content,
+                                        false,
+                                    )
+                                    .await;
                                     return;
                                 }
                                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data)
@@ -2443,16 +2635,19 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                                         parsed["choices"][0]["delta"]["content"].as_str()
                                     {
                                         full_content.push_str(content);
-                                        let _ = tx.send(content.to_string()).await;
+                                        active_stream.append_content(content).await;
                                         if full_content.len() > MAX_MESSAGE_LENGTH {
                                             tracing::error!(
                                                 "Full content exceeded max size, aborting stream"
                                             );
-                                            let _ = tx.send("[DONE]".to_string()).await;
-                                            let estimated_tokens = (full_content.len() / 4) as i32;
-                                            let _ = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                                                .bind(&chat_id).bind(&full_content).bind(estimated_tokens).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                                                .execute(&db).await;
+                                            active_stream.set_status(StreamStatus::Done).await;
+                                            finalize_stream_message(
+                                                &db,
+                                                stream_msg_id.as_ref(),
+                                                &full_content,
+                                                false,
+                                            )
+                                            .await;
                                             return;
                                         }
                                     }
@@ -2463,21 +2658,35 @@ async fn run_llm_stream(ctx: LlmStreamContext<'_>) {
                 }
                 Err(e) => {
                     tracing::error!("Stream chunk error: {}", e);
+                    finalize_stream_message(
+                        &db,
+                        stream_msg_id.as_ref(),
+                        &full_content,
+                        false,
+                    )
+                    .await;
                     break;
                 }
             }
         }
 
-        let _ = tx.send("[DONE]".to_string()).await;
-        if !full_content.is_empty() {
-            if let Err(e) = sqlx::query("INSERT INTO messages (chat_id, role, content, tokens_used, provider_id, model_id, parent_id) VALUES (?1, 'assistant', ?2, ?3, ?4, ?5, ?6)")
-                .bind(&chat_id).bind(&full_content).bind(full_content.len() as i32 / 4).bind(&provider_id).bind(&model_id).bind(&parent_id)
-                .execute(&db).await {
-                tracing::error!("Failed to persist assistant message: {}", e);
-            }
+        let status = *active_stream.status.read().await;
+        if status != StreamStatus::Error {
+            active_stream.set_status(StreamStatus::Done).await;
         }
-    } else {
-        let _ = tx.send("[DONE]".to_string()).await;
+        finalize_stream_message(
+            &db,
+            stream_msg_id.as_ref(),
+            &full_content,
+            false,
+        )
+        .await;
+    } else if !is_error {
+        let status = *active_stream.status.read().await;
+        if status != StreamStatus::Error {
+            active_stream.set_status(StreamStatus::Done).await;
+        }
+        finalize_stream_message(db, stream_msg_id.as_ref(), "", false).await;
     }
 }
 
@@ -2543,6 +2752,110 @@ async fn remove_reaction(
 
     if result.rows_affected() == 0 {
         return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Reconnectable stream endpoints ───
+
+fn make_sse_stream(
+    rx: mpsc::Receiver<String>,
+) -> Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, Infallible>>> {
+    let sse_stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+        .map(|text| Ok::<_, Infallible>(axum::response::sse::Event::default().data(text)));
+    Sse::new(sse_stream)
+}
+
+/// Forward the active stream to an mpsc channel for the current browser tab.
+/// Stops when the client disconnects or the stream finishes.
+async fn forward_active_stream_to_channel(stream: Arc<ActiveStream>, tx: mpsc::Sender<String>) {
+    let mut last_content_len = 0usize;
+    let mut last_tool_count = 0usize;
+    loop {
+        // Copy everything we need under the locks, then release them before
+        // sending over the network. Holding locks during a slow send starves
+        // the generation task.
+        let (content_delta, new_tools, status) = {
+            let content = stream.content.read().await;
+            let tools = stream.tool_executions.read().await;
+            let status = *stream.status.read().await;
+
+            let delta = if content.len() > last_content_len {
+                let d = &content[last_content_len..];
+                if !d.starts_with("[TOOL]")
+                    && !d.starts_with("[ERR]")
+                    && d != "[DONE]"
+                {
+                    Some(d.to_string())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let tool_frames: Vec<String> = if tools.len() > last_tool_count {
+                tools[last_tool_count..]
+                    .iter()
+                    .map(|t| format!("[TOOL]{}[/TOOL]", t))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            (delta, tool_frames, status)
+        };
+
+        // Update bookkeeping outside the locks.
+        if content_delta.is_some() {
+            last_content_len = stream.content.read().await.len();
+        }
+        if !new_tools.is_empty() {
+            last_tool_count += new_tools.len();
+        }
+
+        // Send frames to the client. If the channel is closed, stop.
+        if let Some(delta) = content_delta {
+            if tx.send(delta).await.is_err() {
+                break;
+            }
+        }
+
+        for tool_frame in new_tools {
+            if tx.send(tool_frame).await.is_err() {
+                break;
+            }
+        }
+
+        if status != StreamStatus::Running {
+            let _ = tx.send("[DONE]".to_string()).await;
+            break;
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn stop_stream(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    // Verify chat ownership
+    let _: Chat = sqlx::query_as("SELECT * FROM chats WHERE id = ?1 AND user_id = ?2")
+        .bind(id.clone())
+        .bind(claims.sub.clone())
+        .fetch_one(&state.db)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    if let Some(stream) = get_active_stream(&state, &id).await {
+        stream.cancel();
+        remove_active_stream(&state, &id).await;
+        tracing::info!("Client cancelled active stream for chat {}", id);
+    } else {
+        tracing::info!("Client cancel requested but no active stream for chat {}", id);
     }
 
     Ok(StatusCode::NO_CONTENT)
