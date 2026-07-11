@@ -143,14 +143,6 @@ async fn try_connect(database_url: &str) -> Result<SqlitePool> {
         .await?;
     println!("[DB] WAL mode enabled");
 
-    // Clean up orphaned streaming=1 messages from server crashes mid-stream
-    let orphaned = sqlx::query("UPDATE messages SET streaming = 0 WHERE streaming = 1")
-        .execute(&pool)
-        .await?;
-    if orphaned.rows_affected() > 0 {
-        println!("[DB] Cleaned up {} orphaned streaming message(s)", orphaned.rows_affected());
-    }
-
     Ok(pool)
 }
 
@@ -158,5 +150,17 @@ async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     println!("[DB] Running migrations...");
     sqlx::migrate!("../db/migrations").run(pool).await?;
     println!("[DB] Migrations complete");
+
+    // Clean up orphaned streaming=1 messages from server crashes mid-stream
+    let orphaned = sqlx::query("UPDATE messages SET streaming = 0 WHERE streaming = 1")
+        .execute(pool)
+        .await?;
+    if orphaned.rows_affected() > 0 {
+        println!(
+            "[DB] Cleaned up {} orphaned streaming message(s)",
+            orphaned.rows_affected()
+        );
+    }
+
     Ok(())
 }
