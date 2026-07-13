@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS browser_sessions (
     title TEXT,
     status TEXT NOT NULL DEFAULT 'active'
         CHECK (status IN ('active', 'closed', 'crashed', 'timeout')),
-    created_at TEXT NOT NULL DEFAULT datetime('now'),
-    last_activity TEXT NOT NULL DEFAULT datetime('now'),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_activity TEXT NOT NULL DEFAULT (datetime('now')),
     closed_at TEXT
 );
 
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS browser_screenshots (
     width INTEGER,
     height INTEGER,
     page_url TEXT,
-    captured_at TEXT NOT NULL DEFAULT datetime('now')
+    captured_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_browser_screenshots_chat_id
