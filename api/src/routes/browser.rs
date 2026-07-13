@@ -1,11 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Json, Response},
     routing::get,
     Router,
 };
 use futures::{SinkExt, StreamExt};
+use serde::Serialize;
 
 use crate::{
     middleware::AppState,
@@ -15,7 +16,51 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/browser", get(browser_ws_handler))
+        .route("/browser/sessions", get(list_browser_sessions))
         .route("/browser/screenshot/{id}", get(get_screenshot))
+}
+
+#[derive(Serialize)]
+struct BrowserSessionInfo {
+    session_id: String,
+    chat_id: String,
+    ws_port: u16,
+    current_url: String,
+    title: String,
+    ai_active: bool,
+}
+
+/// List all active browser sessions for the current user (across all chats).
+async fn list_browser_sessions(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Json<Vec<BrowserSessionInfo>> {
+    let sessions = state.browser.sessions.lock().await;
+    let mut result = Vec::new();
+    for ((user_id, _session_id), handle) in sessions.iter() {
+        if user_id != &claims.sub {
+            continue;
+        }
+        let current_url = handle
+            .current_url
+            .lock()
+            .map(|u| u.clone())
+            .unwrap_or_default();
+        let title = handle
+            .title
+            .lock()
+            .map(|t| t.clone())
+            .unwrap_or_default();
+        result.push(BrowserSessionInfo {
+            session_id: handle.session_id.clone(),
+            chat_id: handle.chat_id.clone(),
+            ws_port: handle.ws_port,
+            current_url,
+            title,
+            ai_active: handle.ai_active.load(std::sync::atomic::Ordering::Relaxed),
+        });
+    }
+    Json(result)
 }
 
 /// WebSocket handler for the browser live view.

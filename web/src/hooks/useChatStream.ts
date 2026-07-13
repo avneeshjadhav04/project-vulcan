@@ -35,18 +35,11 @@ export interface ToolExecution {
   error?: string
 }
 
-export interface BrowserSessionTab {
-  sessionId: string
-  wsPort?: number
-  toolExecutions: ToolExecution[]
-}
-
 export interface StreamState {
   streaming: boolean
   streamedContent: string
   sendError: string
   toolExecutions: ToolExecution[]
-  browserSessions: BrowserSessionTab[]
   creatingChat: boolean
 }
 
@@ -77,7 +70,6 @@ const defaultStreamState: StreamState = {
   streamedContent: '',
   sendError: '',
   toolExecutions: [],
-  browserSessions: [],
   creatingChat: false,
 }
 
@@ -115,7 +107,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
     if (!id) return
     setStreamStates((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || defaultStreamState), streamedContent: '', toolExecutions: [], browserSessions: [] },
+      [id]: { ...(prev[id] || defaultStreamState), streamedContent: '', toolExecutions: [] },
     }))
   }, [chatId])
 
@@ -274,7 +266,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
                 if (!current) return prev
                 return {
                   ...prev,
-                  [currentChatId]: { ...current, streamedContent: '', toolExecutions: [], browserSessions: [] },
+                  [currentChatId]: { ...current, streamedContent: '', toolExecutions: [] },
                 }
               })
             }, 150)
@@ -301,74 +293,44 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           if (raw.startsWith('[TOOL]') && raw.endsWith('[/TOOL]')) {
             try {
               const toolData = JSON.parse(raw.slice(6, -7))
-              const toolExec: ToolExecution = {
-                tool_name: toolData.tool_name || 'unknown',
-                tool_id: toolData.tool_id || '',
-                command: toolData.command || '',
-                stdout: toolData.stdout || '',
-                stderr: toolData.stderr || '',
-                status: toolData.status || 'error',
-                filename: toolData.filename || '',
-                query: toolData.query || '',
-                results: toolData.results || [],
-                url: toolData.url,
-                page_content: toolData.page_content || toolData.content,
-                code: toolData.code,
-                language: toolData.language,
-                session_id: toolData.session_id,
-                screenshot_id: toolData.screenshot_id,
-                title: toolData.title,
-                selector: toolData.selector,
-                typed_text: toolData.text,
-                content: toolData.content,
-                mode: toolData.mode,
-                ws_port: toolData.ws_port,
-                x: toolData.x,
-                y: toolData.y,
-                ms: toolData.ms,
-                result: toolData.result,
-                truncated: toolData.truncated,
-              }
-
               setStreamStates((prev) => {
                 const current = prev[currentChatId] || defaultStreamState
-                const toolName = toolExec.tool_name
-
-                if (toolName === 'browser_session_open') {
-                  const newSession: BrowserSessionTab = {
-                    sessionId: toolExec.session_id || '',
-                    wsPort: toolExec.ws_port,
-                    toolExecutions: [toolExec],
-                  }
-                  return {
-                    ...prev,
-                    [currentChatId]: {
-                      ...current,
-                      browserSessions: [...current.browserSessions, newSession],
-                    },
-                  }
-                } else if (toolName.startsWith('browser_') && current.browserSessions.length > 0) {
-                  const sessions = [...current.browserSessions]
-                  const lastIdx = sessions.length - 1
-                  sessions[lastIdx] = {
-                    ...sessions[lastIdx],
-                    toolExecutions: [...sessions[lastIdx].toolExecutions, toolExec],
-                  }
-                  return {
-                    ...prev,
-                    [currentChatId]: {
-                      ...current,
-                      browserSessions: sessions,
-                    },
-                  }
-                } else {
-                  return {
-                    ...prev,
-                    [currentChatId]: {
-                      ...current,
-                      toolExecutions: [...current.toolExecutions, toolExec],
-                    },
-                  }
+                return {
+                  ...prev,
+                  [currentChatId]: {
+                    ...current,
+                    toolExecutions: [
+                      ...current.toolExecutions,
+                      {
+                        tool_name: toolData.tool_name || 'unknown',
+                        tool_id: toolData.tool_id || '',
+                        command: toolData.command || '',
+                        stdout: toolData.stdout || '',
+                        stderr: toolData.stderr || '',
+                        status: toolData.status || 'error',
+                        filename: toolData.filename || '',
+                        query: toolData.query || '',
+                        results: toolData.results || [],
+                        url: toolData.url,
+                        page_content: toolData.page_content || toolData.content,
+                        code: toolData.code,
+                        language: toolData.language,
+                        session_id: toolData.session_id,
+                        screenshot_id: toolData.screenshot_id,
+                        title: toolData.title,
+                        selector: toolData.selector,
+                        typed_text: toolData.text,
+                        content: toolData.content,
+                        mode: toolData.mode,
+                        ws_port: toolData.ws_port,
+                        x: toolData.x,
+                        y: toolData.y,
+                        ms: toolData.ms,
+                        result: toolData.result,
+                        truncated: toolData.truncated,
+                      },
+                    ],
+                  },
                 }
               })
             } catch {}
@@ -411,7 +373,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
 
       setStreamStates((prev) => {
         const current = prev[currentChatId] || defaultStreamState
-        return { ...prev, [currentChatId]: { ...current, streaming: false, toolExecutions: [], browserSessions: [] } }
+        return { ...prev, [currentChatId]: { ...current, streaming: false, toolExecutions: [] } }
       })
       const duration = Date.now() - (startTimeRef.current[currentChatId] || 0)
       onStreamDone?.(
@@ -428,7 +390,7 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
           if (!current) return prev
           return {
             ...prev,
-            [currentChatId]: { ...current, streamedContent: '', toolExecutions: [], browserSessions: [] },
+            [currentChatId]: { ...current, streamedContent: '', toolExecutions: [] },
           }
         })
       }, 150)

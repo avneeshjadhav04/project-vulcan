@@ -68,6 +68,8 @@ pub struct BrowserSessionHandle {
     pub command_tx: mpsc::Sender<BrowserCommand>,
     pub viewer_tx: broadcast::Sender<BrowserViewerEvent>,
     pub ai_active: Arc<AtomicBool>,
+    pub current_url: Arc<std::sync::Mutex<String>>,
+    pub title: Arc<std::sync::Mutex<String>>,
     pub last_activity: Arc<Mutex<Instant>>,
     pub shutdown: Arc<AtomicBool>,
     /// PIDs of external processes (Xvfb, x11vnc, websockify) for cleanup.
@@ -282,6 +284,8 @@ pub async fn get_or_create_session(
     let (command_tx, command_rx) = mpsc::channel::<BrowserCommand>(64);
     let (viewer_tx, _) = broadcast::channel::<BrowserViewerEvent>(32);
     let ai_active = Arc::new(AtomicBool::new(false));
+    let current_url = Arc::new(std::sync::Mutex::new(String::new()));
+    let title = Arc::new(std::sync::Mutex::new(String::new()));
     let last_activity = Arc::new(Mutex::new(Instant::now()));
     let shutdown = Arc::new(AtomicBool::new(false));
     let child_pids = Arc::new(Mutex::new(vec![xvfb_pid, x11vnc_pid, websockify_pid]));
@@ -298,6 +302,8 @@ pub async fn get_or_create_session(
         command_tx: command_tx.clone(),
         viewer_tx: viewer_tx.clone(),
         ai_active: ai_active.clone(),
+        current_url: current_url.clone(),
+        title: title.clone(),
         last_activity: last_activity.clone(),
         shutdown: shutdown.clone(),
         child_pids: child_pids.clone(),
@@ -322,6 +328,8 @@ pub async fn get_or_create_session(
             command_rx,
             viewer_tx_task,
             ai_active_task,
+            current_url,
+            title,
             shutdown_task,
             child_pids_task,
             sessions_for_task,
@@ -355,6 +363,8 @@ fn run_browser_command_loop(
     mut command_rx: mpsc::Receiver<BrowserCommand>,
     viewer_tx: broadcast::Sender<BrowserViewerEvent>,
     ai_active: Arc<AtomicBool>,
+    current_url: Arc<std::sync::Mutex<String>>,
+    title: Arc<std::sync::Mutex<String>>,
     shutdown: Arc<AtomicBool>,
     child_pids: Arc<Mutex<Vec<i32>>>,
     sessions: Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
@@ -385,17 +395,25 @@ fn run_browser_command_loop(
                     .navigate_to(&url)
                     .and_then(|_| tab.wait_until_navigated().map(|_| ()))
                     .map(|_| {
-                        let current_url = tab.get_url();
-                        let title = tab.get_title().unwrap_or_default();
+                        let current = tab.get_url();
+                        let page_title = tab.get_title().unwrap_or_default();
+                        {
+                            if let Ok(mut u) = current_url.lock() {
+                                *u = current.clone();
+                            }
+                            if let Ok(mut ti) = title.lock() {
+                                *ti = page_title.clone();
+                            }
+                        }
                         let _ = viewer_tx.send(BrowserViewerEvent::UrlChanged {
-                            url: current_url.clone(),
+                            url: current.clone(),
                         });
                         let _ = viewer_tx.send(BrowserViewerEvent::TitleChanged {
-                            title: title.clone(),
+                            title: page_title.clone(),
                         });
                         BrowserCommandResult::Navigate {
-                            url: current_url,
-                            title,
+                            url: current,
+                            title: page_title,
                         }
                     })
                     .unwrap_or_else(|e| BrowserCommandResult::Error(e.to_string()));

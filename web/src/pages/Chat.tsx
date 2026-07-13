@@ -8,12 +8,14 @@ import Sidebar from '../components/Sidebar'
 import ChatInterface from '../components/ChatInterface'
 import Terminal from '../components/Terminal'
 import WorkspacePanel from '../components/chat/WorkspacePanel'
+import BrowserControlPanel from '../components/chat/BrowserControlPanel'
 import ArtifactViewer from '../components/chat/ArtifactViewer'
 import ThemeLogo from '../components/ThemeLogo'
 import {
   Settings,
   Terminal as TerminalIcon,
   Folder as FolderIcon,
+  MousePointerClick,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
@@ -37,11 +39,16 @@ const MIN_TERMINAL_HEIGHT = 300
 const MAX_TERMINAL_HEIGHT = 800
 const DEFAULT_TERMINAL_HEIGHT = 500
 
+const MIN_BROWSER_WIDTH = 360
+const MAX_BROWSER_WIDTH = 800
+const DEFAULT_BROWSER_WIDTH = 480
+
 export default function Chat() {
   const { chatId } = useParams<{ chatId?: string }>()
   const navigate = useNavigate()
   const [showTerminal, setShowTerminal] = useState(false)
   const [showWorkspace, setShowWorkspace] = useState(false)
+  const [showBrowser, setShowBrowser] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('sidebarWidth')
@@ -62,6 +69,11 @@ export default function Chat() {
     return saved ? Math.min(MAX_WORKSPACE_WIDTH, Math.max(MIN_WORKSPACE_WIDTH, parseInt(saved, 10))) : DEFAULT_WORKSPACE_WIDTH
   })
   const [isResizingWorkspace, setIsResizingWorkspace] = useState(false)
+  const [browserWidth, setBrowserWidth] = useState(() => {
+    const saved = localStorage.getItem('browserWidth')
+    return saved ? Math.min(MAX_BROWSER_WIDTH, Math.max(MIN_BROWSER_WIDTH, parseInt(saved, 10))) : DEFAULT_BROWSER_WIDTH
+  })
+  const [isResizingBrowser, setIsResizingBrowser] = useState(false)
   const mainRef = useRef<HTMLDivElement>(null)
   const [selectedModel, setSelectedModel] = useState<SelectedModel>(() => {
     const saved = localStorage.getItem('selectedModel')
@@ -284,6 +296,43 @@ export default function Chat() {
     }
   }, [isResizingWorkspace, resizeWorkspace, stopResizeWorkspace])
 
+  const startResizeBrowser = useCallback(() => setIsResizingBrowser(true), [])
+  const stopResizeBrowser = useCallback(() => setIsResizingBrowser(false), [])
+
+  const resizeBrowser = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizingBrowser) return
+      const sidebarOffset = sidebarOpen ? sidebarWidth : 0
+      const newWidth = Math.max(
+        MIN_BROWSER_WIDTH,
+        Math.min(MAX_BROWSER_WIDTH, e.clientX - sidebarOffset)
+      )
+      setBrowserWidth(newWidth)
+      localStorage.setItem('browserWidth', String(newWidth))
+    },
+    [isResizingBrowser, sidebarOpen, sidebarWidth]
+  )
+
+  useEffect(() => {
+    if (isResizingBrowser) {
+      document.addEventListener('mousemove', resizeBrowser)
+      document.addEventListener('mouseup', stopResizeBrowser)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    } else {
+      document.removeEventListener('mousemove', resizeBrowser)
+      document.removeEventListener('mouseup', stopResizeBrowser)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    return () => {
+      document.removeEventListener('mousemove', resizeBrowser)
+      document.removeEventListener('mouseup', stopResizeBrowser)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizingBrowser, resizeBrowser, stopResizeBrowser])
+
   return (
     <div className="relative flex h-screen bg-background">
       <AnimatePresence initial={false}>
@@ -343,6 +392,12 @@ export default function Chat() {
                   active={showWorkspace}
                 />
                 <SidebarButton
+                  icon={<MousePointerClick className="h-4 w-4" />}
+                  label={showBrowser ? 'Hide Browser' : 'Browser Control'}
+                  onClick={() => setShowBrowser(!showBrowser)}
+                  active={showBrowser}
+                />
+                <SidebarButton
                   icon={<TerminalIcon className="h-4 w-4" />}
                   label={showTerminal ? 'Hide Terminal' : 'Open Terminal'}
                   onClick={() => setShowTerminal(!showTerminal)}
@@ -379,6 +434,36 @@ export default function Chat() {
           <PanelLeftOpen className="h-4 w-4" />
           <span className="text-xs font-medium">Chats</span>
         </button>
+      )}
+
+      {/* Browser Control panel — slides in from the left, pushes chat + workspace right */}
+      <AnimatePresence initial={false}>
+        {showBrowser && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: browserWidth, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="shrink-0 overflow-hidden border-r border-border-subtle bg-layer"
+            style={{ width: browserWidth }}
+          >
+            <BrowserControlPanel
+              onClose={() => setShowBrowser(false)}
+              width={browserWidth}
+              chatId={chatId}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Browser panel resize handle */}
+      {showBrowser && (
+        <div
+          onMouseDown={startResizeBrowser}
+          className={`relative z-20 w-px shrink-0 cursor-col-resize transition-colors ${
+            isResizingBrowser ? 'bg-interactive' : 'bg-transparent hover:bg-border-strong'
+          }`}
+        />
       )}
 
       {/* Main Content */}
