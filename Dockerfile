@@ -59,7 +59,9 @@ RUN LDFLAGS="-static" make -C src proot GIT=false
 
 # Stage 4: Runtime
 FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME=/usr/bin/chromium
 
 # Install Node.js 22 LTS (NodeSource) so MCP stdio servers spawned by the API
 # host (e.g. `npx -y @modelcontextprotocol/server-*`) can run. Version matches

@@ -48,6 +48,23 @@ const TOOL_CATEGORIES: ToolCategory[] = [
     tools: ['search_web', 'browser_fetch', 'fetch_webpage'],
   },
   {
+    name: 'Browser Automation',
+    icon: <Globe className="h-4 w-4" />,
+    tools: [
+      'browser_session_open',
+      'browser_navigate',
+      'browser_click',
+      'browser_type',
+      'browser_extract',
+      'browser_screenshot',
+      'browser_scroll',
+      'browser_wait',
+      'browser_run_js',
+      'browser_get_url',
+      'browser_session_close',
+    ],
+  },
+  {
     name: 'Scratchpad',
     icon: <BookOpen className="h-4 w-4" />,
     tools: ['update_scratchpad', 'read_scratchpad'],

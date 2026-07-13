@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod auth;
 pub mod automations;
+pub mod browser;
 pub mod chat;
 pub mod files;
 pub mod mcp;

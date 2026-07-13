@@ -22,6 +22,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    target: 'es2022',
     rollupOptions: {
       output: {
         manualChunks: {
@@ -29,6 +30,7 @@ export default defineConfig({
           ui: ['framer-motion', 'lucide-react'],
           markdown: ['react-markdown', 'remark-gfm'],
           terminal: ['xterm', 'xterm-addon-fit'],
+          novnc: ['@novnc/novnc'],
         },
       },
     },

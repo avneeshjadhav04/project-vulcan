@@ -293,6 +293,171 @@ fn build_tools_def() -> Vec<serde_json::Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_session_open",
+                "description": "Open a persistent browser session for automation. Returns a session_id to use with all other browser_* tools. The user can view the browser in real-time. Always call browser_session_close when done.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Optional custom session ID. If omitted, a UUID is generated."}
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_navigate",
+                "description": "Navigate the browser to a URL. Waits for the page to finish loading.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID from browser_session_open"},
+                        "url": {"type": "string", "description": "The URL to navigate to"}
+                    },
+                    "required": ["session_id", "url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_click",
+                "description": "Click an element on the page by CSS selector. Waits for the element to appear before clicking.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "selector": {"type": "string", "description": "CSS selector for the element to click (e.g. '#login-btn', 'button[type=submit]', '.nav-link')"}
+                    },
+                    "required": ["session_id", "selector"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_type",
+                "description": "Type text into an input field identified by CSS selector. Optionally clear the field first.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "selector": {"type": "string", "description": "CSS selector for the input element"},
+                        "text": {"type": "string", "description": "Text to type into the field"},
+                        "clear": {"type": "boolean", "description": "Whether to clear the field before typing (default: true)"}
+                    },
+                    "required": ["session_id", "selector", "text"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_extract",
+                "description": "Extract content from the page or a specific element. Use mode 'text' for visible text, 'html' for raw HTML, or 'attribute' to get an attribute value (selector format: 'css_selector[attribute_name]').",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "selector": {"type": "string", "description": "CSS selector for the element to extract from. If omitted, extracts from the entire page (body)."},
+                        "mode": {"type": "string", "enum": ["text", "html", "attribute"], "description": "Extraction mode: 'text' (default), 'html', or 'attribute'"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_screenshot",
+                "description": "Capture a screenshot of the current page. The screenshot is persisted and can be viewed in the chat. Use this to visually inspect the page state.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_scroll",
+                "description": "Scroll the page to specific coordinates.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "x": {"type": "integer", "description": "Horizontal scroll position in pixels (default: 0)"},
+                        "y": {"type": "integer", "description": "Vertical scroll position in pixels (default: 0)"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_wait",
+                "description": "Wait for a specified number of milliseconds. Useful for waiting for dynamic content to load or animations to complete.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "ms": {"type": "integer", "description": "Number of milliseconds to wait"}
+                    },
+                    "required": ["session_id", "ms"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_run_js",
+                "description": "Execute arbitrary JavaScript in the page and return the result. The script runs in the page context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"},
+                        "script": {"type": "string", "description": "JavaScript code to execute. Use 'return' to return a value."}
+                    },
+                    "required": ["session_id", "script"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_get_url",
+                "description": "Get the current URL of the browser page.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_session_close",
+                "description": "Close a browser session and free its resources. Always call this when browser automation is complete.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID to close"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
     ]
 }
 
@@ -735,6 +900,391 @@ async fn execute_tool(
                 })),
             }
         }
+        "browser_session_open" => {
+            let session_id = args["session_id"]
+                .as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+            let session = crate::browser_engine::get_or_create_session(
+                state.browser.clone(),
+                user_id.to_string(),
+                session_id.clone(),
+                chat_id.to_string(),
+            )
+            .await?;
+
+            // Insert audit row.
+            let _ = sqlx::query(
+                "INSERT INTO browser_sessions (user_id, chat_id, session_id, status) VALUES (?1, ?2, ?3, 'active')"
+            )
+            .bind(user_id)
+            .bind(chat_id)
+            .bind(&session_id)
+            .execute(&state.db)
+            .await;
+
+            Ok(json!({
+                "status": "success",
+                "session_id": session_id,
+                "ws_port": session.ws_port,
+                "message": "Browser session opened. Use this session_id with all other browser_* tools."
+            }))
+        }
+        "browser_navigate" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let url = args["url"].as_str().ok_or("Missing url")?;
+
+            // SSRF protection: block internal addresses for AI-driven navigation.
+            let parsed_url = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+            let scheme = parsed_url.scheme();
+            if scheme != "http" && scheme != "https" {
+                return Err(format!("Unsupported URL scheme: {}. Only http and https are allowed.", scheme));
+            }
+            let host = parsed_url.host_str().unwrap_or("");
+            let blocked_hosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+            if blocked_hosts.contains(&host) {
+                return Err("Access to internal addresses is not allowed.".to_string());
+            }
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Navigate {
+                    url: url.to_string(),
+                    reply,
+                }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                reply_rx,
+            ).await
+                .map_err(|_| "Navigation timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Navigate { url: final_url, title } => {
+                    // Update audit row.
+                    let _ = sqlx::query(
+                        "UPDATE browser_sessions SET current_url = ?1, title = ?2, last_activity = datetime('now') WHERE user_id = ?3 AND session_id = ?4"
+                    )
+                    .bind(&final_url)
+                    .bind(&title)
+                    .bind(user_id)
+                    .bind(session_id)
+                    .execute(&state.db)
+                    .await;
+
+                    Ok(json!({"status": "success", "url": final_url, "title": title}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_click" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let selector = args["selector"].as_str().ok_or("Missing selector")?;
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Click {
+                    selector: selector.to_string(),
+                    reply,
+                }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                reply_rx,
+            ).await
+                .map_err(|_| "Click timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Click { selector: s } => {
+                    Ok(json!({"status": "success", "selector": s, "action": "clicked"}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_type" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let selector = args["selector"].as_str().ok_or("Missing selector")?;
+            let text = args["text"].as_str().ok_or("Missing text")?;
+            let clear = args["clear"].as_bool().unwrap_or(true);
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Type {
+                    selector: selector.to_string(),
+                    text: text.to_string(),
+                    clear,
+                    reply,
+                }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                reply_rx,
+            ).await
+                .map_err(|_| "Type timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Type { selector: s, text: t } => {
+                    Ok(json!({"status": "success", "selector": s, "text": t, "action": "typed"}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_extract" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let selector = args["selector"].as_str().map(|s| s.to_string());
+            let mode = args["mode"].as_str().unwrap_or("text").to_string();
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Extract {
+                    selector: selector.clone(),
+                    mode: mode.clone(),
+                    reply,
+                }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                reply_rx,
+            ).await
+                .map_err(|_| "Extract timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Extract { content } => {
+                    let truncated = content.len() > 50000;
+                    let content_out = if truncated {
+                        format!("{}...\n[Content truncated at 50000 characters]", &content[..50000.min(content.len())])
+                    } else {
+                        content
+                    };
+                    Ok(json!({
+                        "status": "success",
+                        "selector": selector,
+                        "mode": mode,
+                        "content": content_out,
+                        "truncated": truncated
+                    }))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_screenshot" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Screenshot { reply }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                reply_rx,
+            ).await
+                .map_err(|_| "Screenshot timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Screenshot { jpeg, url, title } => {
+                    // Persist screenshot to DB.
+                    let screenshot_id = uuid::Uuid::new_v4().to_string();
+                    let _ = sqlx::query(
+                        "INSERT INTO browser_screenshots (id, chat_id, session_id, image, mime_type, page_url) VALUES (?1, ?2, ?3, ?4, 'image/jpeg', ?5)"
+                    )
+                    .bind(&screenshot_id)
+                    .bind(chat_id)
+                    .bind(session_id)
+                    .bind(&jpeg)
+                    .bind(&url)
+                    .execute(&state.db)
+                    .await;
+
+                    Ok(json!({
+                        "status": "success",
+                        "screenshot_id": screenshot_id,
+                        "url": url,
+                        "title": title,
+                        "size_bytes": jpeg.len()
+                    }))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_scroll" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let x = args["x"].as_i64().unwrap_or(0) as i32;
+            let y = args["y"].as_i64().unwrap_or(0) as i32;
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Scroll { x, y, reply }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                reply_rx,
+            ).await
+                .map_err(|_| "Scroll timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Scroll { x, y } => {
+                    Ok(json!({"status": "success", "x": x, "y": y}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_wait" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let ms = args["ms"].as_u64().ok_or("Missing ms")?;
+
+            // Cap wait at 10 seconds to prevent excessive blocking.
+            let ms = ms.min(10000);
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::Wait { ms, reply }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(ms / 1000 + 5),
+                reply_rx,
+            ).await
+                .map_err(|_| "Wait timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::Wait => {
+                    Ok(json!({"status": "success", "waited_ms": ms}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_run_js" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+            let script = args["script"].as_str().ok_or("Missing script")?;
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::RunJs {
+                    script: script.to_string(),
+                    reply,
+                }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                reply_rx,
+            ).await
+                .map_err(|_| "JavaScript execution timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::RunJs { result } => {
+                    let truncated = result.len() > 50000;
+                    let result_out = if truncated {
+                        format!("{}...\n[Result truncated]", &result[..50000.min(result.len())])
+                    } else {
+                        result
+                    };
+                    Ok(json!({"status": "success", "result": result_out, "truncated": truncated}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_get_url" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+
+            let session = get_browser_session(&state.browser, user_id, session_id).await?;
+            let (reply, reply_rx) = tokio::sync::oneshot::channel();
+            session.command_tx.send(
+                crate::browser_engine::BrowserCommand::GetUrl { reply }
+            ).await.map_err(|e| format!("Failed to send command: {}", e))?;
+
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                reply_rx,
+            ).await
+                .map_err(|_| "Get URL timed out".to_string())?
+                .map_err(|e| e.to_string())?;
+
+            match result {
+                crate::browser_engine::BrowserCommandResult::GetUrl { url } => {
+                    Ok(json!({"status": "success", "url": url}))
+                }
+                crate::browser_engine::BrowserCommandResult::Error(e) => {
+                    Ok(json!({"status": "error", "error": e}))
+                }
+                _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
+            }
+        }
+        "browser_session_close" => {
+            let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
+
+            let session = {
+                let sessions = state.browser.sessions.lock().await;
+                sessions.get(&(user_id.to_string(), session_id.to_string())).cloned()
+            };
+
+            if let Some(session) = session {
+                session.shutdown_session();
+
+                // Update audit row.
+                let _ = sqlx::query(
+                    "UPDATE browser_sessions SET status = 'closed', closed_at = datetime('now') WHERE user_id = ?1 AND session_id = ?2"
+                )
+                .bind(user_id)
+                .bind(session_id)
+                .execute(&state.db)
+                .await;
+
+                // Give the blocking task a moment to clean up.
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+                Ok(json!({"status": "success", "session_id": session_id, "message": "Browser session closed"}))
+            } else {
+                Ok(json!({"status": "error", "error": "Browser session not found"}))
+            }
+        }
         _ => {
             // The LLM may use either the namespaced name (filesystem__list_directory)
             // or the original tool name (list_directory). Resolve non-namespaced
@@ -758,6 +1308,22 @@ async fn execute_tool(
             }
         }
     }
+}
+
+/// Look up a browser session by user_id and session_id, returning an error
+/// message suitable for the AI if the session doesn't exist.
+async fn get_browser_session(
+    browser_state: &crate::browser_engine::BrowserState,
+    user_id: &str,
+    session_id: &str,
+) -> Result<crate::browser_engine::BrowserSessionHandle, String> {
+    let sessions = browser_state.sessions.lock().await;
+    sessions
+        .get(&(user_id.to_string(), session_id.to_string()))
+        .cloned()
+        .ok_or_else(|| {
+            "Browser session not found. Call browser_session_open first to create a session.".to_string()
+        })
 }
 
 /// Resolve all tool calls from the LLM response concurrently.
@@ -844,6 +1410,14 @@ fn build_dynamic_system_prompt() -> String {
          - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
          - File operations: Create, read, and modify files in the workspace.\n\
          - Web search: Search the web for current information.\n\
+         - Browser automation: Open a persistent browser session with browser_session_open, then drive it \
+           with browser_navigate, browser_click, browser_type, browser_extract, browser_screenshot, \
+           browser_scroll, browser_wait, browser_run_js, browser_get_url, and browser_session_close. \
+           Always open a session first and pass the returned session_id to all subsequent browser tools. \
+           Use CSS selectors for click/type/extract. Use browser_wait for dynamic content to load. \
+           Use browser_screenshot to capture the current page state. The user can see the browser in \
+           real-time — when you are controlling, they cannot interact. Close the session with \
+           browser_session_close when done.\n\
          - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
            Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n\
          When the user asks you to do something that requires these tools, use them proactively. \

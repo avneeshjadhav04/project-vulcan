@@ -2,9 +2,10 @@ import { useMemo, useLayoutEffect, useCallback, useRef, useEffect, forwardRef, u
 import MessageBubble from './MessageBubble'
 import TypingIndicator from './TypingIndicator'
 import ToolExecutionCard from './ToolExecutionCard'
+import BrowserPreviewWindow from './BrowserPreviewWindow'
 import EmptyState from './EmptyState'
 import ScrollToBottom from './ScrollToBottom'
-import type { ToolExecution } from '../../hooks/useChatStream'
+import type { ToolExecution, BrowserSessionTab } from '../../hooks/useChatStream'
 import { api } from '../../lib/api'
 
 interface MessageItem {
@@ -14,6 +15,7 @@ interface MessageItem {
   created_at: string
   tokens_used?: number
   tool_name?: string
+  tool_call_id?: string
   parent_id?: string
   streaming?: boolean
 }
@@ -35,6 +37,7 @@ interface ChatMessagesProps {
   streaming: boolean
   streamedContent: string
   toolExecutions: ToolExecution[]
+  browserSessions: BrowserSessionTab[]
   creatingChat: boolean
   chatId?: string
   navigatedData?: { messages: MessageItem[]; variants: VariantInfo[] } | null
@@ -56,6 +59,7 @@ function ChatMessagesInner({
   streaming,
   streamedContent,
   toolExecutions,
+  browserSessions,
   creatingChat,
   chatId,
   navigatedData,
@@ -80,6 +84,67 @@ function ChatMessagesInner({
       ),
     [activeMessages]
   )
+
+  // Detect persisted browser tool messages and group them into sessions for replay rendering.
+  // A browser group starts at a 'browser_session_open' tool message and includes all subsequent
+  // 'browser_*' tool messages until a non-browser tool message or the end.
+  const replayBrowserSessions = useMemo<BrowserSessionTab[]>(() => {
+    if (streaming) return [] // Only show replay for persisted messages, not during streaming
+    const sessions: BrowserSessionTab[] = []
+    let currentSession: BrowserSessionTab | null = null
+
+    for (const msg of visibleMessages) {
+      if (msg.role !== 'tool' || !msg.tool_name) continue
+      if (!msg.tool_name.startsWith('browser_')) {
+        if (currentSession) {
+          sessions.push(currentSession)
+          currentSession = null
+        }
+        continue
+      }
+
+      let parsed: any = {}
+      try { parsed = JSON.parse(msg.content) } catch { parsed = {} }
+
+      const toolExec: ToolExecution = {
+        tool_name: msg.tool_name,
+        tool_id: msg.tool_call_id || '',
+        status: parsed.status || (parsed.error ? 'error' : 'success'),
+        session_id: parsed.session_id,
+        screenshot_id: parsed.screenshot_id,
+        url: parsed.url,
+        title: parsed.title,
+        selector: parsed.selector,
+        typed_text: parsed.text,
+        content: parsed.content,
+        mode: parsed.mode,
+        ws_port: parsed.ws_port,
+        x: parsed.x,
+        y: parsed.y,
+        ms: parsed.ms,
+        result: parsed.result,
+        truncated: parsed.truncated,
+        error: parsed.error,
+      }
+
+      if (msg.tool_name === 'browser_session_open') {
+        if (currentSession) sessions.push(currentSession)
+        currentSession = {
+          sessionId: parsed.session_id || '',
+          toolExecutions: [toolExec],
+        }
+      } else if (currentSession) {
+        currentSession.toolExecutions.push(toolExec)
+        if (msg.tool_name === 'browser_session_close') {
+          sessions.push(currentSession)
+          currentSession = null
+        }
+      }
+    }
+
+    if (currentSession) sessions.push(currentSession)
+    return sessions
+  }, [visibleMessages, streaming])
 
   // Fetch sibling lists for messages that have activeVariants (total > 1).
   // siblingCache: parent_id -> { ids: string[], total: number }
@@ -333,7 +398,24 @@ function ChatMessagesInner({
               </div>
             )}
 
+            {browserSessions.length > 0 && streaming && (
+              <BrowserPreviewWindow
+                chatId={chatId}
+                sessions={browserSessions}
+                mode="live"
+              />
+            )}
+
             {streaming && !streamedContent && toolExecutions.length === 0 && <TypingIndicator />}
+
+            {/* Replay browser sessions from persisted messages */}
+            {!streaming && replayBrowserSessions.length > 0 && (
+              <BrowserPreviewWindow
+                chatId={chatId}
+                sessions={replayBrowserSessions}
+                mode="replay"
+              />
+            )}
           </>
         )}
       </div>

@@ -10,6 +10,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     auth::build_cookie,
+    browser_engine::BrowserState,
     config::Config,
     models::Claims,
     mcp::McpManager,
@@ -24,6 +25,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub jwt_public_key: Option<Vec<u8>>,
     pub sandbox: SandboxState,
+    pub browser: BrowserState,
     pub vosk_model: Option<std::sync::Arc<std::sync::Mutex<vosk::Model>>>,
     pub mcp_manager: McpManager,
     pub active_streams: Arc<RwLock<HashMap<String, Arc<ActiveStream>>>>,
