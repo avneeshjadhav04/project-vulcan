@@ -3,7 +3,6 @@
 -- and AI-borrowed sessions revert to standalone (chat_id = NULL) on release.
 -- On chat deletion the session row survives with chat_id cleared.
 
-BEGIN;
 CREATE TABLE browser_sessions_new (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -29,4 +28,3 @@ CREATE INDEX IF NOT EXISTS idx_browser_sessions_user_id
     ON browser_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_browser_sessions_user_session
     ON browser_sessions(user_id, session_id);
-COMMIT;
