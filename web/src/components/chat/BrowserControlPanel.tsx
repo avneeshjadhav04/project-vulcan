@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   X,
   Wifi,
@@ -7,6 +7,7 @@ import {
   Loader2,
   MousePointerClick,
   Square,
+  Plus,
 } from 'lucide-react'
 import { BrowserClient } from '../../lib/browserClient'
 import { api } from '../../lib/api'
@@ -22,7 +23,7 @@ async function loadRFB(): Promise<any> {
 
 interface BrowserSessionInfo {
   session_id: string
-  chat_id: string
+  chat_id?: string | null
   ws_port: number
   current_url: string
   title: string
@@ -39,6 +40,8 @@ interface SessionState {
   sessionClosed: boolean
   stopping: boolean
   wsPort?: number
+  chatId?: string | null
+  closing: boolean
 }
 
 function defaultSessionState(): SessionState {
@@ -51,20 +54,22 @@ function defaultSessionState(): SessionState {
     title: '',
     sessionClosed: false,
     stopping: false,
+    closing: false,
   }
 }
 
 export default function BrowserControlPanel({
   onClose,
   width,
-  chatId,
 }: {
   onClose: () => void
   width: number
   chatId?: string
 }) {
+  const queryClient = useQueryClient()
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [sessionStates, setSessionStates] = useState<Record<string, SessionState>>({})
+  const [creating, setCreating] = useState(false)
 
   const vncContainerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const rfbRefs = useRef<Record<string, any | null>>({})
@@ -91,6 +96,34 @@ export default function BrowserControlPanel({
     }))
   }, [])
 
+  const invalidateSessions = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['browser-sessions'] })
+  }, [queryClient])
+
+  // Create a new standalone browser session from the panel.
+  const handleNewSession = useCallback(async () => {
+    if (creating) return
+    setCreating(true)
+    try {
+      await api.post('/browser/session', {})
+      invalidateSessions()
+    } catch (e) {
+      console.error('Failed to create browser session:', e)
+    } finally {
+      setCreating(false)
+    }
+  }, [creating, invalidateSessions])
+
+  // Close (destroy) a session via the WS close message.
+  const handleCloseSession = useCallback((sessionId: string) => {
+    const client = browserClientRefs.current[sessionId]
+    if (!client) return
+    updateSessionState(sessionId, { closing: true })
+    client.close()
+    // The session disappears from the list on next poll; invalidate to speed it up.
+    setTimeout(() => invalidateSessions(), 300)
+  }, [updateSessionState, invalidateSessions])
+
   // Auto-select first session when none selected or selected one disappeared
   useEffect(() => {
     if (sessionList.length === 0) {
@@ -98,11 +131,9 @@ export default function BrowserControlPanel({
       return
     }
     if (!activeSessionId || !sessionList.find((s) => s.session_id === activeSessionId)) {
-      // Prefer a session from the current chat, else first
-      const fromCurrentChat = sessionList.find((s) => s.chat_id === chatId)
-      setActiveSessionId((fromCurrentChat || sessionList[0]).session_id)
+      setActiveSessionId(sessionList[0].session_id)
     }
-  }, [sessionList, activeSessionId, chatId])
+  }, [sessionList, activeSessionId])
 
   // Connect noVNC to websockify
   const connectVnc = useCallback(async (sessionId: string, wsPort: number) => {
@@ -159,6 +190,7 @@ export default function BrowserControlPanel({
         aiActive: session.ai_active,
         currentUrl: session.current_url,
         title: session.title,
+        chatId: session.chat_id ?? null,
       })
 
       const client = new BrowserClient({
@@ -180,6 +212,9 @@ export default function BrowserControlPanel({
           updateSessionState(sid, { wsPort })
           connectVnc(sid, wsPort)
         },
+        onChatAssociated: (chatId) => {
+          updateSessionState(sid, { chatId: chatId || null })
+        },
         onSessionClosed: () => {
           updateSessionState(sid, { sessionClosed: true, connected: false })
           disconnectVnc(sid)
@@ -188,6 +223,16 @@ export default function BrowserControlPanel({
 
       browserClientRefs.current[sid] = client
       client.connect()
+
+      // Late-join fix: if the REST list already has ws_port, connect noVNC
+      // immediately instead of waiting for the (likely-missed) SessionReady
+      // broadcast. The backend also sends a synthetic SessionReady on WS
+      // connect, so this covers both paths.
+      if (session.ws_port) {
+        vncWsPortRefs.current[sid] = session.ws_port
+        updateSessionState(sid, { wsPort: session.ws_port })
+        connectVnc(sid, session.ws_port)
+      }
     }
 
     // Cleanup sessions that disappeared from the API
@@ -207,6 +252,19 @@ export default function BrowserControlPanel({
       mountedRef.current = false
     }
   }, [sessionList, updateSessionState, connectVnc, disconnectVnc])
+
+  // Keep sessionState.chatId in sync with the REST list (e.g. after AI
+  // release the session reverts to standalone and the WS event may have
+  // been missed).
+  useEffect(() => {
+    for (const session of sessionList) {
+      const sid = session.session_id
+      const existing = sessionStates[sid]
+      if (existing && (existing.chatId ?? null) !== (session.chat_id ?? null)) {
+        updateSessionState(sid, { chatId: session.chat_id ?? null })
+      }
+    }
+  }, [sessionList, sessionStates, updateSessionState])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -228,7 +286,8 @@ export default function BrowserControlPanel({
     }
   }, [activeSessionId, width])
 
-  const handleStopAi = useCallback(async (sessionId: string, chatId: string) => {
+  const handleStopAi = useCallback(async (sessionId: string, chatId: string | null | undefined) => {
+    if (!chatId) return
     updateSessionState(sessionId, { stopping: true })
     try {
       await api.delete(`/chats/${chatId}/stream`)
@@ -260,13 +319,28 @@ export default function BrowserControlPanel({
             </span>
           )}
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
-          title="Close browser panel"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleNewSession}
+            disabled={creating}
+            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-50"
+            title="Open a new standalone browser session"
+          >
+            {creating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Plus className="h-3 w-3" />
+            )}
+            New
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary"
+            title="Close browser panel"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {sessionList.length === 0 ? (
@@ -275,8 +349,20 @@ export default function BrowserControlPanel({
           <MousePointerClick className="mb-3 h-10 w-10 text-text-disabled" />
           <p className="text-sm font-medium text-text-secondary">No active browser sessions</p>
           <p className="mt-1 text-xs text-text-helper">
-            Ask the AI to automate a browser task in any chat to see it here.
+            Open a standalone browser session to browse the web. The AI can borrow it later when it needs browser control.
           </p>
+          <button
+            onClick={handleNewSession}
+            disabled={creating}
+            className="mt-4 flex items-center gap-1.5 rounded-full bg-interactive px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-interactive-hover disabled:opacity-50"
+          >
+            {creating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Plus className="h-3 w-3" />
+            )}
+            Open Browser
+          </button>
         </div>
       ) : (
         <>
@@ -292,31 +378,64 @@ export default function BrowserControlPanel({
               {sessionList.map((session) => {
                 const state = sessionStates[session.session_id]
                 const isActive = session.session_id === activeSessionId
-                const isCurrentChat = session.chat_id === chatId
+                const borrowed = !!(state?.chatId ?? session.chat_id)
                 return (
-                  <button
+                  <div
                     key={session.session_id}
-                    onClick={() => setActiveSessionId(session.session_id)}
-                    className={`flex shrink-0 cursor-pointer items-center gap-2 rounded px-2.5 py-1 text-[11px] transition-colors ${
+                    className={`group flex shrink-0 items-center gap-1.5 rounded px-2.5 py-1 text-[11px] transition-colors ${
                       isActive
                         ? 'bg-background text-text-primary'
                         : 'text-text-helper hover:bg-layer-hover hover:text-text-primary'
                     }`}
-                    title={isCurrentChat ? 'Current chat session' : `Session from chat ${session.chat_id.slice(0, 8)}`}
                   >
-                    <span className="max-w-[120px] truncate">
-                      {state?.title || state?.currentUrl || `Session ${session.session_id.slice(0, 6)}`}
-                    </span>
-                    {state?.aiActive && (
-                      <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
-                    )}
-                    {isCurrentChat && !isActive && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-interactive" />
-                    )}
-                  </button>
+                    <button
+                      onClick={() => setActiveSessionId(session.session_id)}
+                      className="flex items-center gap-2"
+                      title={
+                        borrowed
+                          ? `Borrowed by chat ${(state?.chatId ?? session.chat_id)?.slice(0, 8)}`
+                          : 'Standalone session'
+                      }
+                    >
+                      <span className="max-w-[120px] truncate">
+                        {state?.title || state?.currentUrl || `Session ${session.session_id.slice(0, 6)}`}
+                      </span>
+                      {state?.aiActive && (
+                        <Loader2 className="h-2.5 w-2.5 animate-spin text-support-warning" />
+                      )}
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${borrowed ? 'bg-support-warning' : 'bg-support-success'}`}
+                        title={borrowed ? 'AI is using this session' : 'Standalone'}
+                      />
+                    </button>
+                    <button
+                      onClick={() => handleCloseSession(session.session_id)}
+                      disabled={state?.closing}
+                      className="rounded p-0.5 text-text-disabled opacity-0 transition-opacity hover:bg-support-error/20 hover:text-support-error group-hover:opacity-100 disabled:opacity-30"
+                      title="Close this browser session"
+                    >
+                      {state?.closing ? (
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      ) : (
+                        <X className="h-2.5 w-2.5" />
+                      )}
+                    </button>
+                  </div>
                 )
               })}
             </div>
+            <button
+              onClick={handleNewSession}
+              disabled={creating}
+              className="ml-1 flex shrink-0 items-center justify-center rounded p-1 text-text-helper transition-colors hover:bg-layer-hover hover:text-text-primary disabled:opacity-50"
+              title="Open a new browser session"
+            >
+              {creating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Plus className="h-3 w-3" />
+              )}
+            </button>
           </div>
 
           {/* URL bar for active session */}
@@ -365,9 +484,9 @@ export default function BrowserControlPanel({
                       {activeState.stopping ? 'Stopping...' : `AI is controlling: ${activeState.aiAction}`}
                     </span>
                   </div>
-                  {!activeState.stopping && (
+                  {!activeState.stopping && (activeState.chatId ?? activeSession.chat_id) && (
                     <button
-                      onClick={() => handleStopAi(activeSession.session_id, activeSession.chat_id)}
+                      onClick={() => handleStopAi(activeSession.session_id, activeState.chatId ?? activeSession.chat_id)}
                       className="mx-auto mt-3 flex items-center gap-1.5 rounded-full bg-support-error px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-support-error/90"
                     >
                       <Square className="h-3 w-3 fill-current" />

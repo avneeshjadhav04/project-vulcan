@@ -297,7 +297,7 @@ fn build_tools_def() -> Vec<serde_json::Value> {
             "type": "function",
             "function": {
                 "name": "browser_session_open",
-                "description": "Open a persistent browser session for automation. Returns a session_id to use with all other browser_* tools. The user can view the browser in real-time. Always call browser_session_close when done.",
+                "description": "Open a browser session for automation, or reuse an existing standalone session. Returns a session_id to use with all other browser_* tools. The user can view the browser in real-time. If the max session limit is reached, an existing idle standalone session is borrowed automatically. When done, call browser_session_release to release the session back to the user (do NOT call browser_session_close).",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -447,12 +447,26 @@ fn build_tools_def() -> Vec<serde_json::Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "browser_session_close",
-                "description": "Close a browser session and free its resources. Always call this when browser automation is complete.",
+                "name": "browser_session_release",
+                "description": "Release a browser session back to the user when automation is complete. The session stays alive and reverts to standalone, so it can be reused by you or another chat later. Always call this (or browser_session_close, which is an alias) when browser automation is done.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "session_id": {"type": "string", "description": "The browser session ID to close"}
+                        "session_id": {"type": "string", "description": "The browser session ID to release"}
+                    },
+                    "required": ["session_id"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "browser_session_close",
+                "description": "Alias for browser_session_release. Releases the browser session back to the user. Non-destructive: the session stays alive for reuse. Prefer browser_session_release.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "The browser session ID to release"}
                     },
                     "required": ["session_id"]
                 }
@@ -906,15 +920,61 @@ async fn execute_tool(
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-            let session = crate::browser_engine::get_or_create_session(
+            // Try to create a new session (non-blocking on the semaphore).
+            let session = match crate::browser_engine::try_create_session(
                 state.browser.clone(),
                 user_id.to_string(),
                 session_id.clone(),
-                chat_id.to_string(),
+                Some(chat_id.to_string()),
             )
-            .await?;
+            .await
+            {
+                Ok(h) => h,
+                Err(ref e) if e == "max_sessions_reached" => {
+                    // Max sessions reached: try to borrow an existing
+                    // standalone (non-AI-active, chat_id empty) session for
+                    // this user. First one wins.
+                    let borrow = {
+                        let sessions = state.browser.sessions.lock().await;
+                        sessions
+                            .values()
+                            .find(|h| {
+                                h.user_id == user_id
+                                    && h.get_chat_id().is_empty()
+                                    && !h.ai_active.load(std::sync::atomic::Ordering::Relaxed)
+                            })
+                            .cloned()
+                    };
+                    match borrow {
+                        Some(h) => {
+                            // Borrow: associate with this chat and reuse its
+                            // existing session_id for the rest of the tool chain.
+                            h.set_chat_id(chat_id);
+                            let _ = sqlx::query(
+                                "UPDATE browser_sessions SET chat_id = ?1, status = 'active', last_activity = datetime('now') WHERE user_id = ?2 AND session_id = ?3",
+                            )
+                            .bind(chat_id)
+                            .bind(user_id)
+                            .bind(&h.session_id)
+                            .execute(&state.db)
+                            .await;
+                            return Ok(json!({
+                                "status": "success",
+                                "session_id": h.session_id,
+                                "ws_port": h.ws_port,
+                                "borrowed": true,
+                                "message": "Max sessions reached; borrowed an existing standalone browser session. Use this session_id with all other browser_* tools. Call browser_session_release when done."
+                            }));
+                        }
+                        None => {
+                            return Err("All browser sessions are busy and the max session limit is reached. Ask the user to close one in the Browser Control panel.".to_string());
+                        }
+                    }
+                }
+                Err(e) => return Err(e),
+            };
 
-            // Insert audit row.
+            // Insert audit row for the newly created session.
             let _ = sqlx::query(
                 "INSERT INTO browser_sessions (user_id, chat_id, session_id, status) VALUES (?1, ?2, ?3, 'active')"
             )
@@ -928,7 +988,7 @@ async fn execute_tool(
                 "status": "success",
                 "session_id": session_id,
                 "ws_port": session.ws_port,
-                "message": "Browser session opened. Use this session_id with all other browser_* tools."
+                "message": "Browser session opened. Use this session_id with all other browser_* tools. Call browser_session_release when done (not browser_session_close)."
             }))
         }
         "browser_navigate" => {
@@ -1257,7 +1317,11 @@ async fn execute_tool(
                 _ => Ok(json!({"status": "error", "error": "Unexpected result type"})),
             }
         }
-        "browser_session_close" => {
+        "browser_session_release" | "browser_session_close" => {
+            // Both names map to a non-destructive release: the session stays
+            // alive and reverts to standalone so the user (or another chat)
+            // can reuse it later. Only the Browser Control panel's close
+            // button truly destroys a session (via the WS `close` message).
             let session_id = args["session_id"].as_str().ok_or("Missing session_id")?;
 
             let session = {
@@ -1266,21 +1330,19 @@ async fn execute_tool(
             };
 
             if let Some(session) = session {
-                session.shutdown_session();
+                session.set_chat_id("");
+                session.ai_active.store(false, std::sync::atomic::Ordering::SeqCst);
 
-                // Update audit row.
+                // Reflect the release in the audit row.
                 let _ = sqlx::query(
-                    "UPDATE browser_sessions SET status = 'closed', closed_at = datetime('now') WHERE user_id = ?1 AND session_id = ?2"
+                    "UPDATE browser_sessions SET chat_id = NULL, last_activity = datetime('now') WHERE user_id = ?1 AND session_id = ?2"
                 )
                 .bind(user_id)
                 .bind(session_id)
                 .execute(&state.db)
                 .await;
 
-                // Give the blocking task a moment to clean up.
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-                Ok(json!({"status": "success", "session_id": session_id, "message": "Browser session closed"}))
+                Ok(json!({"status": "success", "session_id": session_id, "message": "Browser session released back to the user. It remains available for reuse."}))
             } else {
                 Ok(json!({"status": "error", "error": "Browser session not found"}))
             }
@@ -1410,14 +1472,16 @@ fn build_dynamic_system_prompt() -> String {
          - Sandboxed terminal: Execute shell commands in an isolated Ubuntu environment.\n\
          - File operations: Create, read, and modify files in the workspace.\n\
          - Web search: Search the web for current information.\n\
-         - Browser automation: Open a persistent browser session with browser_session_open, then drive it \
+         - Browser automation: Open or reuse a browser session with browser_session_open, then drive it \
            with browser_navigate, browser_click, browser_type, browser_extract, browser_screenshot, \
-           browser_scroll, browser_wait, browser_run_js, browser_get_url, and browser_session_close. \
-           Always open a session first and pass the returned session_id to all subsequent browser tools. \
+           browser_scroll, browser_wait, browser_run_js, browser_get_url, and browser_session_release. \
+           Always open or reuse a session first and pass the returned session_id to all subsequent browser tools. \
            Use CSS selectors for click/type/extract. Use browser_wait for dynamic content to load. \
            Use browser_screenshot to capture the current page state. The user can see the browser in \
-           real-time — when you are controlling, they cannot interact. Close the session with \
-           browser_session_close when done.\n\
+           real-time — when you are controlling, they cannot interact. Browser sessions are standalone \
+           resources owned by the user; when you are done, call browser_session_release (not \
+           browser_session_close) so the session reverts to standalone and can be reused by you or \
+           another chat later. Do NOT destroy sessions unless the user explicitly asks.\n\
          - Pre-installed tools: python3, pip, nodejs, npm, git, curl, wget, gcc, g++, make, and build-essential are already available. \
            Use `execute_terminal_command` with `apt-get update && apt-get install -y <package>` only if you need software that is not pre-installed (e.g. nmap, ffmpeg, imagemagick).\n\n\
          When the user asks you to do something that requires these tools, use them proactively. \

@@ -60,7 +60,9 @@ impl Default for BrowserState {
 pub struct BrowserSessionHandle {
     pub user_id: String,
     pub session_id: String,
-    pub chat_id: String,
+    /// Chat currently borrowing this session. Empty string = standalone.
+    /// Mutable so the AI can borrow/release without recreating the handle.
+    pub chat_id: Arc<std::sync::Mutex<String>>,
     pub display: u16,
     pub cdp_port: u16,
     pub vnc_port: u16,
@@ -99,6 +101,25 @@ impl BrowserSessionHandle {
     /// Broadcast a viewer event to all connected WebSocket clients.
     pub fn broadcast(&self, event: BrowserViewerEvent) {
         let _ = self.viewer_tx.send(event);
+    }
+
+    /// Read the current chat_id (empty string for standalone sessions).
+    pub fn get_chat_id(&self) -> String {
+        self.chat_id
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default()
+    }
+
+    /// Borrow/release this session by a chat. Broadcasts `ChatAssociated`
+    /// so the frontend panel updates its badge live. Empty `chat_id` releases.
+    pub fn set_chat_id(&self, chat_id: &str) {
+        if let Ok(mut c) = self.chat_id.lock() {
+            *c = chat_id.to_string();
+        }
+        let _ = self.viewer_tx.send(BrowserViewerEvent::ChatAssociated {
+            chat_id: chat_id.to_string(),
+        });
     }
 }
 
@@ -178,6 +199,11 @@ pub enum BrowserViewerEvent {
     SessionReady {
         ws_port: u16,
     },
+    /// Emitted when the AI borrows (chat_id set) or releases (chat_id cleared)
+    /// a session. `chat_id` is empty for standalone sessions.
+    ChatAssociated {
+        chat_id: String,
+    },
     SessionClosed,
 }
 
@@ -186,11 +212,15 @@ pub enum BrowserViewerEvent {
 /// This launches Xvfb, Chrome (headful via headless_chrome), x11vnc, and
 /// websockify. The Chrome process is managed by the headless_chrome crate
 /// inside a blocking task; the other processes are managed via stored PIDs.
+///
+/// `chat_id` is optional: `None` (or empty string) creates a standalone
+/// session. If a session with the same `(user_id, session_id)` already
+/// exists, it is returned as-is (its chat_id is NOT changed here).
 pub async fn get_or_create_session(
     state: BrowserState,
     user_id: String,
     session_id: String,
-    chat_id: String,
+    chat_id: Option<String>,
 ) -> Result<BrowserSessionHandle, String> {
     let key = (user_id.clone(), session_id.clone());
 
@@ -203,13 +233,58 @@ pub async fn get_or_create_session(
         }
     }
 
+    create_session(state, user_id, session_id, chat_id.unwrap_or_default(), false).await
+}
+
+/// Like `get_or_create_session` but never blocks on the semaphore: returns
+/// `Err("max_sessions_reached")` immediately when no permit is available.
+/// Used by the AI tool path so it can fall back to borrowing an existing
+/// standalone session instead of hanging.
+pub async fn try_create_session(
+    state: BrowserState,
+    user_id: String,
+    session_id: String,
+    chat_id: Option<String>,
+) -> Result<BrowserSessionHandle, String> {
+    let key = (user_id.clone(), session_id.clone());
+
+    {
+        let sessions = state.sessions.lock().await;
+        if let Some(existing) = sessions.get(&key) {
+            existing.touch();
+            return Ok(existing.clone());
+        }
+    }
+
+    create_session(state, user_id, session_id, chat_id.unwrap_or_default(), true).await
+}
+
+/// Shared creation path. `nonblocking` selects between blocking and
+/// `try_acquire_owned` semaphore acquisition.
+async fn create_session(
+    state: BrowserState,
+    user_id: String,
+    session_id: String,
+    chat_id: String,
+    nonblocking: bool,
+) -> Result<BrowserSessionHandle, String> {
+    let key = (user_id.clone(), session_id.clone());
+
     // Acquire semaphore permit (max 3 concurrent browsers).
-    let permit = state
-        .semaphore
-        .clone()
-        .acquire_owned()
-        .await
-        .map_err(|e| format!("Semaphore error: {}", e))?;
+    let permit = if nonblocking {
+        state
+            .semaphore
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "max_sessions_reached".to_string())?
+    } else {
+        state
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| format!("Semaphore error: {}", e))?
+    };
 
     let (display, cdp_port, vnc_port, ws_port) = state.allocate_resources();
     let display_str = format!(":{}", display);
@@ -294,7 +369,7 @@ pub async fn get_or_create_session(
     let handle = BrowserSessionHandle {
         user_id: user_id.clone(),
         session_id: session_id.clone(),
-        chat_id: chat_id.clone(),
+        chat_id: Arc::new(std::sync::Mutex::new(chat_id.clone())),
         display,
         cdp_port,
         vnc_port,

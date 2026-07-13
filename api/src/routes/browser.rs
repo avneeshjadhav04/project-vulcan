@@ -2,11 +2,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use futures::{SinkExt, StreamExt};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     middleware::AppState,
@@ -17,13 +17,19 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/browser", get(browser_ws_handler))
         .route("/browser/sessions", get(list_browser_sessions))
+        .route("/browser/session", post(create_browser_session))
+        .route(
+            "/browser/session/{id}/release",
+            post(release_browser_session),
+        )
         .route("/browser/screenshot/{id}", get(get_screenshot))
 }
 
 #[derive(Serialize)]
 struct BrowserSessionInfo {
     session_id: String,
-    chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chat_id: Option<String>,
     ws_port: u16,
     current_url: String,
     title: String,
@@ -41,26 +47,111 @@ async fn list_browser_sessions(
         if user_id != &claims.sub {
             continue;
         }
-        let current_url = handle
-            .current_url
-            .lock()
-            .map(|u| u.clone())
-            .unwrap_or_default();
-        let title = handle
-            .title
-            .lock()
-            .map(|t| t.clone())
-            .unwrap_or_default();
-        result.push(BrowserSessionInfo {
-            session_id: handle.session_id.clone(),
-            chat_id: handle.chat_id.clone(),
-            ws_port: handle.ws_port,
-            current_url,
-            title,
-            ai_active: handle.ai_active.load(std::sync::atomic::Ordering::Relaxed),
-        });
+        result.push(session_info_from_handle(handle));
     }
     Json(result)
+}
+
+fn session_info_from_handle(
+    handle: &crate::browser_engine::BrowserSessionHandle,
+) -> BrowserSessionInfo {
+    let current_url = handle
+        .current_url
+        .lock()
+        .map(|u| u.clone())
+        .unwrap_or_default();
+    let title = handle.title.lock().map(|t| t.clone()).unwrap_or_default();
+    let chat_id = handle.get_chat_id();
+    let chat_id_opt = if chat_id.is_empty() { None } else { Some(chat_id) };
+    BrowserSessionInfo {
+        session_id: handle.session_id.clone(),
+        chat_id: chat_id_opt,
+        ws_port: handle.ws_port,
+        current_url,
+        title,
+        ai_active: handle.ai_active.load(std::sync::atomic::Ordering::Relaxed),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateSessionBody {
+    #[serde(default)]
+    chat_id: Option<String>,
+}
+
+/// Manually create a standalone browser session from the Browser Control
+/// panel. `chat_id` is accepted for forward compatibility but, per the
+/// product model, manual sessions are always standalone (chat_id = NULL).
+async fn create_browser_session(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    body: axum::Json<CreateSessionBody>,
+) -> Response {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    // Manual sessions are always standalone; ignore any chat_id from the
+    // client so the browser panel never implicitly binds to a chat.
+    let _ = body.chat_id; // explicitly unused
+
+    let handle = match crate::browser_engine::get_or_create_session(
+        state.browser.clone(),
+        claims.sub.clone(),
+        session_id.clone(),
+        None,
+    )
+    .await
+    {
+        Ok(h) => h,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        }
+    };
+
+    // Audit row with chat_id = NULL (standalone).
+    let _ = sqlx::query(
+        "INSERT INTO browser_sessions (user_id, chat_id, session_id, status) VALUES (?1, NULL, ?2, 'active')",
+    )
+    .bind(&claims.sub)
+    .bind(&session_id)
+    .execute(&state.db)
+    .await;
+
+    Json(session_info_from_handle(&handle)).into_response()
+}
+
+/// Release a browser session back to standalone (clears the chat association
+/// and ai_active flag). Non-destructive: the session stays alive.
+async fn release_browser_session(
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+    Path(id): Path<String>,
+) -> Response {
+    let session = {
+        let sessions = state.browser.sessions.lock().await;
+        sessions
+            .get(&(claims.sub.clone(), id.clone()))
+            .cloned()
+    };
+
+    let Some(session) = session else {
+        return (StatusCode::NOT_FOUND, "Browser session not found").into_response();
+    };
+
+    // Clear chat association and AI activity.
+    session.set_chat_id("");
+    session
+        .ai_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+
+    // Reflect the release in the audit row.
+    let _ = sqlx::query(
+        "UPDATE browser_sessions SET chat_id = NULL, last_activity = datetime('now') WHERE user_id = ?1 AND session_id = ?2",
+    )
+    .bind(&claims.sub)
+    .bind(&id)
+    .execute(&state.db)
+    .await;
+
+    (StatusCode::OK, "released").into_response()
 }
 
 /// WebSocket handler for the browser live view.
@@ -108,6 +199,21 @@ async fn handle_browser_ws(
     let mut viewer_rx = session.viewer_tx.subscribe();
 
     session.touch();
+
+    // Late-join fix: if the session was already ready before this client
+    // subscribed, the original `SessionReady` broadcast was missed. Send a
+    // synthetic one so the client learns the ws_port for noVNC.
+    let _ = sender
+        .send(axum::extract::ws::Message::Text(
+            serde_json::to_string(
+                &crate::browser_engine::BrowserViewerEvent::SessionReady {
+                    ws_port: session.ws_port,
+                },
+            )
+            .unwrap_or_default()
+            .into(),
+        ))
+        .await;
 
     // Forward viewer events to the WebSocket client.
     let forward_task = tokio::spawn(async move {

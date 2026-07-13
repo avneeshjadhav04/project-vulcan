@@ -6,6 +6,7 @@ export interface BrowserClientOptions {
   onSessionReady?: (wsPort: number) => void
   onSessionClosed?: () => void
   onStatusChange?: (connected: boolean) => void
+  onChatAssociated?: (chatId: string) => void
 }
 
 export class BrowserClient {
@@ -52,6 +53,9 @@ export class BrowserClient {
             break
           case 'session_ready':
             this.opts.onSessionReady?.(data.ws_port)
+            break
+          case 'chat_associated':
+            this.opts.onChatAssociated?.(data.chat_id || '')
             break
           case 'session_closed':
             this.opts.onSessionClosed?.()
