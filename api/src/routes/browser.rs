@@ -161,6 +161,8 @@ async fn release_browser_session(
 /// directly to the internal x11vnc process (localhost:vnc_port) inside the
 /// container. The API acts as the WebSocket-to-TCP bridge (replacing
 /// websockify's role), so no extra ports need to be exposed.
+///
+/// On connect, the session's tab is activated so the VNC viewer sees it.
 async fn vnc_proxy_handler(
     ws: axum::extract::ws::WebSocketUpgrade,
     Path(id): Path<String>,
@@ -181,6 +183,11 @@ async fn vnc_proxy_handler(
             return (StatusCode::NOT_FOUND, "Browser session not found").into_response();
         }
     };
+
+    // Activate this session's tab so the VNC viewer sees it.
+    let _ = session.command_tx.try_send(
+        crate::browser_engine::BrowserCommand::Activate,
+    );
 
     let vnc_port = session.vnc_port;
 
@@ -368,6 +375,12 @@ async fn handle_browser_ws(
                     Some("close") => {
                         session.shutdown_session();
                         break;
+                    }
+                    Some("activate") => {
+                        let _ = session.command_tx.try_send(
+                            crate::browser_engine::BrowserCommand::Activate,
+                        );
+                        session.touch();
                     }
                     _ => {}
                 }

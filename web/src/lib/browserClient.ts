@@ -90,6 +90,10 @@ export class BrowserClient {
     this.ws?.send(JSON.stringify({ type: 'navigate', url }))
   }
 
+  activate() {
+    this.ws?.send(JSON.stringify({ type: 'activate' }))
+  }
+
   close() {
     this.ws?.send(JSON.stringify({ type: 'close' }))
   }

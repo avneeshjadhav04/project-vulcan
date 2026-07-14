@@ -133,6 +133,14 @@ export default function BrowserControlPanel({
     }
   }, [sessionList, activeSessionId])
 
+  // Activate the tab on the backend when the active session changes,
+  // so the VNC stream shows the selected session.
+  useEffect(() => {
+    if (!activeSessionId) return
+    const client = browserClientRefs.current[activeSessionId]
+    client?.activate()
+  }, [activeSessionId])
+
   // Connect noVNC via the API VNC proxy (port 8080)
   const connectVnc = useCallback(async (sessionId: string) => {
     const container = vncContainerRefs.current[sessionId]

@@ -7,14 +7,12 @@ use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
 use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
-/// Starting offsets for resource allocation. Each session gets an index 0..99
-/// which derives a unique display number, CDP port, and VNC port.
-const DISPLAY_BASE: u16 = 100;
-const CDP_PORT_BASE: u16 = 9223;
-const VNC_PORT_BASE: u16 = 5901;
-const MAX_SESSIONS: u16 = 100;
+/// Fixed resource allocation for the single shared Chrome + Xvfb + x11vnc.
+const SHARED_DISPLAY: u16 = 100;
+const SHARED_CDP_PORT: u16 = 9223;
+const SHARED_VNC_PORT: u16 = 5901;
 
-/// Maximum concurrent browser sessions per user.
+/// Maximum concurrent browser sessions (tabs) per user.
 const MAX_CONCURRENT_BROWSERS: usize = 3;
 
 /// Idle timeout before the reaper kills a session.
@@ -24,7 +22,7 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub struct BrowserState {
     pub semaphore: Arc<Semaphore>,
     pub sessions: Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
-    port_counter: Arc<AtomicU16>,
+    pub shared: Arc<Mutex<Option<SharedBrowser>>>,
 }
 
 impl BrowserState {
@@ -32,23 +30,31 @@ impl BrowserState {
         Self {
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_BROWSERS)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            port_counter: Arc::new(AtomicU16::new(0)),
+            shared: Arc::new(Mutex::new(None)),
         }
-    }
-
-    fn allocate_resources(&self) -> (u16, u16, u16) {
-        let idx = self.port_counter.fetch_add(1, Ordering::SeqCst) % MAX_SESSIONS;
-        (
-            DISPLAY_BASE + idx,
-            CDP_PORT_BASE + idx,
-            VNC_PORT_BASE + idx,
-        )
     }
 }
 
 impl Default for BrowserState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The single shared Chrome + Xvfb + x11vnc process group.
+/// Lazily initialized on first session, torn down when the last session closes.
+pub struct SharedBrowser {
+    pub browser: StdArc<Browser>,
+    pub xvfb_pid: i32,
+    pub x11vnc_pid: i32,
+    pub vnc_port: u16,
+    pub session_count: AtomicU16,
+}
+
+impl SharedBrowser {
+    /// Get the VNC port (always SHARED_VNC_PORT).
+    pub fn vnc_port(&self) -> u16 {
+        self.vnc_port
     }
 }
 
@@ -59,10 +65,7 @@ pub struct BrowserSessionHandle {
     pub user_id: String,
     pub session_id: String,
     /// Chat currently borrowing this session. Empty string = standalone.
-    /// Mutable so the AI can borrow/release without recreating the handle.
     pub chat_id: Arc<std::sync::Mutex<String>>,
-    pub display: u16,
-    pub cdp_port: u16,
     pub vnc_port: u16,
     pub command_tx: mpsc::Sender<BrowserCommand>,
     pub viewer_tx: broadcast::Sender<BrowserViewerEvent>,
@@ -71,9 +74,9 @@ pub struct BrowserSessionHandle {
     pub title: Arc<std::sync::Mutex<String>>,
     pub last_activity: Arc<Mutex<Instant>>,
     pub shutdown: Arc<AtomicBool>,
-    /// PIDs of external processes (Xvfb, x11vnc) for cleanup.
-    pub child_pids: Arc<Mutex<Vec<i32>>>,
     pub permit: Arc<Mutex<Option<OwnedSemaphorePermit>>>,
+    /// Whether this session's tab is currently the active (visible) tab on VNC.
+    pub is_active: Arc<AtomicBool>,
 }
 
 impl BrowserSessionHandle {
@@ -87,9 +90,7 @@ impl BrowserSessionHandle {
     /// Request shutdown of the browser session.
     pub fn shutdown_session(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
-        // Send a Close command to cleanly drop the Browser in the blocking task.
         let _ = self.command_tx.try_send(BrowserCommand::Close);
-        // Release the semaphore permit.
         if let Ok(mut permit) = self.permit.try_lock() {
             *permit = None;
         }
@@ -161,6 +162,8 @@ pub enum BrowserCommand {
     GetUrl {
         reply: oneshot::Sender<BrowserCommandResult>,
     },
+    /// Bring this session's tab to the foreground on the VNC display.
+    Activate,
     Close,
 }
 
@@ -204,9 +207,8 @@ pub enum BrowserViewerEvent {
 
 /// Spawn a new browser session or return an error.
 ///
-/// This launches Xvfb, Chrome (headful via headless_chrome), and x11vnc.
-/// The Chrome process is managed by the headless_chrome crate inside a
-/// blocking task; the other processes are managed via stored PIDs.
+/// This creates a new tab on the shared Chrome instance. The shared Chrome +
+/// Xvfb + x11vnc are lazily initialized on first use.
 ///
 /// `chat_id` is optional: `None` (or empty string) creates a standalone
 /// session. If a session with the same `(user_id, session_id)` already
@@ -219,7 +221,6 @@ pub async fn get_or_create_session(
 ) -> Result<BrowserSessionHandle, String> {
     let key = (user_id.clone(), session_id.clone());
 
-    // Return existing session if one is already open.
     {
         let sessions = state.sessions.lock().await;
         if let Some(existing) = sessions.get(&key) {
@@ -265,7 +266,7 @@ async fn create_session(
 ) -> Result<BrowserSessionHandle, String> {
     let key = (user_id.clone(), session_id.clone());
 
-    // Acquire semaphore permit (max 3 concurrent browsers).
+    // Acquire semaphore permit (max 3 concurrent tabs).
     let permit = if nonblocking {
         state
             .semaphore
@@ -281,25 +282,144 @@ async fn create_session(
             .map_err(|e| format!("Semaphore error: {}", e))?
     };
 
-    let (display, cdp_port, vnc_port) = state.allocate_resources();
-    let display_str = format!(":{}", display);
+    // Ensure the shared Chrome + Xvfb + x11vnc are running.
+    let shared_browser = ensure_shared_browser(&state).await?;
+
+    // Create a new tab on the shared Chrome instance.
+    let display_env = format!(":{}", SHARED_DISPLAY);
+    let tab = {
+        let browser = shared_browser.browser.clone();
+        tokio::task::spawn_blocking(move || {
+            // Verify DISPLAY env is set for the Chrome process (it was set at
+            // launch time via process_envs, so this is just a sanity check).
+            let _ = &display_env;
+
+            browser
+                .new_tab()
+                .map_err(|e| format!("Failed to create tab: {}", e))
+        })
+        .await
+        .map_err(|e| format!("Tab creation task failed: {}", e))??
+    };
+
+    let _tab_target_id = tab.get_target_id().to_string();
+
+    // Create channels.
+    let (command_tx, command_rx) = mpsc::channel::<BrowserCommand>(64);
+    let (viewer_tx, _) = broadcast::channel::<BrowserViewerEvent>(32);
+    let ai_active = Arc::new(AtomicBool::new(false));
+    let current_url = Arc::new(std::sync::Mutex::new(String::new()));
+    let title = Arc::new(std::sync::Mutex::new(String::new()));
+    let last_activity = Arc::new(Mutex::new(Instant::now()));
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let permit_arc = Arc::new(Mutex::new(Some(permit)));
+    let is_active = Arc::new(AtomicBool::new(false));
+
+    let handle = BrowserSessionHandle {
+        user_id: user_id.clone(),
+        session_id: session_id.clone(),
+        chat_id: Arc::new(std::sync::Mutex::new(chat_id.clone())),
+        vnc_port: SHARED_VNC_PORT,
+        command_tx: command_tx.clone(),
+        viewer_tx: viewer_tx.clone(),
+        ai_active: ai_active.clone(),
+        current_url: current_url.clone(),
+        title: title.clone(),
+        last_activity: last_activity.clone(),
+        shutdown: shutdown.clone(),
+        permit: permit_arc.clone(),
+        is_active: is_active.clone(),
+    };
+
+    // Notify viewers that the session is ready.
+    let _ = viewer_tx.send(BrowserViewerEvent::SessionReady);
+
+    // Spawn the blocking command loop that owns the Tab.
+    let sessions_for_task = state.sessions.clone();
+    let sessions_key = key.clone();
+    let viewer_tx_task = viewer_tx.clone();
+    let ai_active_task = ai_active.clone();
+    let shutdown_task = shutdown.clone();
+    let shared_state = state.shared.clone();
+    let is_active_task = is_active.clone();
+
+    tokio::task::spawn_blocking(move || {
+        run_browser_command_loop(
+            tab,
+            command_rx,
+            viewer_tx_task,
+            ai_active_task,
+            current_url,
+            title,
+            shutdown_task,
+            sessions_for_task,
+            sessions_key,
+            shared_state,
+            is_active_task,
+        );
+    });
+
+    // Store the session in the map.
+    {
+        let mut sessions = state.sessions.lock().await;
+        sessions.insert(key, handle.clone());
+    }
+
+    // Spawn the idle reaper (once, shared across all sessions).
+    static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
+    if !REAPER_STARTED.swap(true, Ordering::SeqCst) {
+        tokio::spawn(idle_session_reaper(state.sessions.clone()));
+    }
+
+    Ok(handle)
+}
+
+/// Lazily initialize the shared Chrome + Xvfb + x11vnc, or return the existing one.
+async fn ensure_shared_browser(state: &BrowserState) -> Result<SharedBrowser, String> {
+    // Fast path: already running.
+    {
+        let shared = state.shared.lock().await;
+        if let Some(ref sb) = *shared {
+            // Verify Chrome is still alive by checking the process.
+            let pid = sb.browser.get_process_id();
+            if let Some(pid) = pid {
+                if is_process_alive(pid as i32) {
+                    return Ok(SharedBrowser {
+                        browser: sb.browser.clone(),
+                        xvfb_pid: sb.xvfb_pid,
+                        x11vnc_pid: sb.x11vnc_pid,
+                        vnc_port: SHARED_VNC_PORT,
+                        session_count: AtomicU16::new(0),
+                    });
+                }
+            }
+            // Chrome is dead — fall through to reinit.
+        }
+    }
+
+    // Slow path: initialize.
+    init_shared_browser(state).await
+}
+
+/// Initialize the shared Chrome + Xvfb + x11vnc.
+async fn init_shared_browser(state: &BrowserState) -> Result<SharedBrowser, String> {
+    let display_str = format!(":{}", SHARED_DISPLAY);
 
     // 1. Spawn Xvfb
-    let xvfb_pid = spawn_xvfb(display)?;
-    // Give Xvfb a moment to start.
+    let xvfb_pid = spawn_xvfb(SHARED_DISPLAY)?;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    // Verify Xvfb is still running.
     if !is_process_alive(xvfb_pid) {
         return Err("Xvfb failed to start".to_string());
     }
 
     // 2. Launch Chrome via headless_chrome (in spawn_blocking since it's sync).
     let display_env = display_str.clone();
-    let chrome_result = tokio::task::spawn_blocking(move || {
+    let cdp_port = SHARED_CDP_PORT;
+    let browser = tokio::task::spawn_blocking(move || {
         let mut env = std::collections::HashMap::new();
         env.insert("DISPLAY".to_string(), display_env);
 
-        let browser = Browser::new(LaunchOptions {
+        Browser::new(LaunchOptions {
             headless: false,
             sandbox: false,
             window_size: Some((1280, 800)),
@@ -309,114 +429,50 @@ async fn create_session(
             ignore_certificate_errors: true,
             ..Default::default()
         })
-        .map_err(|e| format!("Failed to launch Chrome: {}", e))?;
-
-        let tab = browser
-            .new_tab()
-            .map_err(|e| format!("Failed to open tab: {}", e))?;
-
-        Ok::<(Browser, StdArc<headless_chrome::Tab>), String>((browser, tab))
+        .map_err(|e| format!("Failed to launch Chrome: {}", e))
     })
     .await
-    .map_err(|e| format!("Chrome launch task failed: {}", e))?;
+    .map_err(|e| format!("Chrome launch task failed: {}", e))??;
 
-    let (browser, tab) = match chrome_result {
-        Ok(bt) => bt,
-        Err(e) => {
-            kill_process(xvfb_pid);
-            return Err(e);
-        }
-    };
+    let browser = StdArc::new(browser);
 
     // 3. Spawn x11vnc
-    let x11vnc_pid = spawn_x11vnc(display)?;
+    let x11vnc_pid = spawn_x11vnc(SHARED_DISPLAY, SHARED_VNC_PORT)?;
     tokio::time::sleep(Duration::from_millis(200)).await;
     if !is_process_alive(x11vnc_pid) {
         kill_process(xvfb_pid);
-        // Drop browser to kill Chrome.
-        drop(browser);
-        drop(tab);
         return Err("x11vnc failed to start".to_string());
     }
 
-    // 4. Create channels.
-    let (command_tx, command_rx) = mpsc::channel::<BrowserCommand>(64);
-    let (viewer_tx, _) = broadcast::channel::<BrowserViewerEvent>(32);
-    let ai_active = Arc::new(AtomicBool::new(false));
-    let current_url = Arc::new(std::sync::Mutex::new(String::new()));
-    let title = Arc::new(std::sync::Mutex::new(String::new()));
-    let last_activity = Arc::new(Mutex::new(Instant::now()));
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let child_pids = Arc::new(Mutex::new(vec![xvfb_pid, x11vnc_pid]));
-    let permit_arc = Arc::new(Mutex::new(Some(permit)));
-
-    let handle = BrowserSessionHandle {
-        user_id: user_id.clone(),
-        session_id: session_id.clone(),
-        chat_id: Arc::new(std::sync::Mutex::new(chat_id.clone())),
-        display,
-        cdp_port,
-        vnc_port,
-        command_tx: command_tx.clone(),
-        viewer_tx: viewer_tx.clone(),
-        ai_active: ai_active.clone(),
-        current_url: current_url.clone(),
-        title: title.clone(),
-        last_activity: last_activity.clone(),
-        shutdown: shutdown.clone(),
-        child_pids: child_pids.clone(),
-        permit: permit_arc.clone(),
+    let shared_browser = SharedBrowser {
+        browser,
+        xvfb_pid,
+        x11vnc_pid,
+        vnc_port: SHARED_VNC_PORT,
+        session_count: AtomicU16::new(0),
     };
 
-    // Notify viewers that the session is ready.
-    let _ = viewer_tx.send(BrowserViewerEvent::SessionReady);
-
-    // 6. Spawn the blocking command loop that owns the Browser + Tab.
-    let sessions_for_task = state.sessions.clone();
-    let sessions_key = key.clone();
-    let viewer_tx_task = viewer_tx.clone();
-    let ai_active_task = ai_active.clone();
-    let shutdown_task = shutdown.clone();
-    let child_pids_task = child_pids.clone();
-
-    tokio::task::spawn_blocking(move || {
-        run_browser_command_loop(
-            browser,
-            tab,
-            command_rx,
-            viewer_tx_task,
-            ai_active_task,
-            current_url,
-            title,
-            shutdown_task,
-            child_pids_task,
-            sessions_for_task,
-            sessions_key,
-        );
-    });
-
-    // 7. Store the session in the map.
+    // Store in the shared slot.
     {
-        let mut sessions = state.sessions.lock().await;
-        sessions.insert(key, handle.clone());
+        let mut shared = state.shared.lock().await;
+        *shared = Some(SharedBrowser {
+            browser: shared_browser.browser.clone(),
+            xvfb_pid,
+            x11vnc_pid,
+            vnc_port: SHARED_VNC_PORT,
+            session_count: AtomicU16::new(0),
+        });
     }
 
-    // Spawn the idle reaper (once, shared across all sessions).
-    // Using try_lock to avoid spawning multiple reapers.
-    static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
-    if !REAPER_STARTED.swap(true, Ordering::SeqCst) {
-        tokio::spawn(idle_session_reaper(state.sessions.clone()));
-    }
-
-    Ok(handle)
+    Ok(shared_browser)
 }
 
-/// The blocking command loop that owns the Browser and Tab.
+/// The blocking command loop that owns the Tab.
 ///
 /// Receives commands from the async side, executes them synchronously via
 /// headless_chrome, and sends results back via oneshot channels.
+/// The Browser itself is owned by SharedBrowser, not this loop.
 fn run_browser_command_loop(
-    browser: Browser,
     tab: StdArc<headless_chrome::Tab>,
     mut command_rx: mpsc::Receiver<BrowserCommand>,
     viewer_tx: broadcast::Sender<BrowserViewerEvent>,
@@ -424,15 +480,11 @@ fn run_browser_command_loop(
     current_url: Arc<std::sync::Mutex<String>>,
     title: Arc<std::sync::Mutex<String>>,
     shutdown: Arc<AtomicBool>,
-    child_pids: Arc<Mutex<Vec<i32>>>,
     sessions: Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
     session_key: (String, String),
+    shared_state: Arc<Mutex<Option<SharedBrowser>>>,
+    is_active: Arc<AtomicBool>,
 ) {
-    // The Browser and Tab are kept alive for the lifetime of this function.
-    // When we exit, they are dropped, which kills Chrome.
-    let _browser = browser;
-    let tab = tab;
-
     loop {
         if shutdown.load(Ordering::Relaxed) {
             break;
@@ -440,13 +492,25 @@ fn run_browser_command_loop(
 
         let cmd = match command_rx.blocking_recv() {
             Some(c) => c,
-            None => break, // Channel closed — sender dropped.
+            None => break,
         };
 
         match cmd {
             BrowserCommand::Close => break,
 
+            BrowserCommand::Activate => {
+                if !is_active.load(Ordering::Relaxed) {
+                    if let Err(e) = tab.activate() {
+                        tracing::warn!("Failed to activate tab: {}", e);
+                    } else {
+                        let _ = tab.bring_to_front();
+                        is_active.store(true, Ordering::SeqCst);
+                    }
+                }
+            }
+
             BrowserCommand::Navigate { url, reply } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, &format!("navigating to {}", url));
 
                 let result = tab
@@ -481,6 +545,7 @@ fn run_browser_command_loop(
             }
 
             BrowserCommand::Click { selector, reply } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, &format!("clicking {}", selector));
 
                 let result = tab
@@ -501,6 +566,7 @@ fn run_browser_command_loop(
                 clear,
                 reply,
             } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, &format!("typing into {}", selector));
 
                 let result = (|| -> Result<BrowserCommandResult, String> {
@@ -534,6 +600,7 @@ fn run_browser_command_loop(
                 mode,
                 reply,
             } => {
+                ensure_active(&tab, &is_active);
                 let action = match &selector {
                     Some(s) => format!("extracting {} from {}", mode, s),
                     None => format!("extracting {} from page", mode),
@@ -553,9 +620,7 @@ fn run_browser_command_loop(
                             }
                         }
                         "attribute" => {
-                            // For attribute mode, selector must be "element[attr]"
                             let sel = selector.as_ref().ok_or("selector required for attribute mode")?;
-                            // Try to parse "selector[attr_name]" format
                             if let Some(bracket_pos) = sel.rfind('[') {
                                 let css_sel = &sel[..bracket_pos];
                                 let attr_name = &sel[bracket_pos + 1..sel.len().saturating_sub(1)];
@@ -571,13 +636,11 @@ fn run_browser_command_loop(
                             }
                         }
                         _ => {
-                            // "text" mode (default)
                             if let Some(sel) = &selector {
                                 let element = tab.wait_for_element(sel).map_err(|e| e.to_string())?;
                                 let text = element.get_inner_text().map_err(|e| e.to_string())?;
                                 Ok(BrowserCommandResult::Extract { content: text })
                             } else {
-                                // Extract all text from body
                                 let element = tab.wait_for_element("body").map_err(|e| e.to_string())?;
                                 let text = element.get_inner_text().map_err(|e| e.to_string())?;
                                 Ok(BrowserCommandResult::Extract { content: text })
@@ -592,6 +655,7 @@ fn run_browser_command_loop(
             }
 
             BrowserCommand::Screenshot { reply } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, "taking screenshot");
 
                 let result = tab
@@ -613,6 +677,7 @@ fn run_browser_command_loop(
             }
 
             BrowserCommand::Scroll { x, y, reply } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, "scrolling");
 
                 let js = format!("window.scrollTo({}, {});", x, y);
@@ -633,6 +698,7 @@ fn run_browser_command_loop(
             }
 
             BrowserCommand::RunJs { script, reply } => {
+                ensure_active(&tab, &is_active);
                 set_ai_active(&ai_active, &viewer_tx, true, "running JavaScript");
 
                 let result = tab
@@ -661,19 +727,31 @@ fn run_browser_command_loop(
         }
     }
 
-    // Cleanup: kill external processes.
+    // Cleanup: close the tab.
+    let _ = tab.close_target();
     let _ = viewer_tx.send(BrowserViewerEvent::SessionClosed);
-    {
-        let pids = child_pids.blocking_lock();
-        for pid in pids.iter() {
-            kill_process(*pid);
-        }
-    }
 
-    // Remove from sessions map (blocking_lock since we're in spawn_blocking).
+    // Remove from sessions map.
     {
         let mut sessions = sessions.blocking_lock();
         sessions.remove(&session_key);
+    }
+
+    // Decrement session count and maybe tear down shared browser.
+    let shared = shared_state.blocking_lock();
+    if let Some(ref sb) = *shared {
+        let count = sb.session_count.fetch_sub(1, Ordering::SeqCst);
+        if count <= 1 {
+            tracing::info!(
+                "Last browser session closed — tearing down shared Chrome + Xvfb + x11vnc"
+            );
+            kill_process(sb.x11vnc_pid);
+            kill_process(sb.xvfb_pid);
+            // Drop the SharedBrowser (which drops the Browser, killing Chrome).
+            drop(shared);
+            let mut shared_mut = shared_state.blocking_lock();
+            *shared_mut = None;
+        }
     }
 
     tracing::info!(
@@ -681,6 +759,17 @@ fn run_browser_command_loop(
         session_key.0,
         session_key.1
     );
+}
+
+/// Ensure this tab is the active (visible) tab on VNC. Called before
+/// commands that interact with the page so the VNC viewer sees the action.
+fn ensure_active(tab: &StdArc<headless_chrome::Tab>, is_active: &Arc<AtomicBool>) {
+    if !is_active.load(Ordering::Relaxed) {
+        if tab.activate().is_ok() {
+            let _ = tab.bring_to_front();
+            is_active.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
 fn set_ai_active(
@@ -718,7 +807,7 @@ fn spawn_xvfb(display: u16) -> Result<i32, String> {
 }
 
 /// Spawn x11vnc to expose the Xvfb display via VNC.
-fn spawn_x11vnc(display: u16) -> Result<i32, String> {
+fn spawn_x11vnc(display: u16, vnc_port: u16) -> Result<i32, String> {
     let display_arg = format!(":{}", display);
     let child = std::process::Command::new("x11vnc")
         .args([
@@ -728,7 +817,7 @@ fn spawn_x11vnc(display: u16) -> Result<i32, String> {
             "-forever",
             "-shared",
             "-rfbport",
-            &(VNC_PORT_BASE + (display - DISPLAY_BASE)).to_string(),
+            &vnc_port.to_string(),
             "-localhost",
             "-bg",
         ])
@@ -742,7 +831,6 @@ fn spawn_x11vnc(display: u16) -> Result<i32, String> {
 
 /// Check if a process is still running.
 fn is_process_alive(pid: i32) -> bool {
-    // kill with signal 0 just checks if the process exists.
     nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
 }
 
