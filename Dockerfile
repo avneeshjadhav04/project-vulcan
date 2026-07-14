@@ -59,7 +59,7 @@ RUN LDFLAGS="-static" make -C src proot GIT=false
 
 # Stage 4: Runtime
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl xvfb x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl xvfb x11vnc && rm -rf /var/lib/apt/lists/*
 
 ENV CHROME=/usr/bin/chromium
 

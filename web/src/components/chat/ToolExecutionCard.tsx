@@ -29,7 +29,6 @@ interface ToolResult {
   selector?: string
   typed_text?: string
   mode?: string
-  ws_port?: number
   x?: number
   y?: number
   ms?: number

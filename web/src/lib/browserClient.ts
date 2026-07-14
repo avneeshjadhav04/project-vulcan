@@ -3,7 +3,7 @@ export interface BrowserClientOptions {
   onAiActive?: (active: boolean, action: string) => void
   onUrlChanged?: (url: string) => void
   onTitleChanged?: (title: string) => void
-  onSessionReady?: (wsPort: number) => void
+  onSessionReady?: () => void
   onSessionClosed?: () => void
   onStatusChange?: (connected: boolean) => void
   onChatAssociated?: (chatId: string) => void
@@ -52,7 +52,7 @@ export class BrowserClient {
             this.opts.onTitleChanged?.(data.title)
             break
           case 'session_ready':
-            this.opts.onSessionReady?.(data.ws_port)
+            this.opts.onSessionReady?.()
             break
           case 'chat_associated':
             this.opts.onChatAssociated?.(data.chat_id || '')

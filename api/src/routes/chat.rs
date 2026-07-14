@@ -921,7 +921,7 @@ async fn execute_tool(
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
             // Try to create a new session (non-blocking on the semaphore).
-            let session = match crate::browser_engine::try_create_session(
+            let _session = match crate::browser_engine::try_create_session(
                 state.browser.clone(),
                 user_id.to_string(),
                 session_id.clone(),
@@ -961,7 +961,6 @@ async fn execute_tool(
                             return Ok(json!({
                                 "status": "success",
                                 "session_id": h.session_id,
-                                "ws_port": h.ws_port,
                                 "borrowed": true,
                                 "message": "Max sessions reached; borrowed an existing standalone browser session. Use this session_id with all other browser_* tools. Call browser_session_release when done."
                             }));
@@ -987,7 +986,6 @@ async fn execute_tool(
             Ok(json!({
                 "status": "success",
                 "session_id": session_id,
-                "ws_port": session.ws_port,
                 "message": "Browser session opened. Use this session_id with all other browser_* tools. Call browser_session_release when done (not browser_session_close)."
             }))
         }

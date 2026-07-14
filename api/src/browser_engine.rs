@@ -8,11 +8,10 @@ use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
 /// Starting offsets for resource allocation. Each session gets an index 0..99
-/// which derives a unique display number, CDP port, VNC port, and WebSocket port.
+/// which derives a unique display number, CDP port, and VNC port.
 const DISPLAY_BASE: u16 = 100;
 const CDP_PORT_BASE: u16 = 9223;
 const VNC_PORT_BASE: u16 = 5901;
-const WS_PORT_BASE: u16 = 6101;
 const MAX_SESSIONS: u16 = 100;
 
 /// Maximum concurrent browser sessions per user.
@@ -37,13 +36,12 @@ impl BrowserState {
         }
     }
 
-    fn allocate_resources(&self) -> (u16, u16, u16, u16) {
+    fn allocate_resources(&self) -> (u16, u16, u16) {
         let idx = self.port_counter.fetch_add(1, Ordering::SeqCst) % MAX_SESSIONS;
         (
             DISPLAY_BASE + idx,
             CDP_PORT_BASE + idx,
             VNC_PORT_BASE + idx,
-            WS_PORT_BASE + idx,
         )
     }
 }
@@ -66,7 +64,6 @@ pub struct BrowserSessionHandle {
     pub display: u16,
     pub cdp_port: u16,
     pub vnc_port: u16,
-    pub ws_port: u16,
     pub command_tx: mpsc::Sender<BrowserCommand>,
     pub viewer_tx: broadcast::Sender<BrowserViewerEvent>,
     pub ai_active: Arc<AtomicBool>,
@@ -74,7 +71,7 @@ pub struct BrowserSessionHandle {
     pub title: Arc<std::sync::Mutex<String>>,
     pub last_activity: Arc<Mutex<Instant>>,
     pub shutdown: Arc<AtomicBool>,
-    /// PIDs of external processes (Xvfb, x11vnc, websockify) for cleanup.
+    /// PIDs of external processes (Xvfb, x11vnc) for cleanup.
     pub child_pids: Arc<Mutex<Vec<i32>>>,
     pub permit: Arc<Mutex<Option<OwnedSemaphorePermit>>>,
 }
@@ -196,9 +193,7 @@ pub enum BrowserViewerEvent {
     TitleChanged {
         title: String,
     },
-    SessionReady {
-        ws_port: u16,
-    },
+    SessionReady,
     /// Emitted when the AI borrows (chat_id set) or releases (chat_id cleared)
     /// a session. `chat_id` is empty for standalone sessions.
     ChatAssociated {
@@ -209,9 +204,9 @@ pub enum BrowserViewerEvent {
 
 /// Spawn a new browser session or return an error.
 ///
-/// This launches Xvfb, Chrome (headful via headless_chrome), x11vnc, and
-/// websockify. The Chrome process is managed by the headless_chrome crate
-/// inside a blocking task; the other processes are managed via stored PIDs.
+/// This launches Xvfb, Chrome (headful via headless_chrome), and x11vnc.
+/// The Chrome process is managed by the headless_chrome crate inside a
+/// blocking task; the other processes are managed via stored PIDs.
 ///
 /// `chat_id` is optional: `None` (or empty string) creates a standalone
 /// session. If a session with the same `(user_id, session_id)` already
@@ -286,7 +281,7 @@ async fn create_session(
             .map_err(|e| format!("Semaphore error: {}", e))?
     };
 
-    let (display, cdp_port, vnc_port, ws_port) = state.allocate_resources();
+    let (display, cdp_port, vnc_port) = state.allocate_resources();
     let display_str = format!(":{}", display);
 
     // 1. Spawn Xvfb
@@ -344,18 +339,7 @@ async fn create_session(
         return Err("x11vnc failed to start".to_string());
     }
 
-    // 4. Spawn websockify
-    let websockify_pid = spawn_websockify(ws_port, vnc_port)?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    if !is_process_alive(websockify_pid) {
-        kill_process(xvfb_pid);
-        kill_process(x11vnc_pid);
-        drop(browser);
-        drop(tab);
-        return Err("websockify failed to start".to_string());
-    }
-
-    // 5. Create channels.
+    // 4. Create channels.
     let (command_tx, command_rx) = mpsc::channel::<BrowserCommand>(64);
     let (viewer_tx, _) = broadcast::channel::<BrowserViewerEvent>(32);
     let ai_active = Arc::new(AtomicBool::new(false));
@@ -363,7 +347,7 @@ async fn create_session(
     let title = Arc::new(std::sync::Mutex::new(String::new()));
     let last_activity = Arc::new(Mutex::new(Instant::now()));
     let shutdown = Arc::new(AtomicBool::new(false));
-    let child_pids = Arc::new(Mutex::new(vec![xvfb_pid, x11vnc_pid, websockify_pid]));
+    let child_pids = Arc::new(Mutex::new(vec![xvfb_pid, x11vnc_pid]));
     let permit_arc = Arc::new(Mutex::new(Some(permit)));
 
     let handle = BrowserSessionHandle {
@@ -373,7 +357,6 @@ async fn create_session(
         display,
         cdp_port,
         vnc_port,
-        ws_port,
         command_tx: command_tx.clone(),
         viewer_tx: viewer_tx.clone(),
         ai_active: ai_active.clone(),
@@ -386,7 +369,7 @@ async fn create_session(
     };
 
     // Notify viewers that the session is ready.
-    let _ = viewer_tx.send(BrowserViewerEvent::SessionReady { ws_port });
+    let _ = viewer_tx.send(BrowserViewerEvent::SessionReady);
 
     // 6. Spawn the blocking command loop that owns the Browser + Tab.
     let sessions_for_task = state.sessions.clone();
@@ -753,25 +736,6 @@ fn spawn_x11vnc(display: u16) -> Result<i32, String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("Failed to spawn x11vnc: {}", e))?;
-
-    Ok(child.id() as i32)
-}
-
-/// Spawn websockify to proxy VNC over WebSocket for noVNC.
-fn spawn_websockify(ws_port: u16, vnc_port: u16) -> Result<i32, String> {
-    let vnc_target = format!("localhost:{}", vnc_port);
-    let ws_port_str = ws_port.to_string();
-    let child = std::process::Command::new("websockify")
-        .args([
-            "--web",
-            "/usr/share/novnc",
-            &ws_port_str,
-            &vnc_target,
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn websockify: {}", e))?;
 
     Ok(child.id() as i32)
 }

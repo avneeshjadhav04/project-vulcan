@@ -31,7 +31,7 @@ struct BrowserSessionInfo {
     session_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     chat_id: Option<String>,
-    ws_port: u16,
+    vnc_port: u16,
     current_url: String,
     title: String,
     ai_active: bool,
@@ -67,7 +67,7 @@ fn session_info_from_handle(
     BrowserSessionInfo {
         session_id: handle.session_id.clone(),
         chat_id: chat_id_opt,
-        ws_port: handle.ws_port,
+        vnc_port: handle.vnc_port,
         current_url,
         title,
         ai_active: handle.ai_active.load(std::sync::atomic::Ordering::Relaxed),
@@ -305,13 +305,11 @@ async fn handle_browser_ws(
 
     // Late-join fix: if the session was already ready before this client
     // subscribed, the original `SessionReady` broadcast was missed. Send a
-    // synthetic one so the client learns the ws_port for noVNC.
+    // synthetic one so the frontend knows the session is ready for noVNC.
     let _ = sender
         .send(axum::extract::ws::Message::Text(
             serde_json::to_string(
-                &crate::browser_engine::BrowserViewerEvent::SessionReady {
-                    ws_port: session.ws_port,
-                },
+                &crate::browser_engine::BrowserViewerEvent::SessionReady,
             )
             .unwrap_or_default()
             .into(),

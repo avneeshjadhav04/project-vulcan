@@ -24,7 +24,7 @@ async function loadRFB(): Promise<any> {
 interface BrowserSessionInfo {
   session_id: string
   chat_id?: string | null
-  ws_port: number
+  vnc_port: number
   current_url: string
   title: string
   ai_active: boolean
@@ -39,7 +39,6 @@ interface SessionState {
   title: string
   sessionClosed: boolean
   stopping: boolean
-  wsPort?: number
   chatId?: string | null
   closing: boolean
 }
@@ -74,7 +73,6 @@ export default function BrowserControlPanel({
   const vncContainerRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const rfbRefs = useRef<Record<string, any | null>>({})
   const browserClientRefs = useRef<Record<string, BrowserClient | null>>({})
-  const vncWsPortRefs = useRef<Record<string, number | undefined>>({})
   const mountedRef = useRef(true)
 
   const { data: sessions } = useQuery<BrowserSessionInfo[]>({
@@ -207,9 +205,7 @@ export default function BrowserControlPanel({
         onTitleChanged: (title) => {
           updateSessionState(sid, { title })
         },
-        onSessionReady: (wsPort) => {
-          vncWsPortRefs.current[sid] = wsPort
-          updateSessionState(sid, { wsPort })
+        onSessionReady: () => {
           connectVnc(sid)
         },
         onChatAssociated: (chatId) => {
@@ -224,13 +220,11 @@ export default function BrowserControlPanel({
       browserClientRefs.current[sid] = client
       client.connect()
 
-      // Late-join fix: if the REST list already has ws_port, connect noVNC
+      // Late-join fix: if the REST list already has vnc_port, connect noVNC
       // immediately instead of waiting for the (likely-missed) SessionReady
       // broadcast. The backend also sends a synthetic SessionReady on WS
       // connect, so this covers both paths.
-      if (session.ws_port) {
-        vncWsPortRefs.current[sid] = session.ws_port
-        updateSessionState(sid, { wsPort: session.ws_port })
+      if (session.vnc_port) {
         connectVnc(sid)
       }
     }
