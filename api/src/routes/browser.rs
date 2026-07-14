@@ -22,6 +22,7 @@ pub fn router() -> Router<AppState> {
             "/browser/session/{id}/release",
             post(release_browser_session),
         )
+        .route("/browser/vnc/{id}", get(vnc_proxy_handler))
         .route("/browser/screenshot/{id}", get(get_screenshot))
 }
 
@@ -154,12 +155,111 @@ async fn release_browser_session(
     (StatusCode::OK, "released").into_response()
 }
 
+/// VNC WebSocket proxy.
+///
+/// Proxies the noVNC WebSocket connection (from the frontend, on port 8080)
+/// to the internal websockify process (localhost:ws_port) inside the
+/// container. This lets the live browser preview reach the user through
+/// the already-exposed API port instead of requiring a separate port
+/// for each browser session.
+async fn vnc_proxy_handler(
+    ws: axum::extract::ws::WebSocketUpgrade,
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    claims: axum::Extension<Claims>,
+) -> Response {
+    // Look up the session to get the websockify port.
+    let session = {
+        let sessions = state.browser.sessions.lock().await;
+        sessions
+            .get(&(claims.sub.clone(), id.clone()))
+            .cloned()
+    };
+
+    let session = match session {
+        Some(s) => s,
+        None => {
+            return (StatusCode::NOT_FOUND, "Browser session not found").into_response();
+        }
+    };
+
+    let ws_port = session.ws_port;
+
+    ws.on_upgrade(move |socket| vnc_proxy_bridge(socket, ws_port))
+}
+
+/// Bidirectionally pipe data between the client WebSocket (noVNC) and the
+/// internal websockify TCP connection.
+async fn vnc_proxy_bridge(socket: axum::extract::ws::WebSocket, ws_port: u16) {
+    use axum::extract::ws::Message;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let (mut ws_sink, mut ws_stream) = socket.split();
+
+    // Connect to the internal websockify process.
+    let tcp = match tokio::net::TcpStream::connect(format!("localhost:{}", ws_port)).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("VNC proxy: failed to connect to websockify on port {}: {}", ws_port, e);
+            return;
+        }
+    };
+
+    // Split the TCP stream for concurrent read/write (owned halves).
+    let (mut tcp_read, mut tcp_write) = tcp.into_split();
+
+    // Task 1: WebSocket → websockify (client to VNC server).
+    let ws_to_tcp = tokio::spawn(async move {
+        while let Some(msg_result) = ws_stream.next().await {
+            match msg_result {
+                Ok(Message::Binary(data)) => {
+                    if tcp_write.write_all(&data).await.is_err() {
+                        break;
+                    }
+                }
+                Ok(Message::Text(text)) => {
+                    if tcp_write.write_all(text.as_bytes()).await.is_err() {
+                        break;
+                    }
+                }
+                Ok(Message::Close(_)) | Err(_) => break,
+                Ok(_) => {}
+            }
+        }
+        let _ = tcp_write.shutdown().await;
+    });
+
+    // Task 2: websockify → WebSocket (VNC server to client).
+    // noVNC expects binary WebSocket frames.
+    let tcp_to_ws = tokio::spawn(async move {
+        let mut buf = [0u8; 16384];
+        loop {
+            match tcp_read.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if ws_sink
+                        .send(Message::Binary(buf[..n].to_vec().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = ws_sink.close().await;
+    });
+
+    let _ = tokio::join!(ws_to_tcp, tcp_to_ws);
+}
+
 /// WebSocket handler for the browser live view.
 ///
 /// This endpoint broadcasts viewer events (ai_active, url_changed, etc.) to
-/// the frontend. The actual VNC stream goes through a separate websockify
-/// connection that the frontend establishes directly using the ws_port
-/// provided in the SessionReady event.
+/// the frontend. The actual VNC stream is proxied through the
+/// `/browser/vnc/{id}` route, which bridges the noVNC WebSocket to the
+/// internal websockify process.
 async fn browser_ws_handler(
     ws: axum::extract::ws::WebSocketUpgrade,
     Query(params): Query<std::collections::HashMap<String, String>>,

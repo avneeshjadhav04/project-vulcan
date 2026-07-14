@@ -135,14 +135,14 @@ export default function BrowserControlPanel({
     }
   }, [sessionList, activeSessionId])
 
-  // Connect noVNC to websockify
-  const connectVnc = useCallback(async (sessionId: string, wsPort: number) => {
+  // Connect noVNC via the API VNC proxy (port 8080)
+  const connectVnc = useCallback(async (sessionId: string) => {
     const container = vncContainerRefs.current[sessionId]
     if (!container || rfbRefs.current[sessionId]) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.hostname
-    const wsUrl = `${protocol}//${host}:${wsPort}/websockify`
+    const host = window.location.host
+    const wsUrl = `${protocol}//${host}/api/browser/vnc/${sessionId}`
 
     try {
       const RFB = await loadRFB()
@@ -210,7 +210,7 @@ export default function BrowserControlPanel({
         onSessionReady: (wsPort) => {
           vncWsPortRefs.current[sid] = wsPort
           updateSessionState(sid, { wsPort })
-          connectVnc(sid, wsPort)
+          connectVnc(sid)
         },
         onChatAssociated: (chatId) => {
           updateSessionState(sid, { chatId: chatId || null })
@@ -231,7 +231,7 @@ export default function BrowserControlPanel({
       if (session.ws_port) {
         vncWsPortRefs.current[sid] = session.ws_port
         updateSessionState(sid, { wsPort: session.ws_port })
-        connectVnc(sid, session.ws_port)
+        connectVnc(sid)
       }
     }
 

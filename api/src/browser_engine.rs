@@ -310,7 +310,7 @@ async fn create_session(
             window_size: Some((1280, 800)),
             port: Some(cdp_port),
             process_envs: Some(env),
-            idle_browser_timeout: Duration::from_secs(300),
+            idle_browser_timeout: Duration::from_secs(1800),
             ignore_certificate_errors: true,
             ..Default::default()
         })
