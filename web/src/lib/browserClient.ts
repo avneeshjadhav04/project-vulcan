@@ -87,15 +87,21 @@ export class BrowserClient {
   }
 
   navigate(url: string) {
-    this.ws?.send(JSON.stringify({ type: 'navigate', url }))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'navigate', url }))
+    }
   }
 
   activate() {
-    this.ws?.send(JSON.stringify({ type: 'activate' }))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'activate' }))
+    }
   }
 
   close() {
-    this.ws?.send(JSON.stringify({ type: 'close' }))
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'close' }))
+    }
   }
 
   disconnect() {
