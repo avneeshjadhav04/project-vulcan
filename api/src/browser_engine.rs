@@ -312,8 +312,6 @@ async fn create_session(
             process_envs: Some(env),
             idle_browser_timeout: Duration::from_secs(300),
             ignore_certificate_errors: true,
-            enable_logging: true,
-            args: vec![std::ffi::OsStr::new("--enable-logging=stderr")],
             ..Default::default()
         })
         .map_err(|e| format!("Failed to launch Chrome: {}", e))?;
