@@ -375,10 +375,11 @@ async fn create_session(
         sessions.insert(key, handle.clone());
     }
 
-    // Spawn the idle reaper (once, shared across all sessions).
+    // Spawn the idle reaper and tab watcher (once, shared across all sessions).
     static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
     if !REAPER_STARTED.swap(true, Ordering::SeqCst) {
         tokio::spawn(idle_session_reaper(state.sessions.clone()));
+        tokio::spawn(tab_watcher(state.sessions.clone(), state.shared.clone()));
     }
 
     Ok(handle)
@@ -895,6 +896,88 @@ async fn idle_session_reaper(
                 h.user_id
             );
             h.shutdown_session();
+        }
+    }
+}
+
+/// Tab watcher: polls Chrome's tab list and detects closed tabs.
+/// When a tracked session's tab is closed in Chrome (by the user or AI),
+/// the session is cleaned up. Also tears down the shared Chrome when
+/// all sessions are gone and Chrome has no remaining tabs.
+async fn tab_watcher(
+    sessions: Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
+    shared_state: Arc<Mutex<Option<SharedBrowser>>>,
+) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Get the shared browser (if running).
+        let browser = {
+            let shared = shared_state.lock().await;
+            shared.as_ref().map(|sb| sb.browser.clone())
+        };
+
+        let Some(browser) = browser else {
+            // Chrome not running — nothing to watch.
+            continue;
+        };
+
+        // Get current Chrome tab target IDs.
+        let live_target_ids: std::collections::HashSet<String> = {
+            let browser = browser.clone();
+            match tokio::task::spawn_blocking(move || {
+                let tabs = browser.get_tabs();
+                let guard = tabs.lock().unwrap();
+                guard.iter().map(|t| t.get_target_id().to_string()).collect::<Vec<_>>()
+            })
+            .await
+            {
+                Ok(ids) => ids.into_iter().collect(),
+                Err(_) => continue,
+            }
+        };
+
+        // Find tracked sessions whose tab is no longer in Chrome.
+        let stale_keys: Vec<(String, String)> = {
+            let sessions = sessions.lock().await;
+            sessions
+                .keys()
+                .filter(|(_, session_id)| !live_target_ids.contains(session_id))
+                .cloned()
+                .collect()
+        };
+
+        for key in &stale_keys {
+            tracing::info!(
+                "Tab watcher: tab {} closed for user {}, cleaning up session",
+                key.1,
+                key.0
+            );
+            let sessions = sessions.lock().await;
+            if let Some(h) = sessions.get(key) {
+                h.shutdown_session();
+            }
+        }
+
+        // Teardown guard: if no tracked sessions remain and Chrome has no
+        // tabs at all, tear down the shared browser.
+        if stale_keys.is_empty() {
+            // Check if we should tear down.
+            let session_count = {
+                let sessions = sessions.lock().await;
+                sessions.len()
+            };
+            if session_count == 0 && live_target_ids.is_empty() {
+                let mut shared = shared_state.lock().await;
+                if let Some(ref sb) = *shared {
+                    tracing::info!(
+                        "Tab watcher: no sessions and no Chrome tabs — tearing down shared browser"
+                    );
+                    kill_process(sb.x11vnc_pid);
+                    kill_process(sb.xvfb_pid);
+                    *shared = None;
+                }
+            }
         }
     }
 }
