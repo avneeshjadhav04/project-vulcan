@@ -112,6 +112,48 @@ export default function BrowserControlPanel({
     }
   }, [creating, invalidateSessions])
 
+  // Patch noVNC's Display to stretch (non-uniform scale) instead of
+  // fit (uniform scale), so the canvas fills the container completely
+  // without letterboxing. Mouse coordinates are adjusted accordingly.
+  const patchDisplay = useCallback((rfb: any) => {
+    const display = rfb._display
+    if (!display) return
+
+    display._scaleX = 1
+    display._scaleY = 1
+
+    display.autoscale = function (w: number, h: number) {
+      const vp = this._viewportLoc
+      if (w === 0 || h === 0) {
+        this._scaleX = 0
+        this._scaleY = 0
+        return
+      }
+      this._scaleX = w / vp.w
+      this._scaleY = h / vp.h
+      this._scale = this._scaleX
+      this._target.style.width = w + 'px'
+      this._target.style.height = h + 'px'
+    }
+
+    display.absX = function (x: number) {
+      if (this._scaleX === 0) return 0
+      return (x / this._scaleX + this._viewportLoc.x) | 0
+    }
+
+    display.absY = function (y: number) {
+      if (this._scaleY === 0) return 0
+      return (y / this._scaleY + this._viewportLoc.y) | 0
+    }
+
+    // Trigger initial scaling
+    const screen = rfb._screen
+    if (screen) {
+      const rect = screen.getBoundingClientRect()
+      display.autoscale(rect.width, rect.height)
+    }
+  }, [])
+
   // Connect noVNC to the shared VNC stream via the first session's ID.
   // The VNC port is shared (always 5901), so any session ID works.
   const connectVnc = useCallback(async (sessionId: string) => {
@@ -139,6 +181,7 @@ export default function BrowserControlPanel({
         vncConnectedRef.current = true
         setVncConnected(true)
         setVncConnecting(false)
+        patchDisplay(rfb)
       })
 
       rfb.addEventListener('disconnect', () => {
@@ -350,7 +393,7 @@ export default function BrowserControlPanel({
           <div className="relative flex-1 overflow-hidden bg-black/90">
             <div
               ref={(el) => { vncContainerRef.current = el }}
-              className="absolute inset-0 z-10"
+              className="vnc-screen-wrapper absolute inset-0 z-10"
               style={{ minHeight: 0 }}
             />
 

@@ -230,10 +230,12 @@
   cursor: text;
 }
 
-/* Stretch the noVNC canvas to completely fill the browser control panel,
-   eliminating letterboxing (grey bars). Minor aspect ratio distortion
-   is acceptable for a fill-to-fit display. */
-.noVNC_canvas {
-  width: 100% !important;
-  height: 100% !important;
+/* Stretch the noVNC canvas to fill the browser control panel completely.
+   noVNC creates a wrapper div (the "screen") and a bare canvas inside it.
+   We remove the default margin and grey background to eliminate letterboxing. */
+.vnc-screen-wrapper > div {
+  background: #000 !important;
+}
+.vnc-screen-wrapper canvas {
+  margin: 0 !important;
 }
