@@ -258,10 +258,10 @@ export default function BrowserControlPanel({
     }
   }, [disconnectVnc])
 
-  // Handle VNC viewport scaling — stretch to fill the panel completely
+  // Handle VNC viewport scaling — scale to fit, then CSS stretches to fill
   useEffect(() => {
     if (rfbRef.current && vncContainerRef.current) {
-      rfbRef.current.scaleViewport = false
+      rfbRef.current.scaleViewport = true
       rfbRef.current.resizeSession = false
     }
   }, [width])
