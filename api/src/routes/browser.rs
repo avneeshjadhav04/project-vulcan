@@ -158,9 +158,9 @@ async fn release_browser_session(
 /// VNC WebSocket proxy.
 ///
 /// Proxies the noVNC WebSocket connection (from the frontend, on port 8080)
-/// directly to the internal x11vnc process (localhost:vnc_port) inside the
-/// container. The API acts as the WebSocket-to-TCP bridge (replacing
-/// websockify's role), so no extra ports need to be exposed.
+/// directly to the internal Xvnc process (localhost:vnc_port) inside the
+/// container. The API acts as the WebSocket-to-TCP bridge, so no extra
+/// ports need to be exposed.
 async fn vnc_proxy_handler(
     ws: axum::extract::ws::WebSocketUpgrade,
     Path(id): Path<String>,
@@ -188,30 +188,30 @@ async fn vnc_proxy_handler(
 }
 
 /// Bidirectionally pipe data between the client WebSocket (noVNC) and the
-/// internal x11vnc TCP connection (raw RFB protocol).
+/// internal Xvnc TCP connection (raw RFB protocol).
 async fn vnc_proxy_bridge(socket: axum::extract::ws::WebSocket, vnc_port: u16) {
     use axum::extract::ws::Message;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let (mut ws_sink, mut ws_stream) = socket.split();
 
-    tracing::info!("VNC proxy: connecting to x11vnc on port {}", vnc_port);
+    tracing::info!("VNC proxy: connecting to Xvnc on port {}", vnc_port);
 
-    // Connect directly to x11vnc (raw VNC/RFB over TCP).
+    // Connect directly to Xvnc (raw VNC/RFB over TCP).
     let tcp = match tokio::net::TcpStream::connect(format!("localhost:{}", vnc_port)).await {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!("VNC proxy: failed to connect to x11vnc on port {}: {}", vnc_port, e);
+            tracing::warn!("VNC proxy: failed to connect to Xvnc on port {}: {}", vnc_port, e);
             return;
         }
     };
 
-    tracing::info!("VNC proxy: connected to x11vnc on port {}", vnc_port);
+    tracing::info!("VNC proxy: connected to Xvnc on port {}", vnc_port);
 
     // Split the TCP stream for concurrent read/write (owned halves).
     let (mut tcp_read, mut tcp_write) = tcp.into_split();
 
-    // Task 1: WebSocket → x11vnc (noVNC client to VNC server).
+    // Task 1: WebSocket → Xvnc (noVNC client to VNC server).
     let ws_to_tcp = tokio::spawn(async move {
         while let Some(msg_result) = ws_stream.next().await {
             match msg_result {
@@ -232,7 +232,7 @@ async fn vnc_proxy_bridge(socket: axum::extract::ws::WebSocket, vnc_port: u16) {
         let _ = tcp_write.shutdown().await;
     });
 
-    // Task 2: x11vnc → WebSocket (VNC server to noVNC client).
+    // Task 2: Xvnc → WebSocket (VNC server to noVNC client).
     // noVNC expects binary WebSocket frames.
     let tcp_to_ws = tokio::spawn(async move {
         let mut buf = [0u8; 16384];

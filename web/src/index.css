@@ -229,13 +229,3 @@
 .xterm-screen {
   cursor: text;
 }
-
-/* Stretch the noVNC canvas to fill the browser control panel completely.
-   noVNC creates a wrapper div (the "screen") and a bare canvas inside it.
-   We remove the default margin and grey background to eliminate letterboxing. */
-.vnc-screen-wrapper > div {
-  background: #000 !important;
-}
-.vnc-screen-wrapper canvas {
-  margin: 0 !important;
-}

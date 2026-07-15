@@ -7,7 +7,7 @@ use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page, util};
 use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
-/// Fixed resource allocation for the single shared Chrome + Xvfb + x11vnc.
+/// Fixed resource allocation for the single shared Chrome + Xvnc.
 const SHARED_DISPLAY: u16 = 100;
 const SHARED_CDP_PORT: u16 = 9223;
 const SHARED_VNC_PORT: u16 = 5901;
@@ -41,12 +41,11 @@ impl Default for BrowserState {
     }
 }
 
-/// The single shared Chrome + Xvfb + x11vnc process group.
+/// The single shared Chrome + Xvnc process group.
 /// Lazily initialized on first session, torn down when the last session closes.
 pub struct SharedBrowser {
     pub browser: StdArc<Browser>,
-    pub xvfb_pid: i32,
-    pub x11vnc_pid: i32,
+    pub xvnc_pid: i32,
     pub vnc_port: u16,
     pub session_count: AtomicU16,
     /// Chrome's initial tab (opened at launch with about:blank). The first
@@ -215,7 +214,7 @@ pub enum BrowserViewerEvent {
 /// Spawn a new browser session or return an error.
 ///
 /// This creates a new tab on the shared Chrome instance. The shared Chrome +
-/// Xvfb + x11vnc are lazily initialized on first use.
+/// Xvnc is lazily initialized on first use.
 ///
 /// `chat_id` is optional: `None` (or empty string) creates a standalone
 /// session. If a session with the same `(user_id, session_id)` already
@@ -289,7 +288,7 @@ async fn create_session(
             .map_err(|e| format!("Semaphore error: {}", e))?
     };
 
-    // Ensure the shared Chrome + Xvfb + x11vnc are running, and try to
+    // Ensure the shared Chrome + Xvnc are running, and try to
     // claim the initial tab (Chrome's about:blank tab) for reuse.
     let (browser, initial_tab) = ensure_shared_browser(&state).await?;
 
@@ -389,7 +388,7 @@ async fn create_session(
     Ok(handle)
 }
 
-/// Lazily initialize the shared Chrome + Xvfb + x11vnc, or return the existing one.
+/// Lazily initialize the shared Chrome + Xvnc, or return the existing one.
 /// Returns the browser handle and, if available, the initial tab for reuse.
 async fn ensure_shared_browser(
     state: &BrowserState,
@@ -415,18 +414,19 @@ async fn ensure_shared_browser(
     init_shared_browser(state).await
 }
 
-/// Initialize the shared Chrome + Xvfb + x11vnc.
+/// Initialize the shared Chrome + Xvnc.
 /// Returns the browser handle and the initial tab for reuse.
 async fn init_shared_browser(
     state: &BrowserState,
 ) -> Result<(StdArc<Browser>, Option<StdArc<headless_chrome::Tab>>), String> {
     let display_str = format!(":{}", SHARED_DISPLAY);
 
-    // 1. Spawn Xvfb
-    let xvfb_pid = spawn_xvfb(SHARED_DISPLAY)?;
+    // 1. Spawn Xvnc (TigerVNC) — combined X server + VNC server.
+    //    Supports dynamic resize via SetDesktopSize from noVNC.
+    let xvnc_pid = spawn_xvnc(SHARED_DISPLAY, SHARED_VNC_PORT)?;
     tokio::time::sleep(Duration::from_millis(300)).await;
-    if !is_process_alive(xvfb_pid) {
-        return Err("Xvfb failed to start".to_string());
+    if !is_process_alive(xvnc_pid) {
+        return Err("Xvnc failed to start".to_string());
     }
 
     // 2. Launch Chrome via headless_chrome (in spawn_blocking since it's sync).
@@ -472,14 +472,6 @@ async fn init_shared_browser(
     .await
     .unwrap_or(None);
 
-    // 3. Spawn x11vnc
-    let x11vnc_pid = spawn_x11vnc(SHARED_DISPLAY, SHARED_VNC_PORT)?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    if !is_process_alive(x11vnc_pid) {
-        kill_process(xvfb_pid);
-        return Err("x11vnc failed to start".to_string());
-    }
-
     // Store in the shared slot, then take the initial tab back for the
     // first session to claim.
     let initial_tab_return;
@@ -487,8 +479,7 @@ async fn init_shared_browser(
         let mut shared = state.shared.lock().await;
         *shared = Some(SharedBrowser {
             browser: browser.clone(),
-            xvfb_pid,
-            x11vnc_pid,
+            xvnc_pid,
             vnc_port: SHARED_VNC_PORT,
             session_count: AtomicU16::new(0),
             initial_tab,
@@ -776,10 +767,9 @@ fn run_browser_command_loop(
         let count = sb.session_count.fetch_sub(1, Ordering::SeqCst);
         if count <= 1 {
             tracing::info!(
-                "Last browser session closed — tearing down shared Chrome + Xvfb + x11vnc"
+                "Last browser session closed — tearing down shared Chrome + Xvnc"
             );
-            kill_process(sb.x11vnc_pid);
-            kill_process(sb.xvfb_pid);
+            kill_process(sb.xvnc_pid);
             // Drop the SharedBrowser (which drops the Browser, killing Chrome).
             drop(shared);
             let mut shared_mut = shared_state.blocking_lock();
@@ -818,46 +808,31 @@ fn set_ai_active(
     });
 }
 
-/// Spawn an Xvfb process for the given display number.
-fn spawn_xvfb(display: u16) -> Result<i32, String> {
+/// Spawn Xvnc (TigerVNC) — a combined X server + VNC server.
+/// Supports dynamic resize via SetDesktopSize requests from noVNC.
+fn spawn_xvnc(display: u16, vnc_port: u16) -> Result<i32, String> {
     let display_arg = format!(":{}", display);
-    let child = std::process::Command::new("Xvfb")
+    let geometry = format!("{}x{}", 1280, 800);
+    let rfbport = vnc_port.to_string();
+    let child = std::process::Command::new("Xtigervnc")
         .args([
             &display_arg,
-            "-screen",
-            "0",
-            "1280x800x24",
-            "-ac",
-            "-nolisten",
-            "tcp",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn Xvfb: {}", e))?;
-
-    Ok(child.id() as i32)
-}
-
-/// Spawn x11vnc to expose the Xvfb display via VNC.
-fn spawn_x11vnc(display: u16, vnc_port: u16) -> Result<i32, String> {
-    let display_arg = format!(":{}", display);
-    let child = std::process::Command::new("x11vnc")
-        .args([
-            "-display",
-            &display_arg,
-            "-nopw",
-            "-forever",
-            "-shared",
+            "-geometry",
+            &geometry,
+            "-depth",
+            "24",
             "-rfbport",
-            &vnc_port.to_string(),
+            &rfbport,
+            "-SecurityTypes",
+            "None",
             "-localhost",
-            "-bg",
+            "-ac",
+            "-noclip",
         ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to spawn x11vnc: {}", e))?;
+        .map_err(|e| format!("Failed to spawn Xtigervnc: {}", e))?;
 
     Ok(child.id() as i32)
 }
@@ -977,8 +952,7 @@ async fn tab_watcher(
                     tracing::info!(
                         "Tab watcher: no sessions and no Chrome tabs — tearing down shared browser"
                     );
-                    kill_process(sb.x11vnc_pid);
-                    kill_process(sb.xvfb_pid);
+                    kill_process(sb.xvnc_pid);
                     *shared = None;
                 }
             }
