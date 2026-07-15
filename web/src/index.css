@@ -229,3 +229,11 @@
 .xterm-screen {
   cursor: text;
 }
+
+/* Stretch the noVNC canvas to completely fill the browser control panel,
+   eliminating letterboxing (grey bars). Minor aspect ratio distortion
+   is acceptable for a fill-to-fit display. */
+.noVNC_canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
