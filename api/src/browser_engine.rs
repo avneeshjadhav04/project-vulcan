@@ -827,10 +827,9 @@ fn spawn_xvnc(display: u16, vnc_port: u16) -> Result<i32, String> {
             "None",
             "-localhost",
             "-ac",
-            "-noclip",
         ])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
         .spawn()
         .map_err(|e| format!("Failed to spawn Xtigervnc: {}", e))?;
 
