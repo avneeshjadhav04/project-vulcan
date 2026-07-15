@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
+use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page, util};
 use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
@@ -49,6 +49,10 @@ pub struct SharedBrowser {
     pub x11vnc_pid: i32,
     pub vnc_port: u16,
     pub session_count: AtomicU16,
+    /// Chrome's initial tab (opened at launch with about:blank). The first
+    /// session reuses this tab instead of creating a new one. `None` after
+    /// it has been claimed or if it failed to load.
+    pub initial_tab: Option<StdArc<headless_chrome::Tab>>,
 }
 
 impl SharedBrowser {
@@ -282,18 +286,16 @@ async fn create_session(
             .map_err(|e| format!("Semaphore error: {}", e))?
     };
 
-    // Ensure the shared Chrome + Xvfb + x11vnc are running.
-    let shared_browser = ensure_shared_browser(&state).await?;
+    // Ensure the shared Chrome + Xvfb + x11vnc are running, and try to
+    // claim the initial tab (Chrome's about:blank tab) for reuse.
+    let (browser, initial_tab) = ensure_shared_browser(&state).await?;
 
-    // Create a new tab on the shared Chrome instance.
-    let display_env = format!(":{}", SHARED_DISPLAY);
-    let tab = {
-        let browser = shared_browser.browser.clone();
+    // Use the initial tab if available, else create a new one.
+    let tab = if let Some(tab) = initial_tab {
+        tab
+    } else {
+        let browser = browser.clone();
         tokio::task::spawn_blocking(move || {
-            // Verify DISPLAY env is set for the Chrome process (it was set at
-            // launch time via process_envs, so this is just a sanity check).
-            let _ = &display_env;
-
             browser
                 .new_tab()
                 .map_err(|e| format!("Failed to create tab: {}", e))
@@ -301,6 +303,14 @@ async fn create_session(
         .await
         .map_err(|e| format!("Tab creation task failed: {}", e))??
     };
+
+    // Increment session count so teardown works when the last session closes.
+    {
+        let shared = state.shared.lock().await;
+        if let Some(ref sb) = *shared {
+            sb.session_count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
 
     let _tab_target_id = tab.get_target_id().to_string();
 
@@ -375,22 +385,21 @@ async fn create_session(
 }
 
 /// Lazily initialize the shared Chrome + Xvfb + x11vnc, or return the existing one.
-async fn ensure_shared_browser(state: &BrowserState) -> Result<SharedBrowser, String> {
+/// Returns the browser handle and, if available, the initial tab for reuse.
+async fn ensure_shared_browser(
+    state: &BrowserState,
+) -> Result<(StdArc<Browser>, Option<StdArc<headless_chrome::Tab>>), String> {
     // Fast path: already running.
     {
-        let shared = state.shared.lock().await;
-        if let Some(ref sb) = *shared {
+        let mut shared = state.shared.lock().await;
+        if let Some(ref mut sb) = *shared {
             // Verify Chrome is still alive by checking the process.
             let pid = sb.browser.get_process_id();
             if let Some(pid) = pid {
                 if is_process_alive(pid as i32) {
-                    return Ok(SharedBrowser {
-                        browser: sb.browser.clone(),
-                        xvfb_pid: sb.xvfb_pid,
-                        x11vnc_pid: sb.x11vnc_pid,
-                        vnc_port: SHARED_VNC_PORT,
-                        session_count: AtomicU16::new(0),
-                    });
+                    // Take the initial tab if still available.
+                    let initial_tab = sb.initial_tab.take();
+                    return Ok((sb.browser.clone(), initial_tab));
                 }
             }
             // Chrome is dead — fall through to reinit.
@@ -402,7 +411,10 @@ async fn ensure_shared_browser(state: &BrowserState) -> Result<SharedBrowser, St
 }
 
 /// Initialize the shared Chrome + Xvfb + x11vnc.
-async fn init_shared_browser(state: &BrowserState) -> Result<SharedBrowser, String> {
+/// Returns the browser handle and the initial tab for reuse.
+async fn init_shared_browser(
+    state: &BrowserState,
+) -> Result<(StdArc<Browser>, Option<StdArc<headless_chrome::Tab>>), String> {
     let display_str = format!(":{}", SHARED_DISPLAY);
 
     // 1. Spawn Xvfb
@@ -427,6 +439,10 @@ async fn init_shared_browser(state: &BrowserState) -> Result<SharedBrowser, Stri
             process_envs: Some(env),
             idle_browser_timeout: Duration::from_secs(1800),
             ignore_certificate_errors: true,
+            // Open about:blank as the initial tab so Chrome doesn't load
+            // its default start page (Google). The first session reuses
+            // this tab instead of creating a new one.
+            args: vec![std::ffi::OsStr::new("about:blank")],
             ..Default::default()
         })
         .map_err(|e| format!("Failed to launch Chrome: {}", e))
@@ -436,6 +452,21 @@ async fn init_shared_browser(state: &BrowserState) -> Result<SharedBrowser, Stri
 
     let browser = StdArc::new(browser);
 
+    // Grab Chrome's initial tab (opened with about:blank) so the first
+    // session can reuse it instead of creating a second tab.
+    let initial_tab = tokio::task::spawn_blocking({
+        let browser = browser.clone();
+        move || {
+            let tabs = browser.get_tabs();
+            // Wait briefly for the initial tab to appear.
+            util::Wait::with_timeout(Duration::from_secs(5))
+                .until(|| tabs.lock().unwrap().first().cloned())
+                .ok()
+        }
+    })
+    .await
+    .unwrap_or(None);
+
     // 3. Spawn x11vnc
     let x11vnc_pid = spawn_x11vnc(SHARED_DISPLAY, SHARED_VNC_PORT)?;
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -444,27 +475,24 @@ async fn init_shared_browser(state: &BrowserState) -> Result<SharedBrowser, Stri
         return Err("x11vnc failed to start".to_string());
     }
 
-    let shared_browser = SharedBrowser {
-        browser,
-        xvfb_pid,
-        x11vnc_pid,
-        vnc_port: SHARED_VNC_PORT,
-        session_count: AtomicU16::new(0),
-    };
-
-    // Store in the shared slot.
+    // Store in the shared slot, then take the initial tab back for the
+    // first session to claim.
+    let initial_tab_return;
     {
         let mut shared = state.shared.lock().await;
         *shared = Some(SharedBrowser {
-            browser: shared_browser.browser.clone(),
+            browser: browser.clone(),
             xvfb_pid,
             x11vnc_pid,
             vnc_port: SHARED_VNC_PORT,
             session_count: AtomicU16::new(0),
+            initial_tab,
         });
+        initial_tab_return = shared.as_mut().unwrap().initial_tab.take();
     }
 
-    Ok(shared_browser)
+    // Return the browser and the initial tab (to be claimed by the first session).
+    Ok((browser, initial_tab_return))
 }
 
 /// The blocking command loop that owns the Tab.
