@@ -68,6 +68,9 @@ impl SharedBrowser {
 pub struct BrowserSessionHandle {
     pub user_id: String,
     pub session_id: String,
+    /// Chrome's CDP target ID for this session's tab. Used by the tab
+    /// watcher to detect when the tab is closed in Chrome.
+    pub tab_target_id: String,
     /// Chat currently borrowing this session. Empty string = standalone.
     pub chat_id: Arc<std::sync::Mutex<String>>,
     pub vnc_port: u16,
@@ -312,7 +315,7 @@ async fn create_session(
         }
     }
 
-    let _tab_target_id = tab.get_target_id().to_string();
+    let tab_target_id = tab.get_target_id().to_string();
 
     // Create channels.
     let (command_tx, command_rx) = mpsc::channel::<BrowserCommand>(64);
@@ -328,6 +331,7 @@ async fn create_session(
     let handle = BrowserSessionHandle {
         user_id: user_id.clone(),
         session_id: session_id.clone(),
+        tab_target_id: tab_target_id.clone(),
         chat_id: Arc::new(std::sync::Mutex::new(chat_id.clone())),
         vnc_port: SHARED_VNC_PORT,
         command_tx: command_tx.clone(),
@@ -941,17 +945,17 @@ async fn tab_watcher(
         let stale_keys: Vec<(String, String)> = {
             let sessions = sessions.lock().await;
             sessions
-                .keys()
-                .filter(|(_, session_id)| !live_target_ids.contains(session_id))
-                .cloned()
+                .iter()
+                .filter(|(_, h)| !live_target_ids.contains(&h.tab_target_id))
+                .map(|(k, _)| k.clone())
                 .collect()
         };
 
         for key in &stale_keys {
             tracing::info!(
-                "Tab watcher: tab {} closed for user {}, cleaning up session",
-                key.1,
-                key.0
+                "Tab watcher: tab closed for user {}, cleaning up session {}",
+                key.0,
+                key.1
             );
             let sessions = sessions.lock().await;
             if let Some(h) = sessions.get(key) {
