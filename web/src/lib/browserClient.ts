@@ -98,6 +98,12 @@ export class BrowserClient {
     }
   }
 
+  resize(width: number, height: number) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'resize', width, height }))
+    }
+  }
+
   close() {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'close' }))

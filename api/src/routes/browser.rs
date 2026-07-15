@@ -369,6 +369,17 @@ async fn handle_browser_ws(
                         session.shutdown_session();
                         break;
                     }
+                    Some("resize") => {
+                        if let (Some(w), Some(h)) = (envelope["width"].as_u64(), envelope["height"].as_u64()) {
+                            let _ = session.command_tx.try_send(
+                                crate::browser_engine::BrowserCommand::Resize {
+                                    width: w as u32,
+                                    height: h as u32,
+                                },
+                            );
+                            session.touch();
+                        }
+                    }
                     _ => {}
                 }
             }

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page, util};
+use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page, types::Bounds, util};
 use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
@@ -170,6 +170,8 @@ pub enum BrowserCommand {
     },
     /// Bring this session's tab to the foreground on the VNC display.
     Activate,
+    /// Resize the Chrome window to match the VNC display area.
+    Resize { width: u32, height: u32 },
     Close,
 }
 
@@ -530,6 +532,17 @@ fn run_browser_command_loop(
                         let _ = tab.bring_to_front();
                         is_active.store(true, Ordering::SeqCst);
                     }
+                }
+            }
+
+            BrowserCommand::Resize { width, height } => {
+                if let Err(e) = tab.set_bounds(Bounds::Normal {
+                    left: Some(0),
+                    top: Some(0),
+                    width: Some(width as f64),
+                    height: Some(height as f64),
+                }) {
+                    tracing::warn!("Failed to resize Chrome window: {}", e);
                 }
             }
 

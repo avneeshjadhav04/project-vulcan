@@ -85,6 +85,7 @@ export default function BrowserControlPanel({
   })
 
   const sessionList = sessions || []
+  const hasSessions = sessionList.length > 0
 
   const updateSessionState = useCallback((sessionId: string, updates: Partial<SessionState>) => {
     if (!mountedRef.current) return
@@ -266,6 +267,23 @@ export default function BrowserControlPanel({
     }
   }, [width])
 
+  // Resize Chrome's window to match the container when it changes size.
+  // Xvnc resizes its framebuffer via noVNC's SetDesktopSize, but Chrome's
+  // window stays at its original size — we need to explicitly resize it.
+  useEffect(() => {
+    const container = vncContainerRef.current
+    if (!container || !hasSessions) return
+    const observer = new ResizeObserver(() => {
+      const rect = container.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) return
+      Object.values(browserClientRefs.current).forEach((c) => {
+        c?.resize(Math.round(rect.width), Math.round(rect.height))
+      })
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [hasSessions])
+
   const handleStopAi = useCallback(async (sessionId: string, chatId: string | null | undefined) => {
     if (!chatId) return
     updateSessionState(sessionId, { stopping: true })
@@ -282,8 +300,6 @@ export default function BrowserControlPanel({
     return state?.aiActive
   })
   const aiActiveState = aiActiveSession ? sessionStates[aiActiveSession.session_id] : undefined
-
-  const hasSessions = sessionList.length > 0
 
   return (
     <div className="flex h-full flex-col bg-layer">
