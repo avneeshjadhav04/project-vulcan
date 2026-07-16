@@ -140,6 +140,18 @@ export default function BrowserControlPanel({
         vncConnectedRef.current = true
         setVncConnected(true)
         setVncConnecting(false)
+
+        // Send initial resize so Chrome's window matches the container
+        // immediately on connect (ResizeObserver only fires on changes).
+        const container = vncContainerRef.current
+        if (container) {
+          const rect = container.getBoundingClientRect()
+          if (rect.width > 0 && rect.height > 0) {
+            Object.values(browserClientRefs.current).forEach((c) => {
+              c?.resize(Math.round(rect.width), Math.round(rect.height))
+            })
+          }
+        }
       })
 
       rfb.addEventListener('disconnect', () => {
