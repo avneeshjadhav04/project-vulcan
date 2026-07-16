@@ -7,6 +7,7 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::{
     middleware::AppState,
@@ -234,21 +235,38 @@ async fn vnc_proxy_bridge(socket: axum::extract::ws::WebSocket, vnc_port: u16) {
 
     // Task 2: Xvnc → WebSocket (VNC server to noVNC client).
     // noVNC expects binary WebSocket frames.
+    // Send a WS Ping every 15s when the framebuffer is idle to keep
+    // the hosting platform's reverse proxy from closing the connection.
     let tcp_to_ws = tokio::spawn(async move {
         let mut buf = [0u8; 16384];
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(15));
+        ping_interval.tick().await; // skip immediate first tick
         loop {
-            match tcp_read.read(&mut buf).await {
-                Ok(0) => break,
-                Ok(n) => {
+            tokio::select! {
+                result = tcp_read.read(&mut buf) => {
+                    match result {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if ws_sink
+                                .send(Message::Binary(buf[..n].to_vec().into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                _ = ping_interval.tick() => {
                     if ws_sink
-                        .send(Message::Binary(buf[..n].to_vec().into()))
+                        .send(Message::Ping(Vec::new().into()))
                         .await
                         .is_err()
                     {
                         break;
                     }
                 }
-                Err(_) => break,
             }
         }
         let _ = ws_sink.close().await;
@@ -317,21 +335,38 @@ async fn handle_browser_ws(
         .await;
 
     // Forward viewer events to the WebSocket client.
+    // Send a WS Ping every 15s when no events are flowing to keep
+    // the hosting platform's reverse proxy from closing the connection.
     let forward_task = tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(15));
+        ping_interval.tick().await; // skip immediate first tick
         loop {
-            match viewer_rx.recv().await {
-                Ok(event) => {
-                    let payload = serde_json::to_string(&event).unwrap_or_default();
+            tokio::select! {
+                event = viewer_rx.recv() => {
+                    match event {
+                        Ok(event) => {
+                            let payload = serde_json::to_string(&event).unwrap_or_default();
+                            if sender
+                                .send(axum::extract::ws::Message::Text(payload.into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    }
+                }
+                _ = ping_interval.tick() => {
                     if sender
-                        .send(axum::extract::ws::Message::Text(payload.into()))
+                        .send(axum::extract::ws::Message::Ping(Vec::new().into()))
                         .await
                         .is_err()
                     {
                         break;
                     }
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             }
         }
     });

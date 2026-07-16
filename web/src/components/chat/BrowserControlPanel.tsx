@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   X,
@@ -84,7 +84,7 @@ export default function BrowserControlPanel({
     refetchInterval: 2000,
   })
 
-  const sessionList = sessions || []
+  const sessionList = useMemo(() => sessions || [], [sessions])
   const hasSessions = sessionList.length > 0
 
   const updateSessionState = useCallback((sessionId: string, updates: Partial<SessionState>) => {
@@ -241,10 +241,9 @@ export default function BrowserControlPanel({
     if (sessionList.length === 0 && rfbRef.current) {
       disconnectVnc()
     }
-
-    return () => {
-      mountedRef.current = false
-    }
+    // NOTE: mountedRef is set to false in the unmount-only effect below,
+    // not here — this effect re-runs when sessionList changes, and flipping
+    // mountedRef here would cause VNC event handlers to silently drop events.
   }, [sessionList, updateSessionState, connectVnc, disconnectVnc])
 
   // Keep sessionState in sync with the REST list
@@ -265,11 +264,27 @@ export default function BrowserControlPanel({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      mountedRef.current = false
       Object.values(browserClientRefs.current).forEach((c) => c?.disconnect())
       disconnectVnc()
       browserClientRefs.current = {}
     }
   }, [disconnectVnc])
+
+  // VNC auto-reconnect: if the VNC connection drops but sessions still
+  // exist, reconnect after a short delay. This is a safety net — the
+  // backend's 15s ping keepalive should prevent most drops, but if the
+  // platform still kills the WS, we recover quickly.
+  useEffect(() => {
+    if (!vncConnected && !vncConnecting && hasSessions && !rfbRef.current && !vncConnectedRef.current) {
+      const timer = setTimeout(() => {
+        if (mountedRef.current && !rfbRef.current && !vncConnectedRef.current && sessionList.length > 0) {
+          connectVnc(sessionList[0].session_id)
+        }
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [vncConnected, vncConnecting, hasSessions, sessionList, connectVnc])
 
   // Handle VNC viewport — dynamic resize via Xvnc, no scaling needed
   useEffect(() => {
