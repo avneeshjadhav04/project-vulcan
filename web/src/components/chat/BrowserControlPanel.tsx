@@ -329,7 +329,7 @@ export default function BrowserControlPanel({
   const aiActiveState = aiActiveSession ? sessionStates[aiActiveSession.session_id] : undefined
 
   return (
-    <div className="flex h-full flex-col bg-layer">
+    <div className="flex h-full flex-col overflow-hidden bg-layer">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
         <div className="flex items-center gap-2">
