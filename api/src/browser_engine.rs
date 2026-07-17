@@ -451,7 +451,6 @@ async fn init_shared_browser(
             // this tab instead of creating a new one.
             args: vec![
                 std::ffi::OsStr::new("about:blank"),
-                std::ffi::OsStr::new("--disable-infobars"),
                 std::ffi::OsStr::new("--no-first-run"),
                 std::ffi::OsStr::new("--no-default-browser-check"),
             ],
