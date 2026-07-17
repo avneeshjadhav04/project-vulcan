@@ -164,6 +164,18 @@
     text-wrap: balance;
   }
 
+  /* Hide scrollbars visually while keeping scroll functionality.
+     Applied to the browser control panel so noVNC's injected elements
+     do not show horizontal/vertical scrollbars. */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar,
+  .scrollbar-none *::-webkit-scrollbar {
+    display: none;
+  }
+
   .bg-scrim {
     background-color: rgba(0, 0, 0, 0.4);
   }

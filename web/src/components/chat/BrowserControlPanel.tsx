@@ -390,10 +390,10 @@ export default function BrowserControlPanel({
       ) : (
         <>
           {/* noVNC canvas — single container, shows full Chrome with its own tab bar */}
-          <div className="relative flex-1 overflow-hidden bg-black/90">
+          <div className="relative flex-1 overflow-hidden bg-black/90 scrollbar-none">
             <div
               ref={(el) => { vncContainerRef.current = el }}
-              className="absolute inset-0 z-10"
+              className="absolute inset-0 z-10 scrollbar-none"
               style={{ minHeight: 0 }}
             />
 
