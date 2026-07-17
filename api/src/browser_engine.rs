@@ -449,7 +449,12 @@ async fn init_shared_browser(
             // Open about:blank as the initial tab so Chrome doesn't load
             // its default start page (Google). The first session reuses
             // this tab instead of creating a new one.
-            args: vec![std::ffi::OsStr::new("about:blank")],
+            args: vec![
+                std::ffi::OsStr::new("about:blank"),
+                std::ffi::OsStr::new("--disable-infobars"),
+                std::ffi::OsStr::new("--no-first-run"),
+                std::ffi::OsStr::new("--no-default-browser-check"),
+            ],
             ..Default::default()
         })
         .map_err(|e| format!("Failed to launch Chrome: {}", e))
@@ -533,6 +538,7 @@ fn run_browser_command_loop(
                         is_active.store(true, Ordering::SeqCst);
                     }
                 }
+                let _ = inject_stealth_script(&tab);
             }
 
             BrowserCommand::Resize { width, height } => {
@@ -548,6 +554,7 @@ fn run_browser_command_loop(
 
             BrowserCommand::Navigate { url, reply } => {
                 ensure_active(&tab, &is_active);
+                let _ = inject_stealth_script(&tab);
                 set_ai_active(&ai_active, &viewer_tx, true, &format!("navigating to {}", url));
 
                 let result = tab
@@ -799,6 +806,16 @@ fn run_browser_command_loop(
 
 /// Ensure this tab is the active (visible) tab on VNC. Called before
 /// commands that interact with the page so the VNC viewer sees the action.
+/// Mask the obvious `navigator.webdriver` automation signal on the current
+/// page. This is injected after navigation/activation to reduce the visual
+/// footprint of automation without spoofing other browser properties.
+fn inject_stealth_script(tab: &StdArc<headless_chrome::Tab>) {
+    let script = "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });";
+    if let Err(e) = tab.evaluate(script, false) {
+        tracing::warn!("Failed to inject stealth script: {}", e);
+    }
+}
+
 fn ensure_active(tab: &StdArc<headless_chrome::Tab>, is_active: &Arc<AtomicBool>) {
     if !is_active.load(Ordering::Relaxed) {
         if tab.activate().is_ok() {
