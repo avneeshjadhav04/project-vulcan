@@ -969,6 +969,20 @@ async fn idle_session_reaper(
     }
 }
 
+/// Shut down all tracked browser sessions. Called when the shared browser
+/// is being torn down so the frontend sees an empty session list.
+async fn shutdown_all_sessions(
+    sessions: &Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
+) {
+    let handles: Vec<BrowserSessionHandle> = {
+        let sessions = sessions.lock().await;
+        sessions.values().cloned().collect()
+    };
+    for h in handles {
+        h.shutdown_session();
+    }
+}
+
 /// Tab watcher: polls Chrome's tab list and tears down the shared browser
 /// when all sessions are gone and Chrome has no remaining tabs.
 /// Individual tab closures do NOT kill the session — the command loop
@@ -1007,6 +1021,8 @@ async fn tab_watcher(
                     let chrome_pid = sb.chrome_pid;
                     *shared = None;
                     drop(shared);
+                    // Shut down all sessions so the frontend stops polling.
+                    shutdown_all_sessions(&sessions).await;
                     kill_process(xvnc_pid);
                     let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
                 }
