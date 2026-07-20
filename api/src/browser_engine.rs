@@ -956,6 +956,29 @@ async fn tab_watcher(
             continue;
         };
 
+        // Check if Chrome's process is still alive.
+        let chrome_pid = {
+            let shared = shared_state.lock().await;
+            shared.as_ref().map(|sb| sb.chrome_pid)
+        };
+        if let Some(pid) = chrome_pid {
+            if !is_process_alive(pid) {
+                let mut shared = shared_state.lock().await;
+                if let Some(ref sb) = *shared {
+                    tracing::info!(
+                        "Tab watcher: Chrome process died — tearing down shared browser"
+                    );
+                    let xvnc_pid = sb.xvnc_pid;
+                    let chrome_pid = sb.chrome_pid;
+                    *shared = None;
+                    drop(shared);
+                    kill_process(xvnc_pid);
+                    let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
+                }
+                continue;
+            }
+        }
+
         // Get current Chrome tab target IDs.
         let live_target_ids: std::collections::HashSet<String> = {
             let browser = browser.clone();
