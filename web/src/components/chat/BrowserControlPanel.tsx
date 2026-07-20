@@ -6,7 +6,6 @@ import {
   WifiOff,
   Loader2,
   MousePointerClick,
-  Square,
   Plus,
 } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -26,6 +25,7 @@ export default function BrowserControlPanel({
 }: {
   onClose: () => void
   width: number
+  chatId?: string
 }) {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
@@ -36,7 +36,6 @@ export default function BrowserControlPanel({
   const rfbRef = useRef<any | null>(null)
   const mountedRef = useRef(true)
   const vncConnectedRef = useRef(false)
-  const eventsWsRef = useRef<WebSocket | null>(null)
 
   const { data: status } = useQuery<{
     running: boolean
