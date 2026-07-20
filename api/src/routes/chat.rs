@@ -941,7 +941,7 @@ async fn execute_tool(
                             .find(|h| {
                                 h.user_id == user_id
                                     && h.get_chat_id().is_empty()
-                                    && !h.shared_ai_active.load(std::sync::atomic::Ordering::Relaxed)
+                                    && !h.ai_active.load(std::sync::atomic::Ordering::Relaxed)
                             })
                             .cloned()
                     };
@@ -1329,7 +1329,7 @@ async fn execute_tool(
 
             if let Some(session) = session {
                 session.set_chat_id("");
-                session.shared_ai_active.store(false, std::sync::atomic::Ordering::SeqCst);
+                session.ai_active.store(false, std::sync::atomic::Ordering::SeqCst);
 
                 // Reflect the release in the audit row.
                 let _ = sqlx::query(
