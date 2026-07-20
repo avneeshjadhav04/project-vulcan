@@ -241,10 +241,10 @@ pub async fn stop_browser(state: &BrowserState) -> bool {
 }
 
 /// Get the current browser status for the display.
-pub fn get_browser_status(
+pub async fn get_browser_status(
     state: &BrowserState,
 ) -> (bool, String, String, bool) {
-    let shared = state.shared.blocking_lock();
+    let shared = state.shared.lock().await;
     if let Some(ref sb) = *shared {
         let url = sb.current_url.lock().map(|u| u.clone()).unwrap_or_default();
         let title = sb.title.lock().map(|t| t.clone()).unwrap_or_default();

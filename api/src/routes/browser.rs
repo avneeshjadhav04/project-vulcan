@@ -70,7 +70,7 @@ async fn browser_status_handler(
     State(state): State<AppState>,
 ) -> Json<serde_json::Value> {
     let (running, current_url, title, ai_active) =
-        crate::browser_engine::get_browser_status(&state.browser);
+        crate::browser_engine::get_browser_status(&state.browser).await;
     Json(serde_json::json!({
         "running": running,
         "current_url": current_url,
