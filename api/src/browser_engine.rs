@@ -4,6 +4,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page, types::Bounds, util};
+use nix::sys::wait::{waitpid, WaitPidFlag};
+use nix::unistd::Pid;
 use std::sync::Arc as StdArc;
 use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semaphore};
 
@@ -46,6 +48,7 @@ impl Default for BrowserState {
 pub struct SharedBrowser {
     pub browser: StdArc<Browser>,
     pub xvnc_pid: i32,
+    pub chrome_pid: i32,
     pub vnc_port: u16,
     pub session_count: AtomicU16,
     /// Chrome's initial tab (opened at launch with about:blank). The first
@@ -461,6 +464,11 @@ async fn init_shared_browser(
     .await
     .map_err(|e| format!("Chrome launch task failed: {}", e))??;
 
+    let chrome_pid = browser
+        .get_process_id()
+        .map(|p| p as i32)
+        .unwrap_or(0);
+
     let browser = StdArc::new(browser);
 
     // Grab Chrome's initial tab (opened with about:blank) so the first
@@ -486,6 +494,7 @@ async fn init_shared_browser(
         *shared = Some(SharedBrowser {
             browser: browser.clone(),
             xvnc_pid,
+            chrome_pid,
             vnc_port: SHARED_VNC_PORT,
             session_count: AtomicU16::new(0),
             initial_tab,
@@ -781,18 +790,21 @@ fn run_browser_command_loop(
     }
 
     // Decrement session count and maybe tear down shared browser.
-    let shared = shared_state.blocking_lock();
+    let mut shared = shared_state.blocking_lock();
     if let Some(ref sb) = *shared {
         let count = sb.session_count.fetch_sub(1, Ordering::SeqCst);
         if count <= 1 {
             tracing::info!(
                 "Last browser session closed — tearing down shared Chrome + Xvnc"
             );
-            kill_process(sb.xvnc_pid);
+            let xvnc_pid = sb.xvnc_pid;
+            let chrome_pid = sb.chrome_pid;
             // Drop the SharedBrowser (which drops the Browser, killing Chrome).
+            *shared = None;
             drop(shared);
-            let mut shared_mut = shared_state.blocking_lock();
-            *shared_mut = None;
+            kill_process(xvnc_pid);
+            // Reap Chrome now that the Browser handle has been dropped.
+            let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
         }
     }
 
@@ -870,11 +882,13 @@ fn is_process_alive(pid: i32) -> bool {
     nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok()
 }
 
-/// Kill a process by PID with SIGTERM, then SIGKILL after a short delay.
+/// Kill a process by PID with SIGTERM, then SIGKILL after a short delay,
+/// and reap its exit status to prevent zombies.
 fn kill_process(pid: i32) {
     let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::Signal::SIGTERM);
     std::thread::sleep(Duration::from_millis(50));
     let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::Signal::SIGKILL);
+    let _ = waitpid(Pid::from_raw(pid), Some(WaitPidFlag::WNOHANG));
 }
 
 /// Idle reaper: kills browser sessions with no activity for 30 minutes.
@@ -980,8 +994,12 @@ async fn tab_watcher(
                     tracing::info!(
                         "Tab watcher: no sessions and no Chrome tabs — tearing down shared browser"
                     );
-                    kill_process(sb.xvnc_pid);
+                    let xvnc_pid = sb.xvnc_pid;
+                    let chrome_pid = sb.chrome_pid;
                     *shared = None;
+                    drop(shared);
+                    kill_process(xvnc_pid);
+                    let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
                 }
             }
         }
