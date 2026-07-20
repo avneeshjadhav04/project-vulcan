@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   X,
@@ -23,6 +23,7 @@ async function loadRFB(): Promise<any> {
 export default function BrowserControlPanel({
   onClose,
   width,
+  chatId,
 }: {
   onClose: () => void
   width: number

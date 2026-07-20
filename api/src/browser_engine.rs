@@ -333,15 +333,31 @@ async fn create_session(
             .map_err(|e| format!("Semaphore error: {}", e))?
     };
 
-    // Ensure the shared Chrome + Xvnc are running.
-    let shared = state.shared.lock().await;
-    let sb = shared.as_ref().ok_or("Browser not started. Call start_browser first.")?;
-    let browser = sb.browser.clone();
-    let viewer_tx = sb.viewer_tx.clone();
-    let current_url = sb.current_url.clone();
-    let title = sb.title.clone();
-    let ai_active = sb.ai_active.clone();
-    drop(shared);
+    // Ensure the shared Chrome + Xvnc are running. Auto-start if needed.
+    let (browser, viewer_tx, current_url, title, ai_active) = {
+        let shared = state.shared.lock().await;
+        if let Some(ref sb) = *shared {
+            (
+                sb.browser.clone(),
+                sb.viewer_tx.clone(),
+                sb.current_url.clone(),
+                sb.title.clone(),
+                sb.ai_active.clone(),
+            )
+        } else {
+            drop(shared);
+            start_browser(&state).await?;
+            let shared = state.shared.lock().await;
+            let sb = shared.as_ref().ok_or("Failed to start browser")?;
+            (
+                sb.browser.clone(),
+                sb.viewer_tx.clone(),
+                sb.current_url.clone(),
+                sb.title.clone(),
+                sb.ai_active.clone(),
+            )
+        }
+    };
 
     // Create a new tab for this session.
     let tab = tokio::task::spawn_blocking(move || {
