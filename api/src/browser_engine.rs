@@ -191,7 +191,6 @@ pub enum BrowserViewerEvent {
     TitleChanged {
         title: String,
     },
-    BrowserClosed,
 }
 
 /// Start the shared Chrome + Xvnc if not already running. Returns true if
