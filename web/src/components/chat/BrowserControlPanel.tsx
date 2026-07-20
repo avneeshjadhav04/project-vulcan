@@ -9,7 +9,6 @@ import {
   Square,
   Plus,
 } from 'lucide-react'
-import { BrowserClient } from '../../lib/browserClient'
 import { api } from '../../lib/api'
 
 let RFBConstructor: any = null
@@ -21,40 +20,6 @@ async function loadRFB(): Promise<any> {
   return RFBConstructor
 }
 
-interface BrowserSessionInfo {
-  session_id: string
-  chat_id?: string | null
-  vnc_port: number
-  current_url: string
-  title: string
-  ai_active: boolean
-}
-
-interface SessionState {
-  connected: boolean
-  connecting: boolean
-  aiActive: boolean
-  aiAction: string
-  currentUrl: string
-  title: string
-  sessionClosed: boolean
-  stopping: boolean
-  chatId?: string | null
-}
-
-function defaultSessionState(): SessionState {
-  return {
-    connected: false,
-    connecting: false,
-    aiActive: false,
-    aiAction: '',
-    currentUrl: '',
-    title: '',
-    sessionClosed: false,
-    stopping: false,
-  }
-}
-
 export default function BrowserControlPanel({
   onClose,
   width,
@@ -64,58 +29,47 @@ export default function BrowserControlPanel({
   chatId?: string
 }) {
   const queryClient = useQueryClient()
-  const [sessionStates, setSessionStates] = useState<Record<string, SessionState>>({})
   const [creating, setCreating] = useState(false)
   const [vncConnected, setVncConnected] = useState(false)
   const [vncConnecting, setVncConnecting] = useState(false)
 
   const vncContainerRef = useRef<HTMLDivElement | null>(null)
   const rfbRef = useRef<any | null>(null)
-  const browserClientRefs = useRef<Record<string, BrowserClient | null>>({})
   const mountedRef = useRef(true)
   const vncConnectedRef = useRef(false)
 
-  const { data: sessions } = useQuery<BrowserSessionInfo[]>({
-    queryKey: ['browser-sessions'],
+  const { data: status } = useQuery<{
+    running: boolean
+    current_url: string
+    title: string
+    ai_active: boolean
+  }>({
+    queryKey: ['browser-status'],
     queryFn: async () => {
-      const res = await api.get('/browser/sessions')
-      return res.data || []
+      const res = await api.get('/browser/status')
+      return res.data || { running: false, current_url: '', title: '', ai_active: false }
     },
     refetchInterval: 2000,
   })
 
-  const sessionList = useMemo(() => sessions || [], [sessions])
-  const hasSessions = sessionList.length > 0
+  const isRunning = status?.running ?? false
 
-  const updateSessionState = useCallback((sessionId: string, updates: Partial<SessionState>) => {
-    if (!mountedRef.current) return
-    setSessionStates((prev) => ({
-      ...prev,
-      [sessionId]: { ...(prev[sessionId] || defaultSessionState()), ...updates },
-    }))
-  }, [])
-
-  const invalidateSessions = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['browser-sessions'] })
-  }, [queryClient])
-
-  // Start the browser (Chrome + first tab).
+  // Start the browser (Chrome + Xvnc). No session created.
   const handleOpenBrowser = useCallback(async () => {
     if (creating) return
     setCreating(true)
     try {
-      await api.post('/browser/session', {})
-      invalidateSessions()
+      await api.post('/browser/start', {})
+      queryClient.invalidateQueries({ queryKey: ['browser-status'] })
     } catch (e) {
       console.error('Failed to start browser:', e)
     } finally {
       setCreating(false)
     }
-  }, [creating, invalidateSessions])
+  }, [creating, queryClient])
 
-  // Connect noVNC to the shared VNC stream via the first session's ID.
-  // The VNC port is shared (always 5901), so any session ID works.
-  const connectVnc = useCallback(async (sessionId: string) => {
+  // Connect noVNC to the shared VNC stream.
+  const connectVnc = useCallback(async () => {
     if (rfbRef.current || vncConnectedRef.current) return
     const container = vncContainerRef.current
     if (!container) return
@@ -124,7 +78,7 @@ export default function BrowserControlPanel({
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/api/browser/vnc/${sessionId}`
+    const wsUrl = `${protocol}//${host}/api/browser/vnc`
 
     try {
       const RFB = await loadRFB()
@@ -141,15 +95,22 @@ export default function BrowserControlPanel({
         setVncConnected(true)
         setVncConnecting(false)
 
-        // Send initial resize so Chrome's window matches the container
-        // immediately on connect (ResizeObserver only fires on changes).
         const container = vncContainerRef.current
         if (container) {
           const rect = container.getBoundingClientRect()
           if (rect.width > 0 && rect.height > 0) {
-            Object.values(browserClientRefs.current).forEach((c) => {
-              c?.resize(Math.round(rect.width), Math.round(rect.height))
-            })
+            // Send resize via the events WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+            const host = window.location.host
+            const eventsWs = new WebSocket(`${protocol}//${host}/api/browser/events`)
+            eventsWs.onopen = () => {
+              eventsWs.send(JSON.stringify({
+                type: 'resize',
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              }))
+              eventsWs.close()
+            }
           }
         }
       })
@@ -177,116 +138,41 @@ export default function BrowserControlPanel({
     setVncConnected(false)
   }, [])
 
-  // Initialize BrowserClient for each session + connect VNC once.
+  // Connect VNC when browser is running
   useEffect(() => {
-    mountedRef.current = true
-    const activeSessionIds = new Set(sessionList.map((s) => s.session_id))
-
-    // Connect BrowserClient for new sessions
-    for (const session of sessionList) {
-      const sid = session.session_id
-      if (browserClientRefs.current[sid] || !sid) continue
-
-      updateSessionState(sid, {
-        connecting: true,
-        aiActive: session.ai_active,
-        currentUrl: session.current_url,
-        title: session.title,
-        chatId: session.chat_id ?? null,
-      })
-
-      const client = new BrowserClient({
-        sessionId: sid,
-        onStatusChange: () => {},
-        onAiActive: (active, action) => {
-          updateSessionState(sid, { aiActive: active, aiAction: action, stopping: false })
-        },
-        onUrlChanged: (url) => {
-          updateSessionState(sid, { currentUrl: url })
-        },
-        onTitleChanged: (title) => {
-          updateSessionState(sid, { title })
-        },
-        onSessionReady: () => {},
-        onChatAssociated: (chatId) => {
-          updateSessionState(sid, { chatId: chatId || null })
-        },
-        onSessionClosed: () => {
-          updateSessionState(sid, { sessionClosed: true })
-        },
-      })
-
-      browserClientRefs.current[sid] = client
-      client.connect()
+    if (isRunning && !rfbRef.current && !vncConnectedRef.current) {
+      connectVnc()
     }
+  }, [isRunning, connectVnc])
 
-    // Connect VNC once Chrome is running (use first available session).
-    if (sessionList.length > 0 && !rfbRef.current && !vncConnectedRef.current) {
-      connectVnc(sessionList[0].session_id)
-    }
-
-    // Cleanup sessions that disappeared from the API
-    for (const sid of Object.keys(browserClientRefs.current)) {
-      if (!activeSessionIds.has(sid)) {
-        browserClientRefs.current[sid]?.disconnect()
-        delete browserClientRefs.current[sid]
-        setSessionStates((prev) => {
-          const { [sid]: _, ...rest } = prev
-          return rest
-        })
-      }
-    }
-
-    // Disconnect VNC when all sessions are gone
-    if (sessionList.length === 0 && rfbRef.current) {
+  // Disconnect VNC when browser stops
+  useEffect(() => {
+    if (!isRunning && rfbRef.current) {
       disconnectVnc()
     }
-    // NOTE: mountedRef is set to false in the unmount-only effect below,
-    // not here — this effect re-runs when sessionList changes, and flipping
-    // mountedRef here would cause VNC event handlers to silently drop events.
-  }, [sessionList, updateSessionState, connectVnc, disconnectVnc])
-
-  // Keep sessionState in sync with the REST list
-  useEffect(() => {
-    for (const session of sessionList) {
-      const sid = session.session_id
-      const existing = sessionStates[sid]
-      if (existing && (existing.chatId ?? null) !== (session.chat_id ?? null)) {
-        updateSessionState(sid, { chatId: session.chat_id ?? null })
-      }
-      // Sync ai_active from polling as a fallback
-      if (existing && existing.aiActive !== session.ai_active) {
-        updateSessionState(sid, { aiActive: session.ai_active })
-      }
-    }
-  }, [sessionList, sessionStates, updateSessionState])
+  }, [isRunning, disconnectVnc])
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       mountedRef.current = false
-      Object.values(browserClientRefs.current).forEach((c) => c?.disconnect())
       disconnectVnc()
-      browserClientRefs.current = {}
     }
   }, [disconnectVnc])
 
-  // VNC auto-reconnect: if the VNC connection drops but sessions still
-  // exist, reconnect after a short delay. This is a safety net — the
-  // backend's 15s ping keepalive should prevent most drops, but if the
-  // platform still kills the WS, we recover quickly.
+  // VNC auto-reconnect
   useEffect(() => {
-    if (!vncConnected && !vncConnecting && hasSessions && !rfbRef.current && !vncConnectedRef.current) {
+    if (!vncConnected && !vncConnecting && isRunning && !rfbRef.current && !vncConnectedRef.current) {
       const timer = setTimeout(() => {
-        if (mountedRef.current && !rfbRef.current && !vncConnectedRef.current && sessionList.length > 0) {
-          connectVnc(sessionList[0].session_id)
+        if (mountedRef.current && !rfbRef.current && !vncConnectedRef.current && isRunning) {
+          connectVnc()
         }
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [vncConnected, vncConnecting, hasSessions, sessionList, connectVnc])
+  }, [vncConnected, vncConnecting, isRunning, connectVnc])
 
-  // Handle VNC viewport — dynamic resize via Xvnc, no scaling needed
+  // Handle VNC viewport
   useEffect(() => {
     if (rfbRef.current && vncContainerRef.current) {
       rfbRef.current.scaleViewport = false
@@ -294,39 +180,36 @@ export default function BrowserControlPanel({
     }
   }, [width])
 
-  // Resize Chrome's window to match the container when it changes size.
-  // Xvnc resizes its framebuffer via noVNC's SetDesktopSize, but Chrome's
-  // window stays at its original size — we need to explicitly resize it.
+  // Resize Chrome's window to match the container
   useEffect(() => {
     const container = vncContainerRef.current
-    if (!container || !hasSessions) return
+    if (!container || !isRunning) return
     const observer = new ResizeObserver(() => {
       const rect = container.getBoundingClientRect()
       if (rect.width === 0 || rect.height === 0) return
-      Object.values(browserClientRefs.current).forEach((c) => {
-        c?.resize(Math.round(rect.width), Math.round(rect.height))
-      })
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const host = window.location.host
+      const eventsWs = new WebSocket(`${protocol}//${host}/api/browser/events`)
+      eventsWs.onopen = () => {
+        eventsWs.send(JSON.stringify({
+          type: 'resize',
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        }))
+        eventsWs.close()
+      }
     })
     observer.observe(container)
     return () => observer.disconnect()
-  }, [hasSessions])
+  }, [isRunning])
 
-  const handleStopAi = useCallback(async (sessionId: string, chatId: string | null | undefined) => {
-    if (!chatId) return
-    updateSessionState(sessionId, { stopping: true })
+  const handleStopAi = useCallback(async () => {
     try {
       await api.delete(`/chats/${chatId}/stream`)
     } catch {
       // Stream may have already finished
     }
-  }, [updateSessionState])
-
-  // Find the first AI-active session for the overlay.
-  const aiActiveSession = sessionList.find((s) => {
-    const state = sessionStates[s.session_id]
-    return state?.aiActive
-  })
-  const aiActiveState = aiActiveSession ? sessionStates[aiActiveSession.session_id] : undefined
+  }, [chatId])
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-layer">
@@ -336,7 +219,7 @@ export default function BrowserControlPanel({
           <MousePointerClick className="h-4 w-4 text-interactive" />
           <span className="text-sm font-semibold text-text-primary">Browser Control</span>
           {/* Connection status badge */}
-          {hasSessions && (
+          {isRunning && (
             <div className="ml-1 flex items-center gap-1 text-[10px]">
               {vncConnected ? (
                 <>
@@ -366,7 +249,7 @@ export default function BrowserControlPanel({
         </button>
       </div>
 
-      {!hasSessions ? (
+      {!isRunning ? (
         /* Empty state — Chrome not running */
         <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
           <MousePointerClick className="mb-3 h-10 w-10 text-text-disabled" />
@@ -398,28 +281,21 @@ export default function BrowserControlPanel({
             />
 
             {/* AI active overlay with stop button */}
-            {aiActiveState && aiActiveSession && (
+            {status?.ai_active && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/50 pointer-events-auto">
                 <div className="rounded-lg bg-layer/90 px-6 py-4 shadow-lg">
                   <div className="flex items-center gap-2 text-text-primary">
                     <Loader2 className="h-4 w-4 animate-spin text-support-warning" />
-                    <span className="text-sm font-medium">
-                      {aiActiveState.stopping ? 'Stopping...' : `AI is controlling: ${aiActiveState.aiAction}`}
-                    </span>
+                    <span className="text-sm font-medium">AI is controlling the browser</span>
                   </div>
-                  {!aiActiveState.stopping && (aiActiveState.chatId ?? aiActiveSession.chat_id) && (
+                  {chatId && (
                     <button
-                      onClick={() => handleStopAi(aiActiveSession.session_id, aiActiveState.chatId ?? aiActiveSession.chat_id)}
+                      onClick={handleStopAi}
                       className="mx-auto mt-3 flex items-center gap-1.5 rounded-full bg-support-error px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-support-error/90"
                     >
                       <Square className="h-3 w-3 fill-current" />
                       Stop AI
                     </button>
-                  )}
-                  {aiActiveState.stopping && (
-                    <p className="mt-3 text-center text-xs text-text-helper">
-                      AI will stop after current action completes
-                    </p>
                   )}
                 </div>
               </div>
