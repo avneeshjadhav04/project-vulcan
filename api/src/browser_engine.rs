@@ -511,8 +511,10 @@ async fn init_shared_browser(
 /// Receives commands from the async side, executes them synchronously via
 /// headless_chrome, and sends results back via oneshot channels.
 /// The Browser itself is owned by SharedBrowser, not this loop.
+/// If the tracked tab is closed by the user, a new tab is created on the
+/// next command so the session survives individual tab closures.
 fn run_browser_command_loop(
-    tab: StdArc<headless_chrome::Tab>,
+    mut tab: StdArc<headless_chrome::Tab>,
     mut command_rx: mpsc::Receiver<BrowserCommand>,
     viewer_tx: broadcast::Sender<BrowserViewerEvent>,
     ai_active: Arc<AtomicBool>,
@@ -533,6 +535,13 @@ fn run_browser_command_loop(
             Some(c) => c,
             None => break,
         };
+
+        // Before each command, ensure the tab is still alive. If the user
+        // closed it in Chrome, create a replacement tab from the shared
+        // browser so the session continues to work.
+        if !matches!(cmd, BrowserCommand::Close) {
+            ensure_tab_alive(&mut tab, &shared_state);
+        }
 
         match cmd {
             BrowserCommand::Close => break,
@@ -836,6 +845,30 @@ fn ensure_active(tab: &StdArc<headless_chrome::Tab>, is_active: &Arc<AtomicBool>
     }
 }
 
+/// Check if the tracked tab is still alive and create a replacement from
+/// the shared browser if it was closed by the user. This allows the session
+/// to survive individual tab closures — the VNC connection stays up and
+/// the next AI command creates a fresh tab.
+fn ensure_tab_alive(
+    tab: &mut StdArc<headless_chrome::Tab>,
+    shared_state: &Arc<Mutex<Option<SharedBrowser>>>,
+) {
+    if tab.get_title().is_ok() {
+        return;
+    }
+    let shared = shared_state.blocking_lock();
+    if let Some(ref sb) = *shared {
+        match sb.browser.new_tab() {
+            Ok(new_tab) => {
+                *tab = new_tab;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create replacement tab: {}", e);
+            }
+        }
+    }
+}
+
 fn set_ai_active(
     ai_active: &Arc<AtomicBool>,
     viewer_tx: &broadcast::Sender<BrowserViewerEvent>,
@@ -921,10 +954,10 @@ async fn idle_session_reaper(
     }
 }
 
-/// Tab watcher: polls Chrome's tab list and detects closed tabs.
-/// When a tracked session's tab is closed in Chrome (by the user or AI),
-/// the session is cleaned up. Also tears down the shared Chrome when
-/// all sessions are gone and Chrome has no remaining tabs.
+/// Tab watcher: polls Chrome's tab list and tears down the shared browser
+/// when all sessions are gone and Chrome has no remaining tabs.
+/// Individual tab closures do NOT kill the session — the command loop
+/// creates a replacement tab on the next AI command.
 async fn tab_watcher(
     sessions: Arc<Mutex<HashMap<(String, String), BrowserSessionHandle>>>,
     shared_state: Arc<Mutex<Option<SharedBrowser>>>,
@@ -958,49 +991,24 @@ async fn tab_watcher(
             }
         };
 
-        // Find tracked sessions whose tab is no longer in Chrome.
-        let stale_keys: Vec<(String, String)> = {
-            let sessions = sessions.lock().await;
-            sessions
-                .iter()
-                .filter(|(_, h)| !live_target_ids.contains(&h.tab_target_id))
-                .map(|(k, _)| k.clone())
-                .collect()
-        };
-
-        for key in &stale_keys {
-            tracing::info!(
-                "Tab watcher: tab closed for user {}, cleaning up session {}",
-                key.0,
-                key.1
-            );
-            let sessions = sessions.lock().await;
-            if let Some(h) = sessions.get(key) {
-                h.shutdown_session();
-            }
-        }
-
         // Teardown guard: if no tracked sessions remain and Chrome has no
         // tabs at all, tear down the shared browser.
-        if stale_keys.is_empty() {
-            // Check if we should tear down.
-            let session_count = {
-                let sessions = sessions.lock().await;
-                sessions.len()
-            };
-            if session_count == 0 && live_target_ids.is_empty() {
-                let mut shared = shared_state.lock().await;
-                if let Some(ref sb) = *shared {
-                    tracing::info!(
-                        "Tab watcher: no sessions and no Chrome tabs — tearing down shared browser"
-                    );
-                    let xvnc_pid = sb.xvnc_pid;
-                    let chrome_pid = sb.chrome_pid;
-                    *shared = None;
-                    drop(shared);
-                    kill_process(xvnc_pid);
-                    let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
-                }
+        let session_count = {
+            let sessions = sessions.lock().await;
+            sessions.len()
+        };
+        if session_count == 0 && live_target_ids.is_empty() {
+            let mut shared = shared_state.lock().await;
+            if let Some(ref sb) = *shared {
+                tracing::info!(
+                    "Tab watcher: no sessions and no Chrome tabs — tearing down shared browser"
+                );
+                let xvnc_pid = sb.xvnc_pid;
+                let chrome_pid = sb.chrome_pid;
+                *shared = None;
+                drop(shared);
+                kill_process(xvnc_pid);
+                let _ = waitpid(Pid::from_raw(chrome_pid), Some(WaitPidFlag::WNOHANG));
             }
         }
     }
