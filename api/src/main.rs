@@ -215,6 +215,30 @@ async fn run() -> anyhow::Result<()> {
         }
     });
 
+    // Reap orphaned child processes (Chrome subprocesses, etc.).
+    // Required because this binary runs as PID 1 in the container.
+    tokio::spawn(async {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigchld = signal(SignalKind::child()).expect("failed to register SIGCHLD handler");
+        loop {
+            sigchld.recv().await;
+            tokio::task::spawn_blocking(|| {
+                loop {
+                    match nix::sys::wait::waitpid(
+                        nix::unistd::Pid::from_raw(-1),
+                        Some(nix::sys::wait::WaitPidFlag::WNOHANG),
+                    ) {
+                        Ok(nix::sys::wait::WaitStatus::Exited(_, _))
+                        | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => continue,
+                        _ => break,
+                    }
+                }
+            })
+            .await
+            .ok();
+        }
+    });
+
     axum::serve(listener, app).await?;
 
     Ok(())
