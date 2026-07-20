@@ -12,7 +12,7 @@ use tokio::sync::{broadcast, mpsc, Mutex, oneshot, OwnedSemaphorePermit, Semapho
 /// Fixed resource allocation for the single shared Chrome + Xvnc.
 const SHARED_DISPLAY: u16 = 100;
 const SHARED_CDP_PORT: u16 = 9223;
-const SHARED_VNC_PORT: u16 = 5901;
+pub const SHARED_VNC_PORT: u16 = 5901;
 
 /// Maximum concurrent browser sessions (tabs) per user.
 const MAX_CONCURRENT_BROWSERS: usize = 3;
@@ -55,6 +55,9 @@ pub struct SharedBrowser {
     /// session reuses this tab instead of creating a new one. `None` after
     /// it has been claimed or if it failed to load.
     pub initial_tab: Option<StdArc<headless_chrome::Tab>>,
+    /// Shared broadcast channel for viewer events (ai_active, url_changed, etc.).
+    /// All VNC WebSocket clients subscribe to this.
+    pub viewer_tx: broadcast::Sender<BrowserViewerEvent>,
 }
 
 impl SharedBrowser {
@@ -214,6 +217,53 @@ pub enum BrowserViewerEvent {
         chat_id: String,
     },
     SessionClosed,
+}
+
+/// Start the shared Chrome + Xvnc if not already running. Returns true if
+/// the browser was already running, false if it was just started.
+/// This is called when the user opens the browser panel — no session is created.
+pub async fn start_browser(state: &BrowserState) -> Result<bool, String> {
+    // Fast path: already running.
+    {
+        let shared = state.shared.lock().await;
+        if let Some(ref sb) = *shared {
+            let pid = sb.browser.get_process_id();
+            if let Some(pid) = pid {
+                if is_process_alive(pid as i32) {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+
+    // Slow path: initialize.
+    init_shared_browser(state).await?;
+    Ok(false)
+}
+
+/// Resize the shared Chrome window to match the VNC display area.
+/// Works regardless of whether AI sessions exist.
+pub async fn resize_shared_browser(state: &BrowserState, width: u32, height: u32) {
+    let browser = {
+        let shared = state.shared.lock().await;
+        shared.as_ref().map(|sb| sb.browser.clone())
+    };
+    if let Some(browser) = browser {
+        tokio::task::spawn_blocking(move || {
+            let tabs = browser.get_tabs();
+            let guard = tabs.lock().unwrap();
+            if let Some(tab) = guard.first() {
+                let _ = tab.set_bounds(Bounds::Normal {
+                    left: Some(0),
+                    top: Some(0),
+                    width: Some(width as f64),
+                    height: Some(height as f64),
+                });
+            }
+        })
+        .await
+        .ok();
+    }
 }
 
 /// Spawn a new browser session or return an error.
@@ -479,6 +529,9 @@ async fn init_shared_browser(
 
     let browser = StdArc::new(browser);
 
+    // Create shared broadcast channel for viewer events.
+    let (viewer_tx, _) = broadcast::channel::<BrowserViewerEvent>(32);
+
     // Grab Chrome's initial tab (opened with about:blank) so the first
     // session can reuse it instead of creating a second tab.
     let initial_tab = tokio::task::spawn_blocking({
@@ -506,6 +559,7 @@ async fn init_shared_browser(
             vnc_port: SHARED_VNC_PORT,
             session_count: AtomicU16::new(0),
             initial_tab,
+            viewer_tx: viewer_tx.clone(),
         });
         initial_tab_return = shared.as_mut().unwrap().initial_tab.take();
     }

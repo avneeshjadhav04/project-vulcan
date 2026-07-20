@@ -16,6 +16,10 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/browser/start", post(start_browser_handler))
+        .route("/browser/status", get(browser_status_handler))
+        .route("/browser/events", get(browser_events_handler))
+        .route("/browser/vnc", get(vnc_proxy_handler))
         .route("/browser", get(browser_ws_handler))
         .route("/browser/sessions", get(list_browser_sessions))
         .route("/browser/session", post(create_browser_session))
@@ -23,7 +27,7 @@ pub fn router() -> Router<AppState> {
             "/browser/session/{id}/release",
             post(release_browser_session),
         )
-        .route("/browser/vnc/{id}", get(vnc_proxy_handler))
+        .route("/browser/vnc/{id}", get(vnc_proxy_session_handler))
         .route("/browser/screenshot/{id}", get(get_screenshot))
 }
 
@@ -156,13 +160,151 @@ async fn release_browser_session(
     (StatusCode::OK, "released").into_response()
 }
 
-/// VNC WebSocket proxy.
+/// Start the shared Chrome + Xvnc. No session is created — this just starts
+/// the browser so the user can see it via VNC.
+async fn start_browser_handler(
+    State(state): State<AppState>,
+) -> Response {
+    match crate::browser_engine::start_browser(&state.browser).await {
+        Ok(already_running) => {
+            Json(serde_json::json!({ "running": true, "already_running": already_running }))
+                .into_response()
+        }
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
+    }
+}
+
+/// Get the current browser status.
+async fn browser_status_handler(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let running = {
+        let shared = state.browser.shared.lock().await;
+        shared.is_some()
+    };
+    Json(serde_json::json!({ "running": running }))
+}
+
+/// WebSocket handler for the browser events stream (sessionless).
+///
+/// Subscribes to the shared viewer_tx broadcast channel and forwards events
+/// (ai_active, url_changed, etc.) to the frontend.
+async fn browser_events_handler(
+    ws: axum::extract::ws::WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> Response {
+    ws.on_upgrade(move |socket| handle_browser_events(socket, state))
+}
+
+async fn handle_browser_events(
+    socket: axum::extract::ws::WebSocket,
+    state: AppState,
+) {
+    let (mut sender, mut receiver) = socket.split();
+
+    // Subscribe to the shared viewer_tx.
+    let viewer_rx = {
+        let shared = state.browser.shared.lock().await;
+        shared.as_ref().map(|sb| sb.viewer_tx.subscribe())
+    };
+
+    let Some(mut viewer_rx) = viewer_rx else {
+        let _ = sender
+            .send(axum::extract::ws::Message::Text(
+                serde_json::json!({"type": "error", "message": "Browser not running"}).to_string().into(),
+            ))
+            .await;
+        return;
+    };
+
+    // Forward viewer events to the WebSocket client.
+    let forward_task = tokio::spawn(async move {
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(15));
+        ping_interval.tick().await;
+        loop {
+            tokio::select! {
+                event = viewer_rx.recv() => {
+                    match event {
+                        Ok(event) => {
+                            let payload = serde_json::to_string(&event).unwrap_or_default();
+                            if sender
+                                .send(axum::extract::ws::Message::Text(payload.into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if sender
+                        .send(axum::extract::ws::Message::Ping(Vec::new().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    // Receive messages from the client (resize, etc.)
+    while let Some(msg_result) = receiver.next().await {
+        match msg_result {
+            Ok(axum::extract::ws::Message::Text(text)) => {
+                let envelope: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                match envelope.get("type").and_then(|v| v.as_str()) {
+                    Some("resize") => {
+                        if let (Some(w), Some(h)) = (envelope["width"].as_u64(), envelope["height"].as_u64()) {
+                            crate::browser_engine::resize_shared_browser(
+                                &state.browser,
+                                w as u32,
+                                h as u32,
+                            )
+                            .await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(axum::extract::ws::Message::Close(_)) => break,
+            Ok(_) => continue,
+            Err(e) => {
+                tracing::warn!("Browser events WebSocket error: {}", e);
+                continue;
+            }
+        }
+    }
+
+    forward_task.abort();
+}
+
+/// VNC WebSocket proxy (sessionless).
+///
+/// Proxies the noVNC WebSocket connection directly to the internal Xvnc
+/// process (localhost:5901). No session ID needed — the VNC port is shared.
+async fn vnc_proxy_handler(
+    ws: axum::extract::ws::WebSocketUpgrade,
+) -> Response {
+    ws.on_upgrade(move |socket| vnc_proxy_bridge(socket, crate::browser_engine::SHARED_VNC_PORT))
+}
+
+/// VNC WebSocket proxy (session-based).
 ///
 /// Proxies the noVNC WebSocket connection (from the frontend, on port 8080)
 /// directly to the internal Xvnc process (localhost:vnc_port) inside the
 /// container. The API acts as the WebSocket-to-TCP bridge, so no extra
 /// ports need to be exposed.
-async fn vnc_proxy_handler(
+async fn vnc_proxy_session_handler(
     ws: axum::extract::ws::WebSocketUpgrade,
     Path(id): Path<String>,
     State(state): State<AppState>,
