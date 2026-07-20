@@ -424,13 +424,6 @@ async fn create_session(
         sessions.insert(key, handle.clone());
     }
 
-    // Spawn the idle reaper and tab watcher (once, shared across all sessions).
-    static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
-    if !REAPER_STARTED.swap(true, Ordering::SeqCst) {
-        tokio::spawn(idle_session_reaper(state.sessions.clone()));
-        tokio::spawn(tab_watcher(state.sessions.clone(), state.shared.clone()));
-    }
-
     Ok(handle)
 }
 
@@ -516,6 +509,13 @@ async fn init_shared_browser(
             title: title.clone(),
             ai_active: ai_active.clone(),
         });
+    }
+
+    // Spawn the idle reaper and tab watcher (once, shared across all browser lifecycles).
+    static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
+    if !REAPER_STARTED.swap(true, Ordering::SeqCst) {
+        tokio::spawn(idle_session_reaper(state.sessions.clone()));
+        tokio::spawn(tab_watcher(state.sessions.clone(), state.shared.clone()));
     }
 
     Ok(())
