@@ -205,11 +205,38 @@ async fn vnc_proxy_bridge(socket: axum::extract::ws::WebSocket, vnc_port: u16) {
 
     tracing::info!("VNC proxy: connecting to Xvnc on port {}", vnc_port);
 
-    let tcp = match tokio::net::TcpStream::connect(format!("localhost:{}", vnc_port)).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("VNC proxy: failed to connect to Xvnc on port {}: {}", vnc_port, e);
-            return;
+    // Retry connecting to Xvnc — it may not be ready yet.
+    let tcp = {
+        let mut last_err = String::new();
+        let mut tcp = None;
+        for i in 0..10 {
+            match tokio::net::TcpStream::connect(format!("localhost:{}", vnc_port)).await {
+                Ok(s) => {
+                    tcp = Some(s);
+                    break;
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                    tracing::warn!(
+                        "VNC proxy: retry {}/10 connecting to Xvnc on port {}: {}",
+                        i + 1,
+                        vnc_port,
+                        last_err
+                    );
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            }
+        }
+        match tcp {
+            Some(s) => s,
+            None => {
+                tracing::warn!(
+                    "VNC proxy: failed to connect to Xvnc on port {} after 10 retries: {}",
+                    vnc_port,
+                    last_err
+                );
+                return;
+            }
         }
     };
 
