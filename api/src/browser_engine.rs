@@ -479,6 +479,21 @@ async fn init_shared_browser(
         .map(|p| p as i32)
         .unwrap_or(0);
 
+    // Retry getting Chrome's PID — it may not be available immediately.
+    let chrome_pid = if chrome_pid == 0 {
+        let mut pid = 0;
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if let Some(p) = browser.get_process_id() {
+                pid = p as i32;
+                break;
+            }
+        }
+        pid
+    } else {
+        chrome_pid
+    };
+
     let browser = StdArc::new(browser);
 
     // Create shared broadcast channel and state.
