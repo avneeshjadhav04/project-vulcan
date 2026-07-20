@@ -158,6 +158,7 @@ export default function BrowserControlPanel({
         if (!mountedRef.current) return
         vncConnectedRef.current = false
         setVncConnected(false)
+        setVncConnecting(false)
         rfbRef.current = null
       })
 
