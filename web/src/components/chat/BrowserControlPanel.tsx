@@ -177,7 +177,7 @@ export default function BrowserControlPanel({
   // Handle VNC viewport
   useEffect(() => {
     if (rfbRef.current && vncContainerRef.current) {
-      rfbRef.current.scaleViewport = false
+      rfbRef.current.scaleViewport = true
       rfbRef.current.resizeSession = true
     }
   }, [width])

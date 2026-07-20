@@ -215,6 +215,31 @@ pub async fn start_browser(state: &BrowserState) -> Result<bool, String> {
     Ok(false)
 }
 
+/// Resize the shared Chrome window to match the VNC display area.
+/// Works regardless of whether AI sessions exist.
+pub async fn resize_shared_browser(state: &BrowserState, width: u32, height: u32) {
+    let browser = {
+        let shared = state.shared.lock().await;
+        shared.as_ref().map(|sb| sb.browser.clone())
+    };
+    if let Some(browser) = browser {
+        tokio::task::spawn_blocking(move || {
+            let tabs = browser.get_tabs();
+            let guard = tabs.lock().unwrap();
+            if let Some(tab) = guard.first() {
+                let _ = tab.set_bounds(Bounds::Normal {
+                    left: Some(0),
+                    top: Some(0),
+                    width: Some(width as f64),
+                    height: Some(height as f64),
+                });
+            }
+        })
+        .await
+        .ok();
+    }
+}
+
 /// Stop the shared Chrome + Xvnc. Only tears down if there are no active
 /// AI sessions. Returns true if the browser was stopped, false if sessions
 /// are still active.

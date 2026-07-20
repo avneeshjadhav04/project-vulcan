@@ -399,15 +399,12 @@ async fn handle_browser_events(
                     }
                     Some("resize") => {
                         if let (Some(w), Some(h)) = (envelope["width"].as_u64(), envelope["height"].as_u64()) {
-                            let sessions = state.browser.sessions.lock().await;
-                            for handle in sessions.values() {
-                                let _ = handle.command_tx.try_send(
-                                    crate::browser_engine::BrowserCommand::Resize {
-                                        width: w as u32,
-                                        height: h as u32,
-                                    },
-                                );
-                            }
+                            crate::browser_engine::resize_shared_browser(
+                                &state.browser,
+                                w as u32,
+                                h as u32,
+                            )
+                            .await;
                         }
                     }
                     _ => {}
