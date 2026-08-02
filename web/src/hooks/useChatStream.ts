@@ -18,6 +18,21 @@ export interface ToolExecution {
   page_content?: string
   code?: string
   language?: string
+  // Browser automation fields
+  session_id?: string
+  screenshot_id?: string
+  title?: string
+  selector?: string
+  typed_text?: string
+  content?: string
+  mode?: string
+  ws_port?: number
+  x?: number
+  y?: number
+  ms?: number
+  result?: string
+  truncated?: boolean
+  error?: string
 }
 
 export interface StreamState {
@@ -300,6 +315,19 @@ export function useChatStream(chatId?: string): [StreamState, StreamActions] {
                         page_content: toolData.page_content || toolData.content,
                         code: toolData.code,
                         language: toolData.language,
+                        session_id: toolData.session_id,
+                        screenshot_id: toolData.screenshot_id,
+                        title: toolData.title,
+                        selector: toolData.selector,
+                        typed_text: toolData.text,
+                        content: toolData.content,
+                        mode: toolData.mode,
+                        ws_port: toolData.ws_port,
+                        x: toolData.x,
+                        y: toolData.y,
+                        ms: toolData.ms,
+                        result: toolData.result,
+                        truncated: toolData.truncated,
                       },
                     ],
                   },

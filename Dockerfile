@@ -11,7 +11,7 @@ COPY web/ ./
 RUN npm run build
 
 # Stage 2: Build Rust API
-FROM ubuntu:24.04 AS api-builder
+FROM debian:trixie-slim AS api-builder
 RUN apt-get update && apt-get install -y curl pkg-config libssl-dev g++ unzip wget \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -58,8 +58,10 @@ WORKDIR /proot-src
 RUN LDFLAGS="-static" make -C src proot GIT=false
 
 # Stage 4: Runtime
-FROM ubuntu:24.04
-RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl && rm -rf /var/lib/apt/lists/*
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y ca-certificates wget libssl3 chromium libstdc++6 python3 python3-pip unzip curl tigervnc-standalone-server && rm -rf /var/lib/apt/lists/*
+
+ENV CHROME=/usr/bin/chromium
 
 # Install Node.js 22 LTS (NodeSource) so MCP stdio servers spawned by the API
 # host (e.g. `npx -y @modelcontextprotocol/server-*`) can run. Version matches

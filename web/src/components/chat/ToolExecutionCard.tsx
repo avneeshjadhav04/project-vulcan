@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle2, XCircle, Terminal, FileText, Globe, Search, Code, Download } from 'lucide-react'
+import { CheckCircle2, XCircle, Terminal, FileText, Globe, Search, Code, Download, MousePointerClick } from 'lucide-react'
 
 interface ToolResult {
   tool_name: string
@@ -22,6 +22,18 @@ interface ToolResult {
   error?: string
   approval_needed?: boolean
   args_preview?: string
+  // Browser automation fields
+  session_id?: string
+  screenshot_id?: string
+  title?: string
+  selector?: string
+  typed_text?: string
+  mode?: string
+  x?: number
+  y?: number
+  ms?: number
+  result?: string
+  truncated?: boolean
 }
 
 export default function ToolExecutionCard({
@@ -42,6 +54,8 @@ export default function ToolExecutionCard({
   const isSearch = tool.tool_name === 'search_web'
   const isPython = tool.tool_name === 'execute_python'
   const isWebpage = tool.tool_name === 'fetch_webpage'
+  const isBrowser = tool.tool_name.startsWith('browser_')
+  const isBrowserScreenshot = tool.tool_name === 'browser_screenshot'
 
   const toolLabel = isMcp
     ? tool.tool_name.split('__')[1]?.replace(/_/g, ' ') || tool.tool_name
@@ -50,6 +64,7 @@ export default function ToolExecutionCard({
     : isSearch ? tool.query
     : isPython ? 'Python Script'
     : isWebpage ? tool.url
+    : isBrowser ? getBrowserToolLabel(tool)
     : tool.tool_name
 
   const ToolIcon = isMcp ? Globe
@@ -57,6 +72,7 @@ export default function ToolExecutionCard({
     : isFile ? FileText
     : isSearch ? Search
     : isPython ? Code
+    : isBrowser ? MousePointerClick
     : Globe
 
   const displayToolName = isMcp
@@ -228,7 +244,37 @@ export default function ToolExecutionCard({
                 </div>
               )}
 
-              {!isMcp && !isTerminal && !isFile && !isSearch && !isPython && !isWebpage && (
+              {isBrowser && !isBrowserScreenshot && (
+                <div className="px-3 py-2">
+                  {tool.error ? (
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap bg-background p-2 font-mono text-[11px] text-support-error">
+                      {tool.error}
+                    </pre>
+                  ) : tool.content ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">
+                        Extracted {tool.mode || 'text'}
+                      </p>
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap bg-background p-2 font-mono text-[11px] text-text-secondary">
+                        {tool.content.length > 500 ? tool.content.substring(0, 500) + '...' : tool.content}
+                      </pre>
+                    </div>
+                  ) : tool.result ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-helper">JS Result</p>
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap bg-background p-2 font-mono text-[11px] text-text-secondary">
+                        {tool.result.length > 500 ? tool.result.substring(0, 500) + '...' : tool.result}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-text-secondary">
+                      {getBrowserToolDetail(tool)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isMcp && !isTerminal && !isFile && !isSearch && !isPython && !isWebpage && !isBrowser && (
                 <div className="px-3 py-2">
                   <pre className="max-h-96 overflow-auto bg-background p-2 font-mono text-[11px] text-text-secondary">
                     {JSON.stringify(tool, null, 2)}
@@ -241,4 +287,56 @@ export default function ToolExecutionCard({
       </AnimatePresence>
     </motion.div>
   )
+}
+
+function getBrowserToolLabel(tool: ToolResult): string {
+  switch (tool.tool_name) {
+    case 'browser_session_open':
+      return `Session ${tool.session_id?.slice(0, 8) || ''}`
+    case 'browser_navigate':
+      return tool.url || ''
+    case 'browser_click':
+      return tool.selector || ''
+    case 'browser_type':
+      return tool.selector || ''
+    case 'browser_extract':
+      return tool.selector || 'page'
+    case 'browser_screenshot':
+      return tool.title || tool.url || ''
+    case 'browser_scroll':
+      return `(${tool.x || 0}, ${tool.y || 0})`
+    case 'browser_wait':
+      return `${tool.ms}ms`
+    case 'browser_run_js':
+      return 'JavaScript'
+    case 'browser_get_url':
+      return tool.url || ''
+    case 'browser_session_close':
+      return 'Closed'
+    default:
+      return tool.tool_name
+  }
+}
+
+function getBrowserToolDetail(tool: ToolResult): string {
+  switch (tool.tool_name) {
+    case 'browser_session_open':
+      return `Session opened: ${tool.session_id?.slice(0, 8) || ''}`
+    case 'browser_navigate':
+      return `Navigated to ${tool.url}`
+    case 'browser_click':
+      return `Clicked: ${tool.selector}`
+    case 'browser_type':
+      return `Typed "${(tool.typed_text || '').slice(0, 50)}" into ${tool.selector}`
+    case 'browser_scroll':
+      return `Scrolled to (${tool.x || 0}, ${tool.y || 0})`
+    case 'browser_wait':
+      return `Waited ${tool.ms}ms`
+    case 'browser_get_url':
+      return `URL: ${tool.url}`
+    case 'browser_session_close':
+      return 'Session closed'
+    default:
+      return tool.status
+  }
 }

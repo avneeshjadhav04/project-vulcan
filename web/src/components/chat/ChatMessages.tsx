@@ -14,6 +14,7 @@ interface MessageItem {
   created_at: string
   tokens_used?: number
   tool_name?: string
+  tool_call_id?: string
   parent_id?: string
   streaming?: boolean
 }

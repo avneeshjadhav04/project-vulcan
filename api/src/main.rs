@@ -17,6 +17,7 @@ use tower_http::{
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
+pub mod browser_engine;
 pub mod config;
 pub mod db;
 pub mod middleware;
@@ -106,6 +107,7 @@ async fn run() -> anyhow::Result<()> {
         http_client: http_client.clone(),
         jwt_public_key,
         sandbox: sandbox_engine::SandboxState::new(),
+        browser: browser_engine::BrowserState::new(),
         vosk_model,
         mcp_manager: mcp::McpManager::new(http_client.clone(), config.master_key),
         active_streams: Arc::new(RwLock::new(HashMap::new())),
@@ -161,6 +163,7 @@ async fn run() -> anyhow::Result<()> {
         )
         .merge(routes::terminal::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(routes::files::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
+        .merge(routes::browser::router().layer(from_fn_with_state(state.clone(), auth_middleware)))
         .merge(
             routes::settings::router().layer(from_fn_with_state(state.clone(), auth_middleware)),
         )
@@ -209,6 +212,30 @@ async fn run() -> anyhow::Result<()> {
         loop {
             interval.tick().await;
             routes::automations::run_due_automations(&bg_state).await;
+        }
+    });
+
+    // Reap orphaned child processes (Chrome subprocesses, etc.).
+    // Required because this binary runs as PID 1 in the container.
+    tokio::spawn(async {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigchld = signal(SignalKind::child()).expect("failed to register SIGCHLD handler");
+        loop {
+            sigchld.recv().await;
+            tokio::task::spawn_blocking(|| {
+                loop {
+                    match nix::sys::wait::waitpid(
+                        nix::unistd::Pid::from_raw(-1),
+                        Some(nix::sys::wait::WaitPidFlag::WNOHANG),
+                    ) {
+                        Ok(nix::sys::wait::WaitStatus::Exited(_, _))
+                        | Ok(nix::sys::wait::WaitStatus::Signaled(_, _, _)) => continue,
+                        _ => break,
+                    }
+                }
+            })
+            .await
+            .ok();
         }
     });
 

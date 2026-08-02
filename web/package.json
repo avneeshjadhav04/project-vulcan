@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@novnc/novnc": "^1.7.0",
     "@tanstack/react-query": "^5.51",
     "axios": "^1.7",
     "dompurify": "^3.4.5",
